@@ -184,6 +184,17 @@ class QQConfig(Base):
     secret: str = ""  # 机器人密钥 (AppSecret) from q.qq.com
     allow_from: list[str] = Field(default_factory=list)  # Allowed user openids (empty = public access)
 
+class WebSocketConfig(Base):
+    """Generic WebSocket channel configuration."""
+    
+    enabled: bool = False
+    server_url: str = "ws://localhost:8765"  # WebSocket server URL
+    auth_token: str = ""  # Authentication token for WebSocket connection
+    allow_from: list[str] = Field(default_factory=list)  # Allowed sender identifiers
+    reconnect_interval: int = 5  # Reconnection interval in seconds
+    heartbeat_interval: int = 30  # Heartbeat interval in seconds
+
+
 class MatrixConfig(Base):
     """Matrix (Element) channel configuration."""
     enabled: bool = False
@@ -201,7 +212,7 @@ class MatrixConfig(Base):
 
 class ChannelsConfig(Base):
     """Configuration for chat channels."""
-
+    
     send_progress: bool = True    # stream agent's text progress to the channel
     send_tool_hints: bool = False  # stream tool-call hints (e.g. read_file("…"))
     whatsapp: WhatsAppConfig = Field(default_factory=WhatsAppConfig)
@@ -214,6 +225,7 @@ class ChannelsConfig(Base):
     slack: SlackConfig = Field(default_factory=SlackConfig)
     qq: QQConfig = Field(default_factory=QQConfig)
     matrix: MatrixConfig = Field(default_factory=MatrixConfig)
+    websocket: WebSocketConfig = Field(default_factory=WebSocketConfig)
 
 
 class AgentDefaults(Base):
