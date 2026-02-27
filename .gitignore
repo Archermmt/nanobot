@@ -45,3 +45,4 @@ tests/
 /dashboard/.nitro/
 /dashboard/.vuepress/dist
 /dashboard/.server/
+/dashboard/package-lock.json

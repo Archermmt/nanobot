@@ -19,34 +19,53 @@ const currentAudio = ref<HTMLAudioElement | null>(null)
 let ws: WebSocket | null = null
 
 const connectWebSocket = () => {
-  const wsUrl = `ws://localhost:8000/ws/chat/${sessionId.value}`
+  // 连接到 WebSocketChannel 服务器地址
+  const wsUrl = `ws://localhost:8765/ws`
   ws = new WebSocket(wsUrl)
   
   ws.onopen = () => {
-    console.log('✅ WebSocket connected')
+    console.log('✅ WebSocket connected to WebSocketChannel')
+    // 发送认证信息（如果需要）
+    if (ws) {
+      const authMsg = {
+        type: 'auth',
+        token: 'your_auth_token_here'
+      }
+      ws.send(JSON.stringify(authMsg))
+    }
   }
   
   ws.onmessage = (event) => {
-    const data = JSON.parse(event.data)
-    
-    if (data.type === 'thought') {
-      // Could show thinking indicator
-    } else if (data.type === 'response') {
-      messages.value.push({
-        role: 'assistant',
-        content: data.data,
-        timestamp: Date.now()
-      })
-      isLoading.value = false
-    } else if (data.type === 'error') {
-      messages.value.push({
-        role: 'system',
-        content: `Error: ${data.data}`,
-        timestamp: Date.now()
-      })
-      isLoading.value = false
-    } else if (data.type === 'done') {
-      // Conversation complete
+    try {
+      const data = JSON.parse(event.data)
+      console.log('📥 Received message:', data)
+      
+      if (data.type === 'message') {
+        messages.value.push({
+          role: 'assistant',
+          content: data.content || 'Received message',
+          timestamp: Date.now()
+        })
+        isLoading.value = false
+      } else if (data.type === 'heartbeat') {
+        // 回复心跳
+        if (ws) {
+          const heartbeatResponse = {
+            type: 'heartbeat_response',
+            timestamp: Date.now()
+          }
+          ws.send(JSON.stringify(heartbeatResponse))
+        }
+      } else if (data.type === 'error') {
+        messages.value.push({
+          role: 'system',
+          content: `Error: ${data.message || data.data}`,
+          timestamp: Date.now()
+        })
+        isLoading.value = false
+      }
+    } catch (e) {
+      console.error('Failed to parse message:', e)
     }
   }
   
@@ -70,38 +89,45 @@ const sendMessage = async (text: string) => {
   messages.value.push(userMessage)
   isLoading.value = true
   
+  // 通过 WebSocketChannel 发送消息
   if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({
-      message: text,
-      session_id: sessionId.value
-    }))
-  } else {
-    // Fallback to REST API
-    try {
-      const response = await fetch('http://localhost:8000/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: text,
-          session_id: sessionId.value
-        })
-      })
-      
-      const data = await response.json()
-      messages.value.push({
-        role: 'assistant',
-        content: data.response,
-        timestamp: Date.now()
-      })
-    } catch (error) {
-      messages.value.push({
-        role: 'system',
-        content: `Error: Failed to send message - ${error}`,
-        timestamp: Date.now()
-      })
-    } finally {
-      isLoading.value = false
+    const messageData = {
+      type: 'message',
+      message_id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      sender_id: 'web_user',
+      chat_id: 'default_room',
+      content: text,
+      media: [],
+      metadata: {
+        source: 'web_dashboard',
+        timestamp: Date.now(),
+        session_id: sessionId.value
+      }
     }
+    
+    console.log('📤 Sending message:', messageData)
+    ws.send(JSON.stringify(messageData))
+    
+    // 设置超时处理
+    setTimeout(() => {
+      if (isLoading.value) {
+        isLoading.value = false
+        messages.value.push({
+          role: 'system',
+          content: 'Message sent but no response received',
+          timestamp: Date.now()
+        })
+      }
+    }, 10000)
+  
+  } else {
+    // WebSocket未连接时的错误提示
+    messages.value.push({
+      role: 'system',
+      content: 'WebSocket not connected. Please wait for reconnection.',
+      timestamp: Date.now()
+    })
+    isLoading.value = false
   }
 }
 
