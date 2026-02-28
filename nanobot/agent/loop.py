@@ -7,7 +7,7 @@ import json
 import re
 from contextlib import AsyncExitStack
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Awaitable, Callable
+from typing import TYPE_CHECKING, Awaitable, Callable
 
 from loguru import logger
 
@@ -22,6 +22,11 @@ from nanobot.agent.tools.filesystem import (
     WriteFileTool,
 )
 from nanobot.agent.tools.message import MessageTool
+from nanobot.agent.tools.agent import (
+    AgentModeStatusTool,
+    AgentModeListTool,
+    AgentModeSwitchTool,
+)
 from nanobot.agent.tools.registry import ToolRegistry
 from nanobot.agent.tools.shell import ExecTool
 from nanobot.agent.tools.spawn import SpawnTool
@@ -133,6 +138,10 @@ class AgentLoop:
         self.tools.register(SpawnTool(manager=self.subagents))
         if self.cron_service:
             self.tools.register(CronTool(self.cron_service))
+        # Register agent mode tools
+        self.tools.register(AgentModeListTool())
+        self.tools.register(AgentModeStatusTool())
+        self.tools.register(AgentModeSwitchTool())
 
     async def _connect_mcp(self) -> None:
         """Connect to configured MCP servers (one-time, lazy)."""
@@ -573,19 +582,20 @@ class AgentLoop:
 
     def get_current_model(self) -> str | None:
         """Load model from workspace/models.json based on current_model setting."""
-        models_file = self.workspace / "models.json"
+
+        models_file = self.workspace / "AGENT.json"
         if not models_file.exists():
             return self.provider.get_default_model()
-
         try:
             with open(models_file, "r", encoding="utf-8") as f:
                 config = json.load(f)
-
-            current_model_name = config.get("current_model")
+            if "modes" not in config:
+                return self.provider.get_default_model()
+            modes = config["modes"]
+            current_model_name = modes.get("current_model")
             if not current_model_name:
                 return self.provider.get_default_model()
-
-            models = config.get("models", [])
+            models = modes.get("models", [])
             for m in models:
                 if m.get("name") == current_model_name:
                     return m.get("model")
