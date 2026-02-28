@@ -19,7 +19,7 @@ const sessionId = ref(`session_${Date.now()}`)
 const currentAudio = ref<HTMLAudioElement | null>(null)
 
 // WebSocket 连接相关状态
-const wsUrl = ref('ws://localhost:8765/ws')
+const wsUrl = ref('ws://localhost:8765')
 const isConnected = ref(false)
 const isConnecting = ref(false)
 const connectionError = ref<string | null>(null)
