@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 
 interface Message {
   role: 'user' | 'assistant' | 'system'
@@ -14,8 +14,13 @@ interface Props {
   isLoading: boolean
 }
 
-defineProps<Props>()
+const props = defineProps<Props>()
 const emit = defineEmits(['play-audio', 'stop-audio'])
+
+const showThinking = computed(() => {
+  // Show thinking only if loading and there are messages
+  return props.isLoading && props.messages.length > 0
+})
 
 const currentAudio = ref<HTMLAudioElement | null>(null)
 const expandedImages = ref<string[]>([])
@@ -112,12 +117,15 @@ const isPlaying = (audioUrl: string) => {
     </div>
 
     <!-- Loading Indicator -->
-    <div v-if="isLoading" class="flex justify-start">
+    <div v-if="showThinking" class="flex justify-start">
       <div class="bg-white border border-gray-200 rounded-2xl px-4 py-3">
-        <div class="flex space-x-2">
-          <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 0ms"></div>
-          <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 150ms"></div>
-          <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 300ms"></div>
+        <div class="flex items-center space-x-2">
+          <div class="text-sm text-gray-500">Thinking</div>
+          <div class="flex space-x-1">
+            <div class="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style="animation-delay: 0ms"></div>
+            <div class="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style="animation-delay: 150ms"></div>
+            <div class="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style="animation-delay: 300ms"></div>
+          </div>
         </div>
       </div>
     </div>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
+import { useAgentMode } from '@/composables/useAgentMode'
 
 interface Status {
   connected: boolean
@@ -22,6 +23,8 @@ const status = ref<Status>({
 const logs = ref<string[]>([])
 const showLogs = ref(false)
 const showLLMSettings = ref(false)
+
+const { currentMode, fetchCurrentMode, startAutoRefresh } = useAgentMode()
 
 const fetchStatus = async () => {
   try {
@@ -60,7 +63,9 @@ let statusInterval: number | null = null
 onMounted(() => {
   fetchStatus()
   fetchCurrentLLM()
+  fetchCurrentMode()
   statusInterval = window.setInterval(fetchStatus, 30000) // Update every 30s
+  startAutoRefresh()
 })
 
 onUnmounted(() => {
@@ -90,6 +95,10 @@ onUnmounted(() => {
         
         <div class="hidden md:flex items-center space-x-2 text-gray-400">
           <span>📦 {{ status.skills_loaded }} skills</span>
+        </div>
+        
+        <div class="hidden md:flex items-center space-x-2 text-blue-400">
+          <span>⚙️ {{ currentMode?.name || 'N/A' }}</span>
         </div>
       </div>
 

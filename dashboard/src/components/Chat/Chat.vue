@@ -17,6 +17,7 @@ const messages = ref<Message[]>([])
 const isLoading = ref(false)
 const sessionId = ref(`session_${Date.now()}`)
 const currentAudio = ref<HTMLAudioElement | null>(null)
+const currentTimeoutId = ref<number | null>(null)
 
 // WebSocket 连接相关状态
 const wsUrl = ref('ws://localhost:8765')
@@ -76,6 +77,12 @@ const connectWebSocket = () => {
     try {
       const data = JSON.parse(event.data)
       console.log('📥 Received message:', data)
+      
+      // Clear timeout when receiving any message
+      if (currentTimeoutId.value) {
+        clearTimeout(currentTimeoutId.value)
+        currentTimeoutId.value = null
+      }
       
       if (data.type === 'message') {
         messages.value.push({
@@ -181,18 +188,17 @@ const sendMessage = async (text: string) => {
     console.log('📤 Sending message:', messageData)
     ws.send(JSON.stringify(messageData))
     
-    // 设置超时处理
-    setTimeout(() => {
+    // 设置超时处理：如果超过30秒没有收到响应，停止 loading
+    const timeoutId = setTimeout(() => {
       if (isLoading.value) {
         isLoading.value = false
-        messages.value.push({
-          role: 'system',
-          content: 'Message sent but no response received',
-          timestamp: Date.now()
-        })
+        console.warn('No response received within 30 seconds')
       }
-    }, 10000)
-  
+    }, 30000)
+    
+    // Store timeout ID in a ref so we can clear it on message receive
+    currentTimeoutId.value = timeoutId
+    
   } else {
     // WebSocket未连接时的错误提示
     messages.value.push({
@@ -247,6 +253,10 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  // Clear any pending timeout
+  if (currentTimeoutId.value) {
+    clearTimeout(currentTimeoutId.value)
+  }
   ws?.close()
   stopAudio()
 })
