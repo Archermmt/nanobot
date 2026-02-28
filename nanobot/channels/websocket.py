@@ -126,7 +126,7 @@ class WebSocketChannel(BaseChannel):
 
         logger.info("Starting WebSocket server on {}:{}", host, port)
 
-        async def handler(websocket, path):
+        async def handler(websocket, *args):
             """Handle individual WebSocket connections."""
             logger.info(
                 "New WebSocket client connected from {}", websocket.remote_address

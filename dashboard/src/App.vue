@@ -4,6 +4,17 @@ import Sidebar from './components/Sidebar/Sidebar.vue'
 import StatusBar from './components/StatusBar/StatusBar.vue'
 import Chat from './components/Chat/Chat.vue'
 
+// WebSocket 连接状态
+const wsConnectionStatus = ref({
+  isConnected: false,
+  isConnecting: false,
+  url: ''
+})
+
+const handleWsStatusChange = (status: { isConnected: boolean; isConnecting: boolean; url: string }) => {
+  wsConnectionStatus.value = status
+}
+
 const sidebarExpanded = ref(true)
 const currentSection = ref('chat')
 
@@ -53,7 +64,10 @@ const handleOpenLLMSettings = () => {
       </main>
 
       <!-- Status Bar -->
-      <StatusBar @open-llm-settings="handleOpenLLMSettings" />
+      <StatusBar 
+        @open-llm-settings="handleOpenLLMSettings"
+        :ws-status="wsConnectionStatus"
+      />
     </div>
   </div>
 </template>

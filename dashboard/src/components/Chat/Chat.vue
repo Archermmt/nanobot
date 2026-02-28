@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import MessageList from './MessageList.vue'
 import ChatInput from './ChatInput.vue'
 
@@ -11,20 +11,57 @@ interface Message {
   audioUrl?: string
 }
 
+const emit = defineEmits(['send', 'upload-image', 'upload-audio', 'ws-status-change'])
+
 const messages = ref<Message[]>([])
 const isLoading = ref(false)
 const sessionId = ref(`session_${Date.now()}`)
 const currentAudio = ref<HTMLAudioElement | null>(null)
 
+// WebSocket 连接相关状态
+const wsUrl = ref('ws://localhost:8765/ws')
+const isConnected = ref(false)
+const isConnecting = ref(false)
+const connectionError = ref<string | null>(null)
+
 let ws: WebSocket | null = null
 
+// 计算属性：连接状态文本
+const connectionStatus = computed(() => {
+  if (isConnecting.value) return '正在连接...'
+  if (isConnected.value) return '已连接'
+  if (connectionError.value) return `连接失败: ${connectionError.value}`
+  return '未连接'
+})
+
 const connectWebSocket = () => {
-  // 连接到 WebSocketChannel 服务器地址
-  const wsUrl = `ws://localhost:8765/ws`
-  ws = new WebSocket(wsUrl)
+  if (isConnecting.value || isConnected.value) return
+  
+  isConnecting.value = true
+  connectionError.value = null
+  
+  // 发出状态变化事件
+  emit('ws-status-change', {
+    isConnected: false,
+    isConnecting: true,
+    url: wsUrl.value
+  })
+  
+  ws = new WebSocket(wsUrl.value)
   
   ws.onopen = () => {
     console.log('✅ WebSocket connected to WebSocketChannel')
+    isConnecting.value = false
+    isConnected.value = true
+    connectionError.value = null
+    
+    // 发出状态变化事件
+    emit('ws-status-change', {
+      isConnected: true,
+      isConnecting: false,
+      url: wsUrl.value
+    })
+    
     // 发送认证信息（如果需要）
     if (ws) {
       const authMsg = {
@@ -71,12 +108,48 @@ const connectWebSocket = () => {
   
   ws.onclose = () => {
     console.log('WebSocket disconnected')
-    setTimeout(connectWebSocket, 2000)
+    isConnecting.value = false
+    isConnected.value = false
+    
+    // 发出状态变化事件
+    emit('ws-status-change', {
+      isConnected: false,
+      isConnecting: false,
+      url: wsUrl.value
+    })
+    
+    // 不再自动重连，让用户手动控制
   }
   
   ws.onerror = (error) => {
     console.error('WebSocket error:', error)
+    isConnecting.value = false
+    isConnected.value = false
+    connectionError.value = '连接错误'
+    
+    // 发出状态变化事件
+    emit('ws-status-change', {
+      isConnected: false,
+      isConnecting: false,
+      url: wsUrl.value
+    })
   }
+}
+
+const disconnectWebSocket = () => {
+  if (ws) {
+    ws.close()
+    ws = null
+  }
+  isConnected.value = false
+  isConnecting.value = false
+  
+  // 发出状态变化事件
+  emit('ws-status-change', {
+    isConnected: false,
+    isConnecting: false,
+    url: wsUrl.value
+  })
 }
 
 const sendMessage = async (text: string) => {
@@ -124,7 +197,7 @@ const sendMessage = async (text: string) => {
     // WebSocket未连接时的错误提示
     messages.value.push({
       role: 'system',
-      content: 'WebSocket not connected. Please wait for reconnection.',
+      content: 'WebSocket not connected. Please connect first.',
       timestamp: Date.now()
     })
     isLoading.value = false
@@ -168,8 +241,9 @@ const stopAudio = () => {
   }
 }
 
+// 不再在 mounted 时自动连接
 onMounted(() => {
-  connectWebSocket()
+  // 初始化时不自动连接
 })
 
 onUnmounted(() => {
@@ -180,6 +254,68 @@ onUnmounted(() => {
 
 <template>
   <div class="flex flex-col h-full">
+    <!-- WebSocket 连接控制面板 -->
+    <div class="border-b bg-white p-4">
+      <div class="flex flex-col space-y-3">
+        <div class="flex items-center space-x-3">
+          <label class="text-sm font-medium text-gray-700 whitespace-nowrap">WebSocket URL:</label>
+          <input
+            v-model="wsUrl"
+            type="text"
+            :disabled="isConnecting || isConnected"
+            class="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:text-gray-500"
+            placeholder="请输入 WebSocket 地址，例如: ws://localhost:8765/ws"
+          />
+        </div>
+        
+        <div class="flex items-center space-x-3">
+          <button
+            v-if="!isConnected"
+            @click="connectWebSocket"
+            :disabled="isConnecting || !wsUrl.trim()"
+            class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+          >
+            {{ isConnecting ? '连接中...' : '连接' }}
+          </button>
+          
+          <button
+            v-if="isConnected"
+            @click="disconnectWebSocket"
+            class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors"
+          >
+            断开连接
+          </button>
+          
+          <div class="flex items-center space-x-2">
+            <div 
+              class="w-3 h-3 rounded-full" 
+              :class="{
+                'bg-yellow-500': isConnecting,
+                'bg-green-500': isConnected,
+                'bg-red-500': connectionError,
+                'bg-gray-400': !isConnecting && !isConnected && !connectionError
+              }"
+            ></div>
+            <span 
+              class="text-sm" 
+              :class="{
+                'text-yellow-600': isConnecting,
+                'text-green-600': isConnected,
+                'text-red-600': connectionError,
+                'text-gray-500': !isConnecting && !isConnected && !connectionError
+              }"
+            >
+              {{ connectionStatus }}
+            </span>
+          </div>
+        </div>
+        
+        <div v-if="connectionError" class="text-sm text-red-600">
+          错误: {{ connectionError }}
+        </div>
+      </div>
+    </div>
+    
     <!-- Messages -->
     <MessageList
       :messages="messages"
@@ -191,6 +327,7 @@ onUnmounted(() => {
     <!-- Input -->
     <ChatInput
       :isLoading="isLoading"
+      :disabled="!isConnected"
       @send="sendMessage"
       @upload-image="handleImageUpload"
       @upload-audio="handleAudioUpload"

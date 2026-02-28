@@ -4,6 +4,7 @@ import MediaUploader from '../Media/MediaUploader.vue'
 
 interface Props {
   isLoading: boolean
+  disabled?: boolean
 }
 
 const props = defineProps<Props>()
@@ -12,7 +13,7 @@ const emit = defineEmits(['send', 'upload-image', 'upload-audio'])
 const input = ref('')
 
 const sendMessage = () => {
-  if (!input.value.trim() || props.isLoading) return
+  if (!input.value.trim() || props.isLoading || props.disabled) return
   emit('send', input.value)
   input.value = ''
 }
@@ -40,14 +41,14 @@ const handleAudioUpload = (audioData: { data: string; type: string; isRecording?
         <input
           v-model="input"
           type="text"
-          placeholder="Type a message..."
-          class="flex-1 border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          :disabled="isLoading"
+          :placeholder="props.disabled ? '请先连接 WebSocket' : 'Type a message...'"
+          class="flex-1 border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-500"
+          :disabled="isLoading || props.disabled"
         />
         <button
           type="submit"
-          class="bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-xl font-medium transition-colors disabled:opacity-50"
-          :disabled="isLoading || !input.trim()"
+          class="bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-xl font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          :disabled="isLoading || !input.trim() || props.disabled"
         >
           Send
         </button>

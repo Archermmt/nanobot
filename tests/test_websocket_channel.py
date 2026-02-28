@@ -12,7 +12,7 @@ from nanobot.channels.websocket import WebSocketChannel
 from nanobot.config.schema import WebSocketConfig
 
 
-def _make_config() -> WebSocketConfig:
+def _make_config(as_server: bool = True) -> WebSocketConfig:
     """Create a test WebSocket configuration."""
     return WebSocketConfig(
         enabled=True,
@@ -21,11 +21,11 @@ def _make_config() -> WebSocketConfig:
         allow_from=["user1", "user2"],
         reconnect_interval=5,
         heartbeat_interval=30,
+        as_server=as_server,
     )
 
 
-@pytest.mark.asyncio
-async def test_websocket_channel_initialization():
+def test_websocket_channel_initialization():
     """Test WebSocketChannel initialization."""
     config = _make_config()
     bus = MessageBus()
@@ -241,5 +241,169 @@ async def test_websocket_channel_send_when_disconnected():
     # If we get here without exception, the test passes
 
 
+@pytest.mark.asyncio
+async def test_websocket_channel_as_server_mode():
+    """Test WebSocket channel in server mode."""
+    config = _make_config(as_server=True)
+    bus = MessageBus()
+
+    channel = WebSocketChannel(config, bus)
+
+    # Verify configuration
+    assert channel.config.as_server is True
+    assert channel.name == "websocket"
+
+    # Test initial state
+    assert channel._running is False
+    assert channel._connected is False
+    assert channel._ws is None
+
+
+@pytest.mark.asyncio
+async def test_websocket_channel_as_client_mode():
+    """Test WebSocket channel in client mode."""
+    config = _make_config(as_server=False)
+    bus = MessageBus()
+
+    channel = WebSocketChannel(config, bus)
+
+    # Verify configuration
+    assert channel.config.as_server is False
+    assert channel.name == "websocket"
+
+    # Test initial state
+    assert channel._running is False
+    assert channel._connected is False
+    assert channel._ws is None
+
+
+@pytest.mark.asyncio
+async def test_websocket_channel_server_mode_start():
+    """Test WebSocket channel start in server mode."""
+    config = _make_config(as_server=True)
+    bus = MessageBus()
+
+    channel = WebSocketChannel(config, bus)
+
+    # Mock the _start_server method
+    with patch.object(channel, "_start_server", return_value=None) as mock_start_server:
+        start_task = asyncio.create_task(channel.start())
+        await asyncio.sleep(0.01)  # Let it start
+
+        # Verify _start_server was called
+        mock_start_server.assert_called_once()
+        assert channel._running is True
+
+        await channel.stop()
+        start_task.cancel()
+
+
+@pytest.mark.asyncio
+async def test_websocket_channel_client_mode_start():
+    """Test WebSocket channel start in client mode."""
+    config = _make_config(as_server=False)
+    bus = MessageBus()
+
+    channel = WebSocketChannel(config, bus)
+
+    # Mock the _connect_with_retry method
+    with patch.object(
+        channel, "_connect_with_retry", return_value=None
+    ) as mock_connect:
+        start_task = asyncio.create_task(channel.start())
+        await asyncio.sleep(0.01)  # Let it start
+
+        # Verify _connect_with_retry was called
+        mock_connect.assert_called_once()
+        assert channel._running is True
+
+        await channel.stop()
+        start_task.cancel()
+
+
+@pytest.mark.asyncio
+async def test_websocket_channel_server_mode_send():
+    """Test sending messages in server mode."""
+    config = _make_config(as_server=True)
+    bus = MessageBus()
+
+    channel = WebSocketChannel(config, bus)
+    channel._connected = True
+
+    # Mock WebSocket connection (server side)
+    mock_ws = AsyncMock()
+    channel._ws = mock_ws
+
+    # Create test message
+    msg = OutboundMessage(
+        channel="websocket",
+        chat_id="server-room",
+        content="Server message",
+        media=[],
+        metadata={"mode": "server"},
+    )
+
+    # Send message
+    await channel.send(msg)
+
+    # Verify message was sent
+    mock_ws.send.assert_called_once()
+    sent_message_str = mock_ws.send.call_args[0][0]
+    sent_message = json.loads(sent_message_str)
+
+    assert sent_message["type"] == "message"
+    assert sent_message["sender_id"] == "bot"
+    assert sent_message["chat_id"] == "server-room"
+    assert sent_message["content"] == "Server message"
+    assert sent_message["metadata"] == {"mode": "server"}
+
+
+@pytest.mark.asyncio
+async def test_websocket_channel_server_mode_stop():
+    """Test stopping WebSocket channel in server mode."""
+    config = _make_config(as_server=True)
+    bus = MessageBus()
+
+    channel = WebSocketChannel(config, bus)
+    channel._running = True
+    channel._connected = True
+
+    # Mock WebSocket server
+    mock_ws = AsyncMock()
+    channel._ws = mock_ws
+
+    # Stop the channel
+    await channel.stop()
+
+    # Verify cleanup
+    assert channel._running is False
+    assert channel._connected is False
+    mock_ws.close.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_websocket_channel_client_mode_stop():
+    """Test stopping WebSocket channel in client mode."""
+    config = _make_config(as_server=False)
+    bus = MessageBus()
+
+    channel = WebSocketChannel(config, bus)
+    channel._running = True
+    channel._connected = True
+
+    # Mock WebSocket client connection
+    mock_ws = AsyncMock()
+    channel._ws = mock_ws
+
+    # Stop the channel
+    await channel.stop()
+
+    # Verify cleanup
+    assert channel._running is False
+    assert channel._connected is False
+    mock_ws.close.assert_called_once()
+
+
 if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+    # pytest.main([__file__, "-v"])
+    test_websocket_channel_initialization()
