@@ -102,12 +102,12 @@ const isPlaying = (audioUrl: string) => {
             >
               {{ isPlaying(msg.audioUrl!) ? '⏹️' : '▶️' }}
             </button>
-            <span class="text-xs opacity-70">Voice Message</span>
+            <span class="text-xs opacity-70">语音消息</span>
           </div>
         </div>
 
         <!-- Message Content -->
-        <div class="prose prose-xs" v-html="msg.content"></div>
+        <div class="prose prose-xs pixel-font" v-html="msg.content"></div>
 
         <!-- Timestamp -->
         <div class="text-xs mt-2 opacity-70">
@@ -120,7 +120,7 @@ const isPlaying = (audioUrl: string) => {
     <div v-if="showThinking" class="flex justify-start">
       <div class="bg-gradient-to-br from-gray-100 to-gray-200 border border-gray-300 rounded shadow-[4px_4px_0_rgba(0,0,0,0.5)] px-4 py-3">
         <div class="flex items-center space-x-2">
-          <div class="text-xs text-gray-600">Thinking</div>
+          <div class="text-xs text-gray-600">思考中</div>
           <div class="flex space-x-1">
             <div class="w-2 h-2 bg-blue-500 rounded animate-bounce" style="animation-delay: 0ms"></div>
             <div class="w-2 h-2 bg-blue-500 rounded animate-bounce" style="animation-delay: 150ms"></div>

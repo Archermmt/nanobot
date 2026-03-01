@@ -29,10 +29,10 @@ let ws: WebSocket | null = null
 
 // 计算属性：连接状态文本
 const connectionStatus = computed(() => {
-  if (isConnecting.value) return 'Connecting...'
-  if (isConnected.value) return 'Connected'
-  if (connectionError.value) return `Connection failed: ${connectionError.value}`
-  return 'Not connected'
+  if (isConnecting.value) return '连接中...'
+  if (isConnected.value) return '已连接'
+  if (connectionError.value) return `连接失败：${connectionError.value}`
+  return '未连接'
 })
 
 const connectWebSocket = () => {
@@ -51,7 +51,7 @@ const connectWebSocket = () => {
   ws = new WebSocket(wsUrl.value)
   
   ws.onopen = () => {
-    console.log('✅ WebSocket connected to WebSocketChannel')
+    console.log('✅ WebSocket 已连接到 WebSocketChannel')
     isConnecting.value = false
     isConnected.value = true
     connectionError.value = null
@@ -76,7 +76,7 @@ const connectWebSocket = () => {
   ws.onmessage = (event) => {
     try {
       const data = JSON.parse(event.data)
-      console.log('📥 Received message:', data)
+      console.log('📥 收到消息:', data)
       
       // Clear timeout when receiving any message
       if (currentTimeoutId.value) {
@@ -87,7 +87,7 @@ const connectWebSocket = () => {
       if (data.type === 'message') {
         messages.value.push({
           role: 'assistant',
-          content: data.content || 'Received message',
+          content: data.content || '收到消息',
           timestamp: Date.now()
         })
         isLoading.value = false
@@ -103,18 +103,18 @@ const connectWebSocket = () => {
       } else if (data.type === 'error') {
         messages.value.push({
           role: 'system',
-          content: `Error: ${data.message || data.data}`,
+          content: `错误：${data.message || data.data}`,
           timestamp: Date.now()
         })
         isLoading.value = false
       }
     } catch (e) {
-      console.error('Failed to parse message:', e)
+      console.error('解析消息失败:', e)
     }
   }
   
   ws.onclose = () => {
-    console.log('WebSocket disconnected')
+    console.log('WebSocket 已断开')
     isConnecting.value = false
     isConnected.value = false
     
@@ -129,10 +129,10 @@ const connectWebSocket = () => {
   }
   
   ws.onerror = (error) => {
-    console.error('WebSocket error:', error)
+    console.error('WebSocket 错误:', error)
     isConnecting.value = false
     isConnected.value = false
-    connectionError.value = 'Connection error'
+    connectionError.value = '连接错误'
     
     // 发出状态变化事件
     emit('ws-status-change', {
@@ -185,14 +185,14 @@ const sendMessage = async (text: string) => {
       }
     }
     
-    console.log('📤 Sending message:', messageData)
+    console.log('📤 发送消息:', messageData)
     ws.send(JSON.stringify(messageData))
     
     // 设置超时处理：如果超过30秒没有收到响应，停止 loading
     const timeoutId = setTimeout(() => {
       if (isLoading.value) {
         isLoading.value = false
-        console.warn('No response received within 30 seconds')
+        console.warn('30 秒内未收到响应')
       }
     }, 30000)
     
@@ -203,7 +203,7 @@ const sendMessage = async (text: string) => {
     // WebSocket未连接时的错误提示
     messages.value.push({
       role: 'system',
-      content: 'WebSocket not connected. Please connect first.',
+      content: 'WebSocket 未连接，请先连接。',
       timestamp: Date.now()
     })
     isLoading.value = false
@@ -265,16 +265,16 @@ onUnmounted(() => {
 <template>
   <div class="flex flex-col h-full">
     <!-- WebSocket 连接控制面板 -->
-    <div class="border-b-4 border-gray-700 bg-gray-800 p-4">
+    <div class="border-b-4 border-gray-700 bg-gray-800 p-4 pixel-font">
       <div class="flex flex-col space-y-3">
         <div class="flex items-center space-x-3">
-          <label class="text-xs font-bold text-gray-300 whitespace-nowrap">WebSocket URL:</label>
+          <label class="text-xs font-bold text-gray-300 whitespace-nowrap">WebSocket 地址:</label>
           <input
             v-model="wsUrl"
             type="text"
             :disabled="isConnecting || isConnected"
             class="nes-input flex-1 text-xs py-2 border-2 border-gray-600 bg-gray-900 text-gray-300 disabled:bg-gray-700 disabled:text-gray-500"
-            placeholder="Enter WebSocket URL, e.g., ws://localhost:8765/ws"
+            placeholder="输入 WebSocket 地址，例如：ws://localhost:8765/ws"
           />
         </div>
         
@@ -285,7 +285,7 @@ onUnmounted(() => {
             :disabled="isConnecting || !wsUrl.trim()"
             class="nes-btn is-primary"
           >
-            {{ isConnecting ? 'Connecting...' : 'Connect' }}
+            {{ isConnecting ? '连接中...' : '连接' }}
           </button>
           
           <button
@@ -293,7 +293,7 @@ onUnmounted(() => {
             @click="disconnectWebSocket"
             class="nes-btn is-danger"
           >
-            Disconnect
+            断开
           </button>
           
           <div class="flex items-center space-x-2">
@@ -321,7 +321,7 @@ onUnmounted(() => {
         </div>
         
         <div v-if="connectionError" class="text-xs text-red-500">
-          Error: {{ connectionError }}
+          错误：{{ connectionError }}
         </div>
       </div>
     </div>

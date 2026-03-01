@@ -40,10 +40,10 @@ const handleOpenLLMSettings = () => {
         <div class="flex items-center justify-between">
           <div>
             <h1 class="text-white text-lg font-bold drop-shadow-[2px_2px_0_rgba(0,0,0,0.5)]">
-              {{ currentSection === 'chat' && '💬 CHAT' }}
-              {{ currentSection === 'settings' && '⚙️ SETTINGS' }}
-              {{ currentSection === 'logs' && '📋 LOGS' }}
-              {{ currentSection === 'memory' && '🧠 MEMORY' }}
+              <template v-if="currentSection === 'chat'">💬 CHAT</template>
+              <template v-else-if="currentSection === 'settings'">⚙️ SETTINGS</template>
+              <template v-else-if="currentSection === 'logs'">📋 LOGS</template>
+              <template v-else-if="currentSection === 'memory'">🧠 MEMORY</template>
             </h1>
             <p class="text-gray-200 text-xs mt-1">NanoBot Board - AI Agent Dashboard</p>
           </div>

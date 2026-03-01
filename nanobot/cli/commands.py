@@ -143,9 +143,7 @@ def version_callback(value: bool):
 
 @app.callback()
 def main(
-    version: bool = typer.Option(
-        None, "--version", "-v", callback=version_callback, is_eager=True
-    ),
+    version: bool = typer.Option(None, "--version", "-v", callback=version_callback, is_eager=True),
 ):
     """nanobot - Personal AI Assistant."""
     pass
@@ -167,12 +165,8 @@ def onboard():
 
     if config_path.exists():
         console.print(f"[yellow]Config already exists at {config_path}[/yellow]")
-        console.print(
-            "  [bold]y[/bold] = overwrite with defaults (existing values will be lost)"
-        )
-        console.print(
-            "  [bold]N[/bold] = refresh config, keeping existing values and adding new fields"
-        )
+        console.print("  [bold]y[/bold] = overwrite with defaults (existing values will be lost)")
+        console.print("  [bold]N[/bold] = refresh config, keeping existing values and adding new fields")
         if typer.confirm("Overwrite?"):
             config = Config()
             save_config(config)
@@ -180,9 +174,7 @@ def onboard():
         else:
             config = load_config()
             save_config(config)
-            console.print(
-                f"[green]✓[/green] Config refreshed at {config_path} (existing values preserved)"
-            )
+            console.print(f"[green]✓[/green] Config refreshed at {config_path} (existing values preserved)")
     else:
         save_config(Config())
         console.print(f"[green]✓[/green] Created config at {config_path}")
@@ -201,9 +193,7 @@ def onboard():
     console.print("  1. Add your API key to [cyan]~/.nanobot/config.json[/cyan]")
     console.print("     Get one at: https://openrouter.ai/keys")
     console.print('  2. Chat: [cyan]nanobot agent -m "Hello!"[/cyan]')
-    console.print(
-        "\n[dim]Want Telegram/WhatsApp? See: https://github.com/HKUDS/nanobot#-chat-apps[/dim]"
-    )
+    console.print("\n[dim]Want Telegram/WhatsApp? See: https://github.com/HKUDS/nanobot#-chat-apps[/dim]")
 
 
 def _make_provider(config: Config):
@@ -231,11 +221,7 @@ def _make_provider(config: Config):
     from nanobot.providers.registry import find_by_name
 
     spec = find_by_name(provider_name)
-    if (
-        not model.startswith("bedrock/")
-        and not (p and p.api_key)
-        and not (spec and spec.is_oauth)
-    ):
+    if not model.startswith("bedrock/") and not (p and p.api_key) and not (spec and spec.is_oauth):
         console.print("[red]Error: No API key configured.[/red]")
         console.print("Set one in ~/.nanobot/config.json under providers section")
         raise typer.Exit(1)
@@ -370,15 +356,13 @@ def gateway(
         channel, chat_id = _pick_heartbeat_target()
         if channel == "cli":
             return  # No external channel available to deliver to
-        await bus.publish_outbound(
-            OutboundMessage(channel=channel, chat_id=chat_id, content=response)
-        )
+        await bus.publish_outbound(OutboundMessage(channel=channel, chat_id=chat_id, content=response))
 
     hb_cfg = config.gateway.heartbeat
     heartbeat = HeartbeatService(
         workspace=config.workspace_path,
         provider=provider,
-        model=agent.get_current_model(),
+        model=agent.model,
         on_execute=on_heartbeat_execute,
         on_notify=on_heartbeat_notify,
         interval_s=hb_cfg.interval_s,
@@ -386,9 +370,7 @@ def gateway(
     )
 
     if channels.enabled_channels:
-        console.print(
-            f"[green]✓[/green] Channels enabled: {', '.join(channels.enabled_channels)}"
-        )
+        console.print(f"[green]✓[/green] Channels enabled: {', '.join(channels.enabled_channels)}")
     else:
         console.print("[yellow]Warning: No channels enabled[/yellow]")
 
@@ -425,16 +407,10 @@ def gateway(
 
 @app.command()
 def agent(
-    message: str = typer.Option(
-        None, "--message", "-m", help="Message to send to the agent"
-    ),
+    message: str = typer.Option(None, "--message", "-m", help="Message to send to the agent"),
     session_id: str = typer.Option("cli:direct", "--session", "-s", help="Session ID"),
-    markdown: bool = typer.Option(
-        True, "--markdown/--no-markdown", help="Render assistant output as Markdown"
-    ),
-    logs: bool = typer.Option(
-        False, "--logs/--no-logs", help="Show nanobot runtime logs during chat"
-    ),
+    markdown: bool = typer.Option(True, "--markdown/--no-markdown", help="Render assistant output as Markdown"),
+    logs: bool = typer.Option(False, "--logs/--no-logs", help="Show nanobot runtime logs during chat"),
 ):
     """Interact with the agent directly."""
     from nanobot.config.loader import load_config, get_data_dir
@@ -496,9 +472,7 @@ def agent(
         # Single message mode — direct call, no bus needed
         async def run_once():
             with _thinking_ctx():
-                response = await agent_loop.process_direct(
-                    message, session_id, on_progress=_cli_progress
-                )
+                response = await agent_loop.process_direct(message, session_id, on_progress=_cli_progress)
             _print_agent_response(response, render_markdown=markdown)
             await agent_loop.close_mcp()
 
@@ -508,9 +482,7 @@ def agent(
         from nanobot.bus.events import InboundMessage
 
         _init_prompt_session()
-        console.print(
-            f"{__logo__} Interactive mode (type [bold]exit[/bold] or [bold]Ctrl+C[/bold] to quit)\n"
-        )
+        console.print(f"{__logo__} Interactive mode (type [bold]exit[/bold] or [bold]Ctrl+C[/bold] to quit)\n")
 
         if ":" in session_id:
             cli_channel, cli_chat_id = session_id.split(":", 1)
@@ -533,9 +505,7 @@ def agent(
             async def _consume_outbound():
                 while True:
                     try:
-                        msg = await asyncio.wait_for(
-                            bus.consume_outbound(), timeout=1.0
-                        )
+                        msg = await asyncio.wait_for(bus.consume_outbound(), timeout=1.0)
                         if msg.metadata.get("_progress"):
                             is_tool_hint = msg.metadata.get("_tool_hint", False)
                             ch = agent_loop.channels_config
@@ -589,9 +559,7 @@ def agent(
                             await turn_done.wait()
 
                         if turn_response:
-                            _print_agent_response(
-                                turn_response[0], render_markdown=markdown
-                            )
+                            _print_agent_response(turn_response[0], render_markdown=markdown)
                     except KeyboardInterrupt:
                         _restore_terminal()
                         console.print("\nGoodbye!")
@@ -639,9 +607,7 @@ def channels_status():
 
     # Feishu
     fs = config.channels.feishu
-    fs_config = (
-        f"app_id: {fs.app_id[:10]}..." if fs.app_id else "[dim]not configured[/dim]"
-    )
+    fs_config = f"app_id: {fs.app_id[:10]}..." if fs.app_id else "[dim]not configured[/dim]"
     table.add_row("Feishu", "✓" if fs.enabled else "✗", fs_config)
 
     # Mochat
@@ -651,32 +617,22 @@ def channels_status():
 
     # Telegram
     tg = config.channels.telegram
-    tg_config = (
-        f"token: {tg.token[:10]}..." if tg.token else "[dim]not configured[/dim]"
-    )
+    tg_config = f"token: {tg.token[:10]}..." if tg.token else "[dim]not configured[/dim]"
     table.add_row("Telegram", "✓" if tg.enabled else "✗", tg_config)
 
     # Slack
     slack = config.channels.slack
-    slack_config = (
-        "socket" if slack.app_token and slack.bot_token else "[dim]not configured[/dim]"
-    )
+    slack_config = "socket" if slack.app_token and slack.bot_token else "[dim]not configured[/dim]"
     table.add_row("Slack", "✓" if slack.enabled else "✗", slack_config)
 
     # DingTalk
     dt = config.channels.dingtalk
-    dt_config = (
-        f"client_id: {dt.client_id[:10]}..."
-        if dt.client_id
-        else "[dim]not configured[/dim]"
-    )
+    dt_config = f"client_id: {dt.client_id[:10]}..." if dt.client_id else "[dim]not configured[/dim]"
     table.add_row("DingTalk", "✓" if dt.enabled else "✗", dt_config)
 
     # QQ
     qq = config.channels.qq
-    qq_config = (
-        f"app_id: {qq.app_id[:10]}..." if qq.app_id else "[dim]not configured[/dim]"
-    )
+    qq_config = f"app_id: {qq.app_id[:10]}..." if qq.app_id else "[dim]not configured[/dim]"
     table.add_row("QQ", "✓" if qq.enabled else "✗", qq_config)
 
     # Email
@@ -706,9 +662,7 @@ def _get_bridge_dir() -> Path:
 
     # Find source bridge: first check package data, then source dir
     pkg_bridge = Path(__file__).parent.parent / "bridge"  # nanobot/bridge (installed)
-    src_bridge = (
-        Path(__file__).parent.parent.parent / "bridge"
-    )  # repo root/bridge (dev)
+    src_bridge = Path(__file__).parent.parent.parent / "bridge"  # repo root/bridge (dev)
 
     source = None
     if (pkg_bridge / "package.json").exists():
@@ -727,21 +681,15 @@ def _get_bridge_dir() -> Path:
     user_bridge.parent.mkdir(parents=True, exist_ok=True)
     if user_bridge.exists():
         shutil.rmtree(user_bridge)
-    shutil.copytree(
-        source, user_bridge, ignore=shutil.ignore_patterns("node_modules", "dist")
-    )
+    shutil.copytree(source, user_bridge, ignore=shutil.ignore_patterns("node_modules", "dist"))
 
     # Install and build
     try:
         console.print("  Installing dependencies...")
-        subprocess.run(
-            ["npm", "install"], cwd=user_bridge, check=True, capture_output=True
-        )
+        subprocess.run(["npm", "install"], cwd=user_bridge, check=True, capture_output=True)
 
         console.print("  Building...")
-        subprocess.run(
-            ["npm", "run", "build"], cwd=user_bridge, check=True, capture_output=True
-        )
+        subprocess.run(["npm", "run", "build"], cwd=user_bridge, check=True, capture_output=True)
 
         console.print("[green]✓[/green] Bridge ready\n")
     except subprocess.CalledProcessError as e:
@@ -818,11 +766,7 @@ def cron_list(
         if job.schedule.kind == "every":
             sched = f"every {(job.schedule.every_ms or 0) // 1000}s"
         elif job.schedule.kind == "cron":
-            sched = (
-                f"{job.schedule.expr or ''} ({job.schedule.tz})"
-                if job.schedule.tz
-                else (job.schedule.expr or "")
-            )
+            sched = f"{job.schedule.expr or ''} ({job.schedule.tz})" if job.schedule.tz else (job.schedule.expr or "")
         else:
             sched = "one-time"
 
@@ -848,20 +792,12 @@ def cron_add(
     name: str = typer.Option(..., "--name", "-n", help="Job name"),
     message: str = typer.Option(..., "--message", "-m", help="Message for agent"),
     every: int = typer.Option(None, "--every", "-e", help="Run every N seconds"),
-    cron_expr: str = typer.Option(
-        None, "--cron", "-c", help="Cron expression (e.g. '0 9 * * *')"
-    ),
-    tz: str | None = typer.Option(
-        None, "--tz", help="IANA timezone for cron (e.g. 'America/Vancouver')"
-    ),
+    cron_expr: str = typer.Option(None, "--cron", "-c", help="Cron expression (e.g. '0 9 * * *')"),
+    tz: str | None = typer.Option(None, "--tz", help="IANA timezone for cron (e.g. 'America/Vancouver')"),
     at: str = typer.Option(None, "--at", help="Run once at time (ISO format)"),
-    deliver: bool = typer.Option(
-        False, "--deliver", "-d", help="Deliver response to channel"
-    ),
+    deliver: bool = typer.Option(False, "--deliver", "-d", help="Deliver response to channel"),
     to: str = typer.Option(None, "--to", help="Recipient for delivery"),
-    channel: str = typer.Option(
-        None, "--channel", help="Channel for delivery (e.g. 'telegram', 'whatsapp')"
-    ),
+    channel: str = typer.Option(None, "--channel", help="Channel for delivery (e.g. 'telegram', 'whatsapp')"),
 ):
     """Add a scheduled job."""
     from nanobot.config.loader import get_data_dir
@@ -1020,12 +956,8 @@ def status():
 
     console.print(f"{__logo__} nanobot Status\n")
 
-    console.print(
-        f"Config: {config_path} {'[green]✓[/green]' if config_path.exists() else '[red]✗[/red]'}"
-    )
-    console.print(
-        f"Workspace: {workspace} {'[green]✓[/green]' if workspace.exists() else '[red]✗[/red]'}"
-    )
+    console.print(f"Config: {config_path} {'[green]✓[/green]' if config_path.exists() else '[red]✗[/red]'}")
+    console.print(f"Workspace: {workspace} {'[green]✓[/green]' if workspace.exists() else '[red]✗[/red]'}")
 
     if config_path.exists():
         from nanobot.providers.registry import PROVIDERS
@@ -1047,9 +979,7 @@ def status():
                     console.print(f"{spec.label}: [dim]not set[/dim]")
             else:
                 has_key = bool(p.api_key)
-                console.print(
-                    f"{spec.label}: {'[green]✓[/green]' if has_key else '[dim]not set[/dim]'}"
-                )
+                console.print(f"{spec.label}: {'[green]✓[/green]' if has_key else '[dim]not set[/dim]'}")
 
 
 # ============================================================================
@@ -1073,9 +1003,7 @@ def _register_login(name: str):
 
 @provider_app.command("login")
 def provider_login(
-    provider: str = typer.Argument(
-        ..., help="OAuth provider (e.g. 'openai-codex', 'github-copilot')"
-    ),
+    provider: str = typer.Argument(..., help="OAuth provider (e.g. 'openai-codex', 'github-copilot')"),
 ):
     """Authenticate with an OAuth provider."""
     from nanobot.providers.registry import PROVIDERS
@@ -1084,9 +1012,7 @@ def provider_login(
     spec = next((s for s in PROVIDERS if s.name == key and s.is_oauth), None)
     if not spec:
         names = ", ".join(s.name.replace("_", "-") for s in PROVIDERS if s.is_oauth)
-        console.print(
-            f"[red]Unknown OAuth provider: {provider}[/red]  Supported: {names}"
-        )
+        console.print(f"[red]Unknown OAuth provider: {provider}[/red]  Supported: {names}")
         raise typer.Exit(1)
 
     handler = _LOGIN_HANDLERS.get(spec.name)
@@ -1117,13 +1043,9 @@ def _login_openai_codex() -> None:
         if not (token and token.access):
             console.print("[red]✗ Authentication failed[/red]")
             raise typer.Exit(1)
-        console.print(
-            f"[green]✓ Authenticated with OpenAI Codex[/green]  [dim]{token.account_id}[/dim]"
-        )
+        console.print(f"[green]✓ Authenticated with OpenAI Codex[/green]  [dim]{token.account_id}[/dim]")
     except ImportError:
-        console.print(
-            "[red]oauth_cli_kit not installed. Run: pip install oauth-cli-kit[/red]"
-        )
+        console.print("[red]oauth_cli_kit not installed. Run: pip install oauth-cli-kit[/red]")
         raise typer.Exit(1)
 
 

@@ -1,6 +1,6 @@
 /* NES.css import - must be first */
 @import url('https://unpkg.com/nes.css/css/nes.min.css');
-@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=ZCOOL+KuaiLe&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -13,11 +13,41 @@
 }
 
 body {
-  font-family: 'Press Start 2P', 'Courier New', monospace;
+  font-family: 'Press Start 2P', 'ZCOOL KuaiLe', 'Courier New', monospace;
   background: linear-gradient(45deg, #0f3460, #1e3c72, #2a5298);
   min-height: 100vh;
   -webkit-font-smoothing: none;
   -moz-osx-font-smoothing: none;
+  text-rendering: optimizeSpeed;
+  font-smooth: never;
+}
+
+/* Force pixelated rendering for all text elements */
+input, textarea, button, div, span, p, label {
+  -webkit-font-smoothing: none;
+  -moz-osx-font-smoothing: none;
+  font-smooth: never;
+  text-rendering: optimizeSpeed;
+}
+
+/* Enhanced pixel effect for Chinese text */
+[lang="zh"], [lang="zh-CN"], [lang="zh-TW"] {
+  font-family: 'ZCOOL KuaiLe', 'Press Start 2P', monospace;
+  text-shadow: 0 0 0 currentColor;
+}
+
+/* Pixel font class for all elements */
+.pixel-font {
+  font-family: 'Press Start 2P', 'ZCOOL KuaiLe', 'Courier New', monospace !important;
+  -webkit-font-smoothing: none;
+  -moz-osx-font-smoothing: none;
+  font-smooth: never;
+  text-rendering: optimizeSpeed;
+}
+
+/* Ensure all text content uses pixel font */
+.prose, .prose *, .nes-input, .nes-btn {
+  font-family: 'Press Start 2P', 'ZCOOL KuaiLe', 'Courier New', monospace;
 }
 
 #app {
