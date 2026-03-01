@@ -4,7 +4,7 @@ import Sidebar from './components/Sidebar/Sidebar.vue'
 import StatusBar from './components/StatusBar/StatusBar.vue'
 import Chat from './components/Chat/Chat.vue'
 
-// WebSocket 连接状态
+// WebSocket connection status
 const wsConnectionStatus = ref({
   isConnected: false,
   isConnecting: false,

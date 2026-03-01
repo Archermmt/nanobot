@@ -19,7 +19,7 @@ const sessionId = ref(`session_${Date.now()}`)
 const currentAudio = ref<HTMLAudioElement | null>(null)
 const currentTimeoutId = ref<number | null>(null)
 
-// WebSocket 连接相关状态
+// WebSocket connection related state
 const wsUrl = ref('ws://localhost:8765')
 const isConnected = ref(false)
 const isConnecting = ref(false)
@@ -27,42 +27,42 @@ const connectionError = ref<string | null>(null)
 
 let ws: WebSocket | null = null
 
-// 计算属性：连接状态文本
+// 计算 property: connection status text
 const connectionStatus = computed(() => {
-  if (isConnecting.value) return '连接中...'
-  if (isConnected.value) return '已连接'
-  if (connectionError.value) return `连接失败：${connectionError.value}`
-  return '未连接'
+  if (isConnecting.value) return 'Connecting...'
+  if (isConnected.value) return 'Connected'
+  if (connectionError.value) return `Connection failed: ${connectionError.value}`
+  return 'Disconnected'
 })
 
 const connectWebSocket = () => {
   if (isConnecting.value || isConnected.value) return
-  
+
   isConnecting.value = true
   connectionError.value = null
-  
+
   // 发出状态变化事件
   emit('ws-status-change', {
     isConnected: false,
     isConnecting: true,
     url: wsUrl.value
   })
-  
+
   ws = new WebSocket(wsUrl.value)
-  
+
   ws.onopen = () => {
-    console.log('✅ WebSocket 已连接到 WebSocketChannel')
+    console.log('✅ WebSocket connected to WebSocketChannel')
     isConnecting.value = false
     isConnected.value = true
     connectionError.value = null
-    
+
     // 发出状态变化事件
     emit('ws-status-change', {
       isConnected: true,
       isConnecting: false,
       url: wsUrl.value
     })
-    
+
     // 发送认证信息（如果需要）
     if (ws) {
       const authMsg = {
@@ -72,22 +72,22 @@ const connectWebSocket = () => {
       ws.send(JSON.stringify(authMsg))
     }
   }
-  
+
   ws.onmessage = (event) => {
     try {
       const data = JSON.parse(event.data)
-      console.log('📥 收到消息:', data)
-      
+      console.log('📥 Received message:', data)
+
       // Clear timeout when receiving any message
       if (currentTimeoutId.value) {
         clearTimeout(currentTimeoutId.value)
         currentTimeoutId.value = null
       }
-      
+
       if (data.type === 'message') {
         messages.value.push({
           role: 'assistant',
-          content: data.content || '收到消息',
+          content: data.content || 'Message received',
           timestamp: Date.now()
         })
         isLoading.value = false
@@ -103,37 +103,37 @@ const connectWebSocket = () => {
       } else if (data.type === 'error') {
         messages.value.push({
           role: 'system',
-          content: `错误：${data.message || data.data}`,
+          content: `Error: ${data.message || data.data}`,
           timestamp: Date.now()
         })
         isLoading.value = false
       }
     } catch (e) {
-      console.error('解析消息失败:', e)
+      console.error('Failed to parse message:', e)
     }
   }
-  
+
   ws.onclose = () => {
-    console.log('WebSocket 已断开')
+    console.log('WebSocket disconnected')
     isConnecting.value = false
     isConnected.value = false
-    
+
     // 发出状态变化事件
     emit('ws-status-change', {
       isConnected: false,
       isConnecting: false,
       url: wsUrl.value
     })
-    
+
     // 不再自动重连，让用户手动控制
   }
-  
+
   ws.onerror = (error) => {
-    console.error('WebSocket 错误:', error)
+    console.error('WebSocket error:', error)
     isConnecting.value = false
     isConnected.value = false
-    connectionError.value = '连接错误'
-    
+    connectionError.value = 'Connection error'
+
     // 发出状态变化事件
     emit('ws-status-change', {
       isConnected: false,
@@ -150,7 +150,7 @@ const disconnectWebSocket = () => {
   }
   isConnected.value = false
   isConnecting.value = false
-  
+
   // 发出状态变化事件
   emit('ws-status-change', {
     isConnected: false,
@@ -165,11 +165,11 @@ const sendMessage = async (text: string) => {
     content: text,
     timestamp: Date.now()
   }
-  
+
   messages.value.push(userMessage)
   isLoading.value = true
-  
-  // 通过 WebSocketChannel 发送消息
+
+  // Send message through WebSocketChannel
   if (ws && ws.readyState === WebSocket.OPEN) {
     const messageData = {
       type: 'message',
@@ -184,26 +184,26 @@ const sendMessage = async (text: string) => {
         session_id: sessionId.value
       }
     }
-    
-    console.log('📤 发送消息:', messageData)
+
+    console.log('📤 Sending message:', messageData)
     ws.send(JSON.stringify(messageData))
-    
-    // 设置超时处理：如果超过30秒没有收到响应，停止 loading
+
+    // Set timeout: if no response within 30 seconds, stop loading
     const timeoutId = setTimeout(() => {
       if (isLoading.value) {
         isLoading.value = false
-        console.warn('30 秒内未收到响应')
+        console.warn('No response received within 30 seconds')
       }
     }, 30000)
-    
+
     // Store timeout ID in a ref so we can clear it on message receive
     currentTimeoutId.value = timeoutId
-    
+
   } else {
-    // WebSocket未连接时的错误提示
+    // Error prompt when WebSocket is not connected
     messages.value.push({
       role: 'system',
-      content: 'WebSocket 未连接，请先连接。',
+      content: 'WebSocket not connected. Please connect first.',
       timestamp: Date.now()
     })
     isLoading.value = false
@@ -218,7 +218,7 @@ const handleImageUpload = async (imageData: string) => {
     timestamp: Date.now(),
     imageUrl: imageData
   })
-  
+
   // Send to backend (would need backend support for image processing)
   console.log('Image uploaded:', imageData.substring(0, 50) + '...')
 }
@@ -231,7 +231,7 @@ const handleAudioUpload = async (audioData: { data: string; type: string; isReco
     timestamp: Date.now(),
     audioUrl: audioData.data
   })
-  
+
   console.log('Audio uploaded:', audioData.type)
 }
 
@@ -247,9 +247,9 @@ const stopAudio = () => {
   }
 }
 
-// 不再在 mounted 时自动连接
+// No longer automatically connect on mounted
 onMounted(() => {
-  // 初始化时不自动连接
+  // Don't automatically connect on initialization
 })
 
 onUnmounted(() => {
@@ -264,68 +264,64 @@ onUnmounted(() => {
 
 <template>
   <div class="flex flex-col h-full">
-    <!-- WebSocket 连接控制面板 -->
-    <div class="border-b-4 border-gray-700 bg-gray-800 p-4 pixel-font">
-      <div class="flex flex-col space-y-3">
-        <div class="flex items-center space-x-3">
-          <label class="text-xs font-bold text-gray-300 whitespace-nowrap">WebSocket 地址:</label>
-          <input
-            v-model="wsUrl"
-            type="text"
-            :disabled="isConnecting || isConnected"
-            class="nes-input flex-1 text-xs py-2 border-2 border-gray-600 bg-gray-900 text-gray-300 disabled:bg-gray-700 disabled:text-gray-500"
-            placeholder="输入 WebSocket 地址，例如：ws://localhost:8765/ws"
-          />
-        </div>
-        
-        <div class="flex items-center space-x-3">
-          <button
-            v-if="!isConnected"
-            @click="connectWebSocket"
-            :disabled="isConnecting || !wsUrl.trim()"
-            class="nes-btn is-primary"
+    <!-- WebSocket Connection Control Panel -->
+    <div class="border-b-4 border-gray-700 bg-gray-800 p-3 pixel-font">
+      <div class="flex items-center space-x-3 flex-wrap gap-2">
+        <label class="text-xs font-bold text-gray-300 whitespace-nowrap">WebSocket url:</label>
+        <input
+          v-model="wsUrl"
+          type="text"
+          :disabled="isConnecting || isConnected"
+          class="nes-input flex-1 min-w-[200px] max-w-[400px] text-xs py-1 px-2 border-2 border-gray-600 bg-gray-900 text-gray-300 disabled:bg-gray-700 disabled:text-gray-500"
+          placeholder="ws://localhost:8765"
+        />
+
+        <button
+          v-if="!isConnected"
+          @click="connectWebSocket"
+          :disabled="isConnecting || !wsUrl.trim()"
+          class="nes-btn is-primary text-xs px-3 py-1"
+        >
+          {{ isConnecting ? 'Connecting...' : 'Connect' }}
+        </button>
+
+        <button
+          v-if="isConnected"
+          @click="disconnectWebSocket"
+          class="nes-btn is-danger text-xs px-3 py-1"
+        >
+          Disconnect
+        </button>
+
+        <div class="flex items-center space-x-1">
+          <div
+            class="w-2 h-2 rounded-sm"
+            :class="{
+              'bg-yellow-500': isConnecting,
+              'bg-green-500': isConnected,
+              'bg-red-500': connectionError,
+              'bg-gray-500': !isConnecting && !isConnected && !connectionError
+            }"
+          ></div>
+          <span
+            class="text-xs"
+            :class="{
+              'text-yellow-500': isConnecting,
+              'text-green-500': isConnected,
+              'text-red-500': connectionError,
+              'text-gray-400': !isConnecting && !isConnected && !connectionError
+            }"
           >
-            {{ isConnecting ? '连接中...' : '连接' }}
-          </button>
-          
-          <button
-            v-if="isConnected"
-            @click="disconnectWebSocket"
-            class="nes-btn is-danger"
-          >
-            断开
-          </button>
-          
-          <div class="flex items-center space-x-2">
-            <div 
-              class="w-3 h-3 rounded-sm" 
-              :class="{
-                'bg-yellow-500': isConnecting,
-                'bg-green-500': isConnected,
-                'bg-red-500': connectionError,
-                'bg-gray-500': !isConnecting && !isConnected && !connectionError
-              }"
-            ></div>
-            <span 
-              class="text-xs" 
-              :class="{
-                'text-yellow-500': isConnecting,
-                'text-green-500': isConnected,
-                'text-red-500': connectionError,
-                'text-gray-400': !isConnecting && !isConnected && !connectionError
-              }"
-            >
-              {{ connectionStatus }}
-            </span>
-          </div>
-        </div>
-        
-        <div v-if="connectionError" class="text-xs text-red-500">
-          错误：{{ connectionError }}
+            {{ connectionStatus }}
+          </span>
         </div>
       </div>
+
+        <div v-if="connectionError" class="text-xs text-red-500">
+          Error: {{ connectionError }}
+        </div>
     </div>
-    
+
     <!-- Messages -->
     <MessageList
       :messages="messages"
@@ -333,7 +329,7 @@ onUnmounted(() => {
       @play-audio="playAudio"
       @stop-audio="stopAudio"
     />
-    
+
     <!-- Input -->
     <ChatInput
       :isLoading="isLoading"

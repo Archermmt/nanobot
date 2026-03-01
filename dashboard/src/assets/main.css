@@ -20,6 +20,7 @@ body {
   -moz-osx-font-smoothing: none;
   text-rendering: optimizeSpeed;
   font-smooth: never;
+  font-size: 14px; /* Base font size */
 }
 
 /* Force pixelated rendering for all text elements */
@@ -34,6 +35,7 @@ input, textarea, button, div, span, p, label {
 [lang="zh"], [lang="zh-CN"], [lang="zh-TW"] {
   font-family: 'ZCOOL KuaiLe', 'Press Start 2P', monospace;
   text-shadow: 0 0 0 currentColor;
+  font-size: 16px; /* Larger font size for Chinese text */
 }
 
 /* Pixel font class for all elements */
@@ -48,6 +50,130 @@ input, textarea, button, div, span, p, label {
 /* Ensure all text content uses pixel font */
 .prose, .prose *, .nes-input, .nes-btn {
   font-family: 'Press Start 2P', 'ZCOOL KuaiLe', 'Courier New', monospace;
+}
+
+/* Increase font size for Chinese content in messages */
+.message-content.zh, .message-content[data-lang="zh"] {
+  font-size: 16px;
+}
+
+/* Larger font size for Chinese text in input areas */
+.nes-input.zh, textarea.zh {
+  font-size: 16px;
+}
+
+/* Specific adjustments for message list */
+.message-list .prose {
+  font-size: 14px;
+}
+
+.message-list .prose.zh {
+  font-size: 16px;
+}
+
+/* Specific adjustments for chat input */
+.chat-input textarea {
+  font-size: 14px;
+}
+
+.chat-input textarea.zh {
+  font-size: 16px;
+}
+
+/* Markdown Content Styles */
+.markdown-content {
+  line-height: 1.6;
+}
+
+.markdown-content p {
+  margin-bottom: 0.5em;
+}
+
+.markdown-content p:last-child {
+  margin-bottom: 0;
+}
+
+.markdown-content code {
+  background-color: rgba(0, 0, 0, 0.1);
+  padding: 0.2em 0.4em;
+  border-radius: 3px;
+  font-family: 'Courier New', monospace;
+  font-size: 0.9em;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.markdown-content pre {
+  background-color: rgba(0, 0, 0, 0.1);
+  padding: 0.5em;
+  border-radius: 5px;
+  overflow-x: auto;
+  margin: 0.5em 0;
+}
+
+.markdown-content pre code {
+  background-color: transparent;
+  padding: 0;
+}
+
+.markdown-content ul,
+.markdown-content ol {
+  margin: 0.5em 0;
+  padding-left: 1.5em;
+}
+
+.markdown-content li {
+  margin-bottom: 0.3em;
+}
+
+.markdown-content blockquote {
+  border-left: 3px solid rgba(0, 0, 0, 0.3);
+  padding-left: 0.5em;
+  margin: 0.5em 0;
+  opacity: 0.8;
+}
+
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3,
+.markdown-content h4,
+.markdown-content h5,
+.markdown-content h6 {
+  margin: 0.5em 0;
+  font-weight: bold;
+}
+
+.markdown-content h1 { font-size: 1.3em; }
+.markdown-content h2 { font-size: 1.2em; }
+.markdown-content h3 { font-size: 1.1em; }
+
+.markdown-content a {
+  color: inherit;
+  text-decoration: underline;
+}
+
+.markdown-content table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.5em 0;
+}
+
+.markdown-content th,
+.markdown-content td {
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  padding: 0.3em 0.5em;
+  text-align: left;
+}
+
+.markdown-content th {
+  background-color: rgba(0, 0, 0, 0.05);
+  font-weight: bold;
+}
+
+.markdown-content hr {
+  border: none;
+  border-top: 1px solid rgba(0, 0, 0, 0.2);
+  margin: 0.5em 0;
 }
 
 #app {

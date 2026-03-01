@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import MediaUploader from '../Media/MediaUploader.vue'
 
 interface Props {
@@ -11,6 +11,10 @@ const props = defineProps<Props>()
 const emit = defineEmits(['send', 'upload-image', 'upload-audio'])
 
 const input = ref('')
+
+const hasChineseCharacters = computed(() => {
+  return /[\u4e00-\u9fa5]/.test(input.value);
+})
 
 const autoResize = (event: Event) => {
   const target = event.target as HTMLTextAreaElement
@@ -59,8 +63,9 @@ const handleAudioUpload = (audioData: { data: string; type: string; isRecording?
       <form @submit.prevent="sendMessage" class="flex-1 flex flex-col space-y-2">
         <textarea
           v-model="input"
-          :placeholder="props.disabled ? '请先连接 WebSocket' : '输入消息...'"
+          :placeholder="props.disabled ? 'Please connect WebSocket first' : 'Type a message...'"
           class="flex-1 border-2 border-gray-600 rounded shadow-[inset_2px_2px_4px_rgba(0,0,0,0.3)] px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-700 disabled:text-gray-500 resize-none min-h-[48px] max-h-[200px] overflow-y-auto nes-input text-xs pixel-font"
+          :class="{ 'zh': hasChineseCharacters }"
           :disabled="isLoading || props.disabled"
           rows="1"
           @input="autoResize"
@@ -72,7 +77,7 @@ const handleAudioUpload = (audioData: { data: string; type: string; isRecording?
             class="nes-btn is-primary px-6 py-2 rounded text-xs transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             :disabled="isLoading || !input.trim() || props.disabled"
           >
-            发送
+            Send
           </button>
         </div>
       </form>

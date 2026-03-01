@@ -17,7 +17,7 @@ const sessionId = ref(`session_${Date.now()}`)
 let ws: WebSocket | null = null
 
 const connectWebSocket = () => {
-  // 连接到 WebSocketChannel 服务器地址
+  // Connect to WebSocketChannel server address
   const wsUrl = `ws://localhost:18790/ws`
   ws = new WebSocket(wsUrl)
   
@@ -39,7 +39,7 @@ const connectWebSocket = () => {
       console.log('📥 Received message:', data)
       
       if (data.type === 'message') {
-        // 处理来自 WebSocketChannel 的消息
+        // Handle messages from WebSocketChannel
         messages.value.push({
           role: 'assistant',
           content: data.content || 'Received message',
@@ -93,7 +93,7 @@ const sendMessage = async () => {
   input.value = ''
   isLoading.value = true
   
-  // 通过 WebSocketChannel 发送消息
+  // Send message through WebSocketChannel
   if (ws && ws.readyState === WebSocket.OPEN) {
     const messageData = {
       type: 'message',
@@ -125,7 +125,7 @@ const sendMessage = async () => {
     }, 10000) // 10秒超时
   
   } else {
-    // WebSocket未连接时的错误提示
+    // Error prompt when WebSocket is not connected
     messages.value.push({
       role: 'system',
       content: 'WebSocket not connected. Please wait for reconnection.',
