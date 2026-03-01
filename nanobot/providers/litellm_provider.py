@@ -283,12 +283,16 @@ class LiteLLMProvider(LLMProvider):
         provider_name = config.get_provider_name(model)
         if self.provider_name != provider_name:
             p = config.get_provider(model)
-            api_key = p.api_key if p else None
-            api_base = config.get_api_base(model)
             self.extra_headers = p.extra_headers if p else None
-            if api_key:
-                self._setup_env(api_key, api_base, model)
-            if api_base:
-                litellm.api_base = api_base
+            self.api_key = p.api_key if p else None
+            self.api_base = config.get_api_base(model)
+            self._gateway = find_gateway(provider_name, self.api_key, self.api_base)
+            print("[TMINFO] prodiver " + str(p))
+            print("[TMINFO] api_key " + str(self.api_key))
+            print("[TMINFO] api_base " + str(self.api_base))
+            if self.api_key:
+                self._setup_env(self.api_key, self.api_base, model)
+            if self.api_base:
+                litellm.api_base = self.api_base
             self.provider_name = provider_name
         self.default_model = model

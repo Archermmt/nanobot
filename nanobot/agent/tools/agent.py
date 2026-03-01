@@ -118,6 +118,14 @@ class AgentModeTool(Tool):
         self.workspace = workspace
         self.provider = provider
         self.current_price = ""
+        # update agent
+        agent = _load_agent(self.workspace)
+        modes = agent.get("modes", {})
+        models = modes.get("models", [])
+        current_model = next((m for m in models if m.get("model") == provider.get_default_model()), None)
+        assert current_model, f"Can not find model for {provider.get_default_model()} from {models}"
+        modes.update({"current_mode": current_model["name"], "current_price": current_model["price"]})
+        _save_agent(self.workspace, agent)
 
     @property
     def name(self) -> str:

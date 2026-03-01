@@ -194,7 +194,7 @@ class AgentLoop:
             response = await self.provider.chat(
                 messages=messages,
                 tools=self.tools.get_definitions(),
-                model=self.model,
+                model=self.provider.get_default_model(),
                 temperature=self.temperature,
                 max_tokens=self.max_tokens,
             )
@@ -526,7 +526,7 @@ class AgentLoop:
         return await MemoryStore(self.workspace).consolidate(
             session,
             self.provider,
-            self.model,
+            self.provider.get_default_model(),
             archive_all=archive_all,
             memory_window=self.memory_window,
         )

@@ -26,7 +26,7 @@ Unified tool for agent mode management.
 
 **Parameters**:
 - `method` (string, required): The method to perform - `add`, `remove`, `update`, `list`, or `switch`
-- `price` (string, optional): Price tier for the model (e.g., "free", "medium", "high"). Default is "" (all prices). Required for all methods except list.
+- `price` (string, optional): Price tier for the model ("free"｜"low"|"medium"|"high"). Default is "" (use current prices). Required for all methods except list.
 - `mode` (string, optional): Mode name (e.g., "common", "coding", "multimodal"). Default is "common". Required for all methods except list.
 - `model` (string, optional): Model identifier (e.g., "openai/qwen3.5:cloud"). Required for add and update methods.
 - `describe` (string, optional): Description of the model. Required for add and update methods.
@@ -89,4 +89,4 @@ When users want to manage agent modes:
 - "Remove a model" → Call `agent_mode` with `method: "remove"`, `mode: "xxx"`, `price: "xxx"`
 - "Update a model" → Call `agent_mode` with `method: "update"`, `mode: "xxx"`, `model: "xxx"`, `price: "xxx"`, `describe: "xxx"`
 
-The tool automatically finds models by mode name and price tier, and handles intelligent mode matching based on keywords.
+Always use tool to manage agent modes, do not think by you self!
