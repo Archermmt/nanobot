@@ -407,6 +407,11 @@ class AgentLoop:
                 chat_id=msg.chat_id,
                 content="🐈 nanobot commands:\n/new — Start a new conversation\n/stop — Stop the current task\n/help — Show available commands",
             )
+        if cmd == "/clear":
+            session.clear()
+            self.sessions.save(session)
+            self.sessions.invalidate(session.key)
+            return OutboundMessage(channel=msg.channel, chat_id=msg.chat_id, content="Session cleared.")
         if cmd == "/status":
             agent_file, info = self.workspace / "AGENT.json", {}
             if agent_file.exists():

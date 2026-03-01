@@ -11,7 +11,7 @@ interface Message {
   audioUrl?: string
 }
 
-const emit = defineEmits(['send', 'upload-image', 'upload-audio', 'ws-status-change'])
+const emit = defineEmits(['send', 'new-chat', 'clear-chat', 'upload-image', 'upload-audio', 'ws-status-change'])
 
 const messages = ref<Message[]>([])
 const isLoading = ref(false)
@@ -235,6 +235,72 @@ const handleAudioUpload = async (audioData: { data: string; type: string; isReco
   console.log('Audio uploaded:', audioData.type)
 }
 
+const handleNewChat = () => {
+  const userMessage: Message = {
+    role: 'user',
+    content: '/new',
+    timestamp: Date.now()
+  }
+  messages.value.push(userMessage)
+
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    const newChatMsg = {
+      type: 'message',
+      message_id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      sender_id: 'web_user',
+      chat_id: 'default_room',
+      content: '/new',
+      media: [],
+      metadata: {
+        source: 'web_dashboard',
+        timestamp: Date.now(),
+        session_id: sessionId.value
+      }
+    }
+    console.log('📤 Sending /new command:', newChatMsg)
+    ws.send(JSON.stringify(newChatMsg))
+  } else {
+    messages.value.push({
+      role: 'system',
+      content: 'WebSocket not connected. Please connect first.',
+      timestamp: Date.now()
+    })
+  }
+}
+
+const handleClearChat = () => {
+  const userMessage: Message = {
+    role: 'user',
+    content: '/clear',
+    timestamp: Date.now()
+  }
+  messages.value.push(userMessage)
+
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    const clearMsg = {
+      type: 'message',
+      message_id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      sender_id: 'web_user',
+      chat_id: 'default_room',
+      content: '/clear',
+      media: [],
+      metadata: {
+        source: 'web_dashboard',
+        timestamp: Date.now(),
+        session_id: sessionId.value
+      }
+    }
+    console.log('📤 Sending /clear command:', clearMsg)
+    ws.send(JSON.stringify(clearMsg))
+  } else {
+    messages.value.push({
+      role: 'system',
+      content: 'WebSocket not connected. Please connect first.',
+      timestamp: Date.now()
+    })
+  }
+}
+
 const playAudio = (audioUrl: string) => {
   currentAudio.value = new Audio(audioUrl)
   currentAudio.value.play()
@@ -335,6 +401,8 @@ onUnmounted(() => {
       :isLoading="isLoading"
       :disabled="!isConnected"
       @send="sendMessage"
+      @new-chat="handleNewChat"
+      @clear-chat="handleClearChat"
       @upload-image="handleImageUpload"
       @upload-audio="handleAudioUpload"
     />
