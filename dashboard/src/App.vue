@@ -11,10 +11,6 @@ const wsConnectionStatus = ref({
   url: ''
 })
 
-const handleWsStatusChange = (status: { isConnected: boolean; isConnecting: boolean; url: string }) => {
-  wsConnectionStatus.value = status
-}
-
 const sidebarExpanded = ref(true)
 const currentSection = ref('chat')
 
@@ -29,7 +25,7 @@ const handleOpenLLMSettings = () => {
 </script>
 
 <template>
-  <div class="flex h-screen bg-gray-50">
+  <div class="flex h-screen">
     <!-- Sidebar -->
     <Sidebar
       :is-active="sidebarExpanded"
@@ -40,22 +36,22 @@ const handleOpenLLMSettings = () => {
     <!-- Main Content -->
     <div class="flex-1 flex flex-col overflow-hidden">
       <!-- Header -->
-      <header class="bg-white shadow-sm border-b px-6 py-4 flex-shrink-0">
+      <header class="bg-gradient-to-r from-red-500 to-pink-500 px-6 py-4 flex-shrink-0 border-b-4 border-gray-800 shadow-[inset_0_4px_0_rgba(255,255,255,0.3),inset_0_-4px_0_rgba(0,0,0,0.3)]">
         <div class="flex items-center justify-between">
           <div>
-            <h1 class="text-xl font-semibold text-gray-800">
-              {{ currentSection === 'chat' && '💬 Chat' }}
-              {{ currentSection === 'settings' && '⚙️ Settings' }}
-              {{ currentSection === 'logs' && '📋 Logs' }}
-              {{ currentSection === 'memory' && '🧠 Memory' }}
+            <h1 class="text-white text-lg font-bold drop-shadow-[2px_2px_0_rgba(0,0,0,0.5)]">
+              {{ currentSection === 'chat' && '💬 CHAT' }}
+              {{ currentSection === 'settings' && '⚙️ SETTINGS' }}
+              {{ currentSection === 'logs' && '📋 LOGS' }}
+              {{ currentSection === 'memory' && '🧠 MEMORY' }}
             </h1>
-            <p class="text-sm text-gray-500 mt-1">NanoBot Board - AI Agent Dashboard</p>
+            <p class="text-gray-200 text-xs mt-1">NanoBot Board - AI Agent Dashboard</p>
           </div>
         </div>
       </header>
 
       <!-- Content Area -->
-      <main class="flex-1 overflow-hidden">
+      <main class="flex-1 overflow-hidden bg-gray-900">
         <Chat v-if="currentSection === 'chat'" />
         <div v-else class="p-6 text-gray-500 text-center">
           <p class="text-lg">Section under construction</p>
@@ -64,7 +60,7 @@ const handleOpenLLMSettings = () => {
       </main>
 
       <!-- Status Bar -->
-      <StatusBar 
+      <StatusBar
         @open-llm-settings="handleOpenLLMSettings"
         :ws-status="wsConnectionStatus"
       />
@@ -76,6 +72,6 @@ const handleOpenLLMSettings = () => {
 /* Global styles */
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+  font-family: 'Press Start 2P', 'Courier New', monospace;
 }
 </style>

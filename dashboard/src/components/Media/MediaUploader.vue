@@ -97,7 +97,7 @@ const stopRecording = () => {
     />
     <button
       @click="triggerImageUpload"
-      class="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+      class="nes-btn is-primary p-2 rounded transition-colors"
       title="Upload Image"
     >
       📷
@@ -113,7 +113,7 @@ const stopRecording = () => {
     />
     <button
       @click="triggerAudioUpload"
-      class="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+      class="nes-btn is-primary p-2 rounded transition-colors"
       title="Upload Audio"
     >
       🎤
@@ -122,8 +122,8 @@ const stopRecording = () => {
     <!-- Voice Recording -->
     <button
       @click="isRecording ? stopRecording() : startRecording()"
-      class="p-2 rounded-lg transition-colors"
-      :class="isRecording ? 'bg-red-500 hover:bg-red-600 text-white' : 'hover:bg-gray-100'"
+      class="nes-btn"
+      :class="isRecording ? 'is-danger' : 'is-primary'"
       :title="isRecording ? 'Stop Recording' : 'Start Recording'"
     >
       {{ isRecording ? '⏹️' : '🎙️' }}

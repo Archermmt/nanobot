@@ -93,12 +93,6 @@ const sendMessage = async () => {
   input.value = ''
   isLoading.value = true
   
-  // Check if user is asking for image generation
-  const isImageRequest = messageText.toLowerCase().includes('generate') && 
-                         (messageText.toLowerCase().includes('image') ||
-                          messageText.toLowerCase().includes('picture') ||
-                          messageText.toLowerCase().includes('draw'))
-  
   // 通过 WebSocketChannel 发送消息
   if (ws && ws.readyState === WebSocket.OPEN) {
     const messageData = {

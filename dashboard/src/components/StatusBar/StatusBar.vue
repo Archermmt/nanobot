@@ -76,12 +76,12 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <footer class="bg-gray-900 text-white px-4 py-2 text-sm">
+  <footer class="bg-gray-800 text-white px-4 py-3 text-xs border-t-4 border-gray-600">
     <div class="flex items-center justify-between">
       <!-- Left: Status indicators -->
       <div class="flex items-center space-x-4">
         <div class="flex items-center space-x-2">
-          <span class="w-2 h-2 rounded-full" :class="status.connected ? 'bg-green-500' : 'bg-red-500'"></span>
+          <span class="w-3 h-3 rounded-sm" :class="status.connected ? 'bg-green-500' : 'bg-red-500'"></span>
           <span>{{ status.connected ? 'Connected' : 'Disconnected' }}</span>
         </div>
         
@@ -106,7 +106,7 @@ onUnmounted(() => {
       <div class="flex items-center space-x-2">
         <button
           @click="showLogs = !showLogs"
-          class="px-3 py-1 hover:bg-gray-800 rounded transition-colors"
+          class="nes-btn is-primary px-3 py-1 rounded transition-colors"
           title="View Logs"
         >
           📋
@@ -114,7 +114,7 @@ onUnmounted(() => {
         
         <button
           @click="showLLMSettings = !showLLMSettings"
-          class="px-3 py-1 hover:bg-gray-800 rounded transition-colors"
+          class="nes-btn is-primary px-3 py-1 rounded transition-colors"
           title="LLM Settings"
         >
           ⚙️
@@ -123,14 +123,14 @@ onUnmounted(() => {
     </div>
 
     <!-- Logs Panel -->
-    <div v-if="showLogs" class="mt-2 bg-black rounded p-3 max-h-48 overflow-y-auto font-mono text-xs">
+    <div v-if="showLogs" class="mt-2 bg-black rounded p-3 max-h-48 overflow-y-auto font-mono text-xs border border-gray-600 shadow-[4px_4px_0_rgba(0,0,0,0.5)]">
       <div v-for="(log, index) in logs.slice(0, 20)" :key="index" class="text-gray-300">
         {{ log }}
       </div>
     </div>
 
     <!-- LLM Settings Panel -->
-    <div v-if="showLLMSettings" class="mt-2 bg-gray-800 rounded p-3">
+    <div v-if="showLLMSettings" class="mt-2 bg-gray-700 rounded p-3 border border-gray-600 shadow-[4px_4px_0_rgba(0,0,0,0.5)]">
       <h4 class="font-semibold mb-2">LLM Configuration</h4>
       <div class="space-y-2 text-sm">
         <div class="flex justify-between">
@@ -143,7 +143,7 @@ onUnmounted(() => {
         </div>
         <button
           @click="$emit('open-llm-settings')"
-          class="mt-2 w-full bg-blue-600 hover:bg-blue-700 py-1 rounded transition-colors"
+          class="nes-btn is-primary mt-2 w-full"
         >
           Change Provider
         </button>

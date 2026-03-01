@@ -67,7 +67,7 @@ const isPlaying = (audioUrl: string) => {
 </script>
 
 <template>
-  <div class="flex-1 overflow-y-auto p-6 space-y-4">
+  <div class="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-900">
     <div
       v-for="(msg, index) in messages"
       :key="index"
@@ -75,11 +75,11 @@ const isPlaying = (audioUrl: string) => {
       :class="msg.role === 'user' ? 'justify-end' : 'justify-start'"
     >
       <div
-        class="max-w-[80%] rounded-2xl px-4 py-3"
+        class="max-w-[80%] border-2 rounded shadow-[4px_4px_0_rgba(0,0,0,0.5)] px-4 py-3"
         :class="{
-          'bg-blue-500 text-white': msg.role === 'user',
-          'bg-white border border-gray-200 text-gray-800': msg.role === 'assistant',
-          'bg-red-50 border border-red-200 text-red-800': msg.role === 'system'
+          'bg-gradient-to-br from-blue-500 to-blue-600 border-blue-700 text-white': msg.role === 'user',
+          'bg-gradient-to-br from-gray-100 to-gray-200 border-gray-300 text-gray-800': msg.role === 'assistant',
+          'bg-gradient-to-br from-red-100 to-red-200 border-red-300 text-red-800': msg.role === 'system'
         }"
       >
         <!-- Image Display -->
@@ -87,7 +87,7 @@ const isPlaying = (audioUrl: string) => {
           <img
             :src="msg.imageUrl"
             alt="Generated image"
-            class="max-w-full rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+            class="max-w-full rounded border-2 cursor-pointer hover:opacity-90 transition-opacity"
             :class="expandedImages.includes(msg.imageUrl) ? 'fixed inset-0 w-full h-full object-contain bg-black bg-opacity-90 z-50 p-8' : ''"
             @click="toggleImageExpand(msg.imageUrl)"
           />
@@ -98,16 +98,16 @@ const isPlaying = (audioUrl: string) => {
           <div class="flex items-center space-x-2">
             <button
               @click="isPlaying(msg.audioUrl!) ? stopAudio() : playAudio(msg.audioUrl!)"
-              class="p-2 bg-blue-500 text-white rounded-full hover:bg-blue-600 transition-colors"
+              class="nes-btn is-primary"
             >
               {{ isPlaying(msg.audioUrl!) ? '⏹️' : '▶️' }}
             </button>
-            <span class="text-sm opacity-70">Voice Message</span>
+            <span class="text-xs opacity-70">Voice Message</span>
           </div>
         </div>
 
         <!-- Message Content -->
-        <div class="prose prose-sm" v-html="msg.content"></div>
+        <div class="prose prose-xs" v-html="msg.content"></div>
 
         <!-- Timestamp -->
         <div class="text-xs mt-2 opacity-70">
@@ -118,13 +118,13 @@ const isPlaying = (audioUrl: string) => {
 
     <!-- Loading Indicator -->
     <div v-if="showThinking" class="flex justify-start">
-      <div class="bg-white border border-gray-200 rounded-2xl px-4 py-3">
+      <div class="bg-gradient-to-br from-gray-100 to-gray-200 border border-gray-300 rounded shadow-[4px_4px_0_rgba(0,0,0,0.5)] px-4 py-3">
         <div class="flex items-center space-x-2">
-          <div class="text-sm text-gray-500">Thinking</div>
+          <div class="text-xs text-gray-600">Thinking</div>
           <div class="flex space-x-1">
-            <div class="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style="animation-delay: 0ms"></div>
-            <div class="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style="animation-delay: 150ms"></div>
-            <div class="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style="animation-delay: 300ms"></div>
+            <div class="w-2 h-2 bg-blue-500 rounded animate-bounce" style="animation-delay: 0ms"></div>
+            <div class="w-2 h-2 bg-blue-500 rounded animate-bounce" style="animation-delay: 150ms"></div>
+            <div class="w-2 h-2 bg-blue-500 rounded animate-bounce" style="animation-delay: 300ms"></div>
           </div>
         </div>
       </div>

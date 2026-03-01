@@ -29,10 +29,10 @@ let ws: WebSocket | null = null
 
 // 计算属性：连接状态文本
 const connectionStatus = computed(() => {
-  if (isConnecting.value) return '正在连接...'
-  if (isConnected.value) return '已连接'
-  if (connectionError.value) return `连接失败: ${connectionError.value}`
-  return '未连接'
+  if (isConnecting.value) return 'Connecting...'
+  if (isConnected.value) return 'Connected'
+  if (connectionError.value) return `Connection failed: ${connectionError.value}`
+  return 'Not connected'
 })
 
 const connectWebSocket = () => {
@@ -132,7 +132,7 @@ const connectWebSocket = () => {
     console.error('WebSocket error:', error)
     isConnecting.value = false
     isConnected.value = false
-    connectionError.value = '连接错误'
+    connectionError.value = 'Connection error'
     
     // 发出状态变化事件
     emit('ws-status-change', {
@@ -265,16 +265,16 @@ onUnmounted(() => {
 <template>
   <div class="flex flex-col h-full">
     <!-- WebSocket 连接控制面板 -->
-    <div class="border-b bg-white p-4">
+    <div class="border-b-4 border-gray-700 bg-gray-800 p-4">
       <div class="flex flex-col space-y-3">
         <div class="flex items-center space-x-3">
-          <label class="text-sm font-medium text-gray-700 whitespace-nowrap">WebSocket URL:</label>
+          <label class="text-xs font-bold text-gray-300 whitespace-nowrap">WebSocket URL:</label>
           <input
             v-model="wsUrl"
             type="text"
             :disabled="isConnecting || isConnected"
-            class="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:text-gray-500"
-            placeholder="请输入 WebSocket 地址，例如: ws://localhost:8765/ws"
+            class="nes-input flex-1 text-xs py-2 border-2 border-gray-600 bg-gray-900 text-gray-300 disabled:bg-gray-700 disabled:text-gray-500"
+            placeholder="Enter WebSocket URL, e.g., ws://localhost:8765/ws"
           />
         </div>
         
@@ -283,36 +283,36 @@ onUnmounted(() => {
             v-if="!isConnected"
             @click="connectWebSocket"
             :disabled="isConnecting || !wsUrl.trim()"
-            class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+            class="nes-btn is-primary"
           >
-            {{ isConnecting ? '连接中...' : '连接' }}
+            {{ isConnecting ? 'Connecting...' : 'Connect' }}
           </button>
           
           <button
             v-if="isConnected"
             @click="disconnectWebSocket"
-            class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors"
+            class="nes-btn is-danger"
           >
-            断开连接
+            Disconnect
           </button>
           
           <div class="flex items-center space-x-2">
             <div 
-              class="w-3 h-3 rounded-full" 
+              class="w-3 h-3 rounded-sm" 
               :class="{
                 'bg-yellow-500': isConnecting,
                 'bg-green-500': isConnected,
                 'bg-red-500': connectionError,
-                'bg-gray-400': !isConnecting && !isConnected && !connectionError
+                'bg-gray-500': !isConnecting && !isConnected && !connectionError
               }"
             ></div>
             <span 
-              class="text-sm" 
+              class="text-xs" 
               :class="{
-                'text-yellow-600': isConnecting,
-                'text-green-600': isConnected,
-                'text-red-600': connectionError,
-                'text-gray-500': !isConnecting && !isConnected && !connectionError
+                'text-yellow-500': isConnecting,
+                'text-green-500': isConnected,
+                'text-red-500': connectionError,
+                'text-gray-400': !isConnecting && !isConnected && !connectionError
               }"
             >
               {{ connectionStatus }}
@@ -320,8 +320,8 @@ onUnmounted(() => {
           </div>
         </div>
         
-        <div v-if="connectionError" class="text-sm text-red-600">
-          错误: {{ connectionError }}
+        <div v-if="connectionError" class="text-xs text-red-500">
+          Error: {{ connectionError }}
         </div>
       </div>
     </div>
