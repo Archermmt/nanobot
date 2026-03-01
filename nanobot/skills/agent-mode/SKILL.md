@@ -1,94 +1,92 @@
 ---
 name: agent-mode
-description: Switch and manage LLM models used by nanobot.
+description: Unified tool for managing agent LLM modes (add, remove, update, list, switch).
 metadata: {"nanobot":{"emoji":"🔄"}}
 ---
 
-# Model Switcher
+# Agent Mode Manager
 
-Switch and manage LLM models used by nanobot.
+Unified tool for managing agent LLM modes including adding, removing, updating, listing, and switching models.
 
 ## Features
 
-- View list of currently available models
-- Switch to specified model
-- View currently used model
-- Support intelligent switching through model descriptions
+- List all available models with mode, price, and description
+- Switch to a specific model mode based on mode name and price tier
+- Add new model configurations
+- Remove existing model configurations
+- Update existing model configurations
 
 ## Tools
 
-This skill provides the following three tools:
+This skill provides the following tool:
 
-### 1. `agent_mode_list`
+### `agent_mode`
 
-List all available model modes.
-
-**Parameters**: None
-
-**Example**:
-```
-<tool>agent_mode_list</tool>
-```
-
-### 2. `agent_mode_status`
-
-Query the currently used model mode.
-
-**Parameters**: None
-
-**Example**:
-```
-<tool>agent_mode_status</tool>
-```
-
-### 3. `agent_mode_switch`
-
-Switch to the specified model mode.
+Unified tool for agent mode management.
 
 **Parameters**:
-- `target` (string, required): Target model mode name or description keywords, such as 'coding', 'multimodal', 'code', 'multimodal', etc.
+- `method` (string, required): The method to perform - `add`, `remove`, `update`, `list`, or `switch`
+- `price` (string, optional): Price tier for the model (e.g., "free", "medium", "high"). Default is "" (all prices). Required for all methods except list.
+- `mode` (string, optional): Mode name (e.g., "common", "coding", "multimodal"). Default is "common". Required for all methods except list.
+- `model` (string, optional): Model identifier (e.g., "openai/qwen3.5:cloud"). Required for add and update methods.
+- `describe` (string, optional): Description of the model. Required for add and update methods.
 
-**Example**:
+**Example - List all models**:
 ```
-<tool>agent_mode_switch</tool>
-<parameter name="target">coding</parameter>
+<tool>agent_mode</tool>
+<parameter name="method">list</parameter>
 ```
 
-## Configuration File
+**Example - Switch to free coding mode**:
+```
+<tool>agent_mode</tool>
+<parameter name="method">switch</parameter>
+<parameter name="mode">coding</parameter>
+<parameter name="price">free</parameter>
+```
 
-Model information is stored in `~/.nanobot/workspace/AGENTS.json` with the following format:
+**Example - Switch to common mode without change price**:
+```
+<tool>agent_mode</tool>
+<parameter name="method">switch</parameter>
+<parameter name="mode">common</parameter>
+```
 
-```json
-{
-  "modes": {
-    "current_model": "common",
-    "models": [
-      {
-        "name": "common",
-        "model": "qwen3.5:cloud",
-        "describe": "General mode, suitable for daily conversations and general tasks"
-      },
-      {
-        "name": "coding",
-        "model": "qwen3-coder-next:cloud",
-        "describe": "Code mode, focused on programming, code generation, and technical issues"
-      },
-      {
-        "name": "multimodal",
-        "model": "kimi-k2.5",
-        "describe": "Multimodal mode, supporting image, document, and other multimodal input processing"
-      }
-    ]
-  }
-}
+**Example - Add a new free model openai/qwen3-coder-next:cloud with describe: a coding model**:
+```
+<tool>agent_mode</tool>
+<parameter name="method">add</parameter>
+<parameter name="mode">coding</parameter>
+<parameter name="price">free</parameter>
+<parameter name="model">openai/qwen3-coder-next:cloud</parameter>
+<parameter name="describe">a coding model</parameter>
+```
+
+**Example - Remove the free model for coding**:
+```
+<tool>agent_mode</tool>
+<parameter name="method">remove</parameter>
+<parameter name="mode">coding</parameter>
+<parameter name="price">free</parameter>
+```
+
+**Example - Update a free model for coding to openai/qwen3-coder-next:cloud**:
+```
+<tool>agent_mode</tool>
+<parameter name="method">update</parameter>
+<parameter name="mode">coding</parameter>
+<parameter name="price">free</parameter>
+<parameter name="model">openai/qwen3-coder-next:cloud</parameter>
 ```
 
 ## Usage
 
-When users mention switching modes, viewing mode lists, or querying current modes, simply call the corresponding tools:
+When users want to manage agent modes:
 
-- "Switch to coding mode" → Call `agent_mode_switch`
-- "What mode am I in now?" → Call `agent_mode_status`
-- "What modes do you have?" → Call `agent_mode_list`
+- "List all available models" → Call `agent_mode` with `method: "list"`
+- "Switch to coding mode" → Call `agent_mode` with `method: "switch"`, `mode: "coding"`, `price: "xxx"`
+- "Add a new model" → Call `agent_mode` with `method: "add"`, `mode: "xxx"`, `model: "xxx"`, `price: "xxx"`, `describe: "xxx"`
+- "Remove a model" → Call `agent_mode` with `method: "remove"`, `mode: "xxx"`, `price: "xxx"`
+- "Update a model" → Call `agent_mode` with `method: "update"`, `mode: "xxx"`, `model: "xxx"`, `price: "xxx"`, `describe: "xxx"`
 
-No need to overthink, just call the tools directly.
+The tool automatically finds models by mode name and price tier, and handles intelligent mode matching based on keywords.

@@ -7,7 +7,7 @@ import json
 import re
 from contextlib import AsyncExitStack
 from pathlib import Path
-from typing import TYPE_CHECKING, Awaitable, Callable
+from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
 from loguru import logger
 
@@ -15,22 +15,13 @@ from nanobot.agent.context import ContextBuilder
 from nanobot.agent.memory import MemoryStore
 from nanobot.agent.subagent import SubagentManager
 from nanobot.agent.tools.cron import CronTool
-from nanobot.agent.tools.filesystem import (
-    EditFileTool,
-    ListDirTool,
-    ReadFileTool,
-    WriteFileTool,
-)
+from nanobot.agent.tools.filesystem import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
 from nanobot.agent.tools.message import MessageTool
-from nanobot.agent.tools.agent import (
-    AgentModeStatusTool,
-    AgentModeListTool,
-    AgentModeSwitchTool,
-)
 from nanobot.agent.tools.registry import ToolRegistry
 from nanobot.agent.tools.shell import ExecTool
 from nanobot.agent.tools.spawn import SpawnTool
 from nanobot.agent.tools.web import WebFetchTool, WebSearchTool
+from nanobot.agent.tools.agent import AgentModeTool
 from nanobot.bus.events import InboundMessage, OutboundMessage
 from nanobot.bus.queue import MessageBus
 from nanobot.providers.base import LLMProvider
@@ -79,6 +70,7 @@ class AgentLoop:
         self.channels_config = channels_config
         self.provider = provider
         self.workspace = workspace
+        self.model = model or provider.get_default_model()
         self.max_iterations = max_iterations
         self.temperature = temperature
         self.max_tokens = max_tokens
@@ -95,7 +87,7 @@ class AgentLoop:
             provider=provider,
             workspace=workspace,
             bus=bus,
-            model=self.get_current_model(),
+            model=self.model,
             temperature=self.temperature,
             max_tokens=self.max_tokens,
             brave_api_key=brave_api_key,
@@ -108,12 +100,8 @@ class AgentLoop:
         self._mcp_stack: AsyncExitStack | None = None
         self._mcp_connected = False
         self._mcp_connecting = False
-        self._consolidating: set[str] = (
-            set()
-        )  # Session keys with consolidation in progress
-        self._consolidation_tasks: set[asyncio.Task] = (
-            set()
-        )  # Strong refs to in-flight tasks
+        self._consolidating: set[str] = set()  # Session keys with consolidation in progress
+        self._consolidation_tasks: set[asyncio.Task] = set()  # Strong refs to in-flight tasks
         self._consolidation_locks: dict[str, asyncio.Lock] = {}
         self._active_tasks: dict[str, list[asyncio.Task]] = {}  # session_key -> tasks
         self._processing_lock = asyncio.Lock()
@@ -138,10 +126,7 @@ class AgentLoop:
         self.tools.register(SpawnTool(manager=self.subagents))
         if self.cron_service:
             self.tools.register(CronTool(self.cron_service))
-        # Register agent mode tools
-        self.tools.register(AgentModeListTool())
-        self.tools.register(AgentModeStatusTool())
-        self.tools.register(AgentModeSwitchTool())
+        self.tools.register(AgentModeTool(self.workspace, self.provider))
 
     async def _connect_mcp(self) -> None:
         """Connect to configured MCP servers (one-time, lazy)."""
@@ -156,9 +141,7 @@ class AgentLoop:
             await connect_mcp_servers(self._mcp_servers, self.tools, self._mcp_stack)
             self._mcp_connected = True
         except Exception as e:
-            logger.error(
-                "Failed to connect MCP servers (will retry next message): {}", e
-            )
+            logger.error("Failed to connect MCP servers (will retry next message): {}", e)
             if self._mcp_stack:
                 try:
                     await self._mcp_stack.aclose()
@@ -168,16 +151,12 @@ class AgentLoop:
         finally:
             self._mcp_connecting = False
 
-    def _set_tool_context(
-        self, channel: str, chat_id: str, message_id: str | None = None
-    ) -> None:
+    def _set_tool_context(self, channel: str, chat_id: str, message_id: str | None = None) -> None:
         """Update context for all tools that need routing info."""
         for name in ("message", "spawn", "cron"):
             if tool := self.tools.get(name):
                 if hasattr(tool, "set_context"):
-                    tool.set_context(
-                        channel, chat_id, *([message_id] if name == "message" else [])
-                    )
+                    tool.set_context(channel, chat_id, *([message_id] if name == "message" else []))
 
     @staticmethod
     def _strip_think(text: str | None) -> str | None:
@@ -194,9 +173,7 @@ class AgentLoop:
             val = next(iter(tc.arguments.values()), None) if tc.arguments else None
             if not isinstance(val, str):
                 return tc.name
-            return (
-                f'{tc.name}("{val[:40]}…")' if len(val) > 40 else f'{tc.name}("{val}")'
-            )
+            return f'{tc.name}("{val[:40]}…")' if len(val) > 40 else f'{tc.name}("{val}")'
 
         return ", ".join(_fmt(tc) for tc in tool_calls)
 
@@ -217,7 +194,7 @@ class AgentLoop:
             response = await self.provider.chat(
                 messages=messages,
                 tools=self.tools.get_definitions(),
-                model=self.get_current_model(),
+                model=self.model,
                 temperature=self.temperature,
                 max_tokens=self.max_tokens,
             )
@@ -227,18 +204,13 @@ class AgentLoop:
                     clean = self._strip_think(response.content)
                     if clean:
                         await on_progress(clean)
-                    await on_progress(
-                        self._tool_hint(response.tool_calls), tool_hint=True
-                    )
+                    await on_progress(self._tool_hint(response.tool_calls), tool_hint=True)
 
                 tool_call_dicts = [
                     {
                         "id": tc.id,
                         "type": "function",
-                        "function": {
-                            "name": tc.name,
-                            "arguments": json.dumps(tc.arguments, ensure_ascii=False),
-                        },
+                        "function": {"name": tc.name, "arguments": json.dumps(tc.arguments, ensure_ascii=False)},
                     }
                     for tc in response.tool_calls
                 ]
@@ -253,12 +225,8 @@ class AgentLoop:
                     tools_used.append(tool_call.name)
                     args_str = json.dumps(tool_call.arguments, ensure_ascii=False)
                     logger.info("Tool call: {}({})", tool_call.name, args_str[:200])
-                    result = await self.tools.execute(
-                        tool_call.name, tool_call.arguments
-                    )
-                    messages = self.context.add_tool_result(
-                        messages, tool_call.id, tool_call.name, result
-                    )
+                    result = await self.tools.execute(tool_call.name, tool_call.arguments)
+                    messages = self.context.add_tool_result(messages, tool_call.id, tool_call.name, result)
             else:
                 clean = self._strip_think(response.content)
                 messages = self.context.add_assistant_message(
@@ -297,8 +265,7 @@ class AgentLoop:
                 self._active_tasks.setdefault(msg.session_key, []).append(task)
                 task.add_done_callback(
                     lambda t, k=msg.session_key: (
-                        self._active_tasks.get(k, [])
-                        and self._active_tasks[k].remove(t)
+                        self._active_tasks.get(k, []) and self._active_tasks[k].remove(t)
                         if t in self._active_tasks.get(k, [])
                         else None
                     )
@@ -344,9 +311,7 @@ class AgentLoop:
                 logger.info("Task cancelled for session {}", msg.session_key)
                 raise
             except Exception:
-                logger.exception(
-                    "Error processing message for session {}", msg.session_key
-                )
+                logger.exception("Error processing message for session {}", msg.session_key)
                 await self.bus.publish_outbound(
                     OutboundMessage(
                         channel=msg.channel,
@@ -378,11 +343,7 @@ class AgentLoop:
         """Process a single inbound message and return the response."""
         # System messages: parse origin from chat_id ("channel:chat_id")
         if msg.channel == "system":
-            channel, chat_id = (
-                msg.chat_id.split(":", 1)
-                if ":" in msg.chat_id
-                else ("cli", msg.chat_id)
-            )
+            channel, chat_id = msg.chat_id.split(":", 1) if ":" in msg.chat_id else ("cli", msg.chat_id)
             logger.info("Processing system message from {}", msg.sender_id)
             key = f"{channel}:{chat_id}"
             session = self.sessions.get_or_create(key)
@@ -398,15 +359,11 @@ class AgentLoop:
             self._save_turn(session, all_msgs, 1 + len(history))
             self.sessions.save(session)
             return OutboundMessage(
-                channel=channel,
-                chat_id=chat_id,
-                content=final_content or "Background task completed.",
+                channel=channel, chat_id=chat_id, content=final_content or "Background task completed."
             )
 
         preview = msg.content[:80] + "..." if len(msg.content) > 80 else msg.content
-        logger.info(
-            "Processing message from {}:{}: {}", msg.channel, msg.sender_id, preview
-        )
+        logger.info("Processing message from {}:{}: {}", msg.channel, msg.sender_id, preview)
 
         key = session_key or msg.session_key
         session = self.sessions.get_or_create(key)
@@ -443,21 +400,31 @@ class AgentLoop:
             session.clear()
             self.sessions.save(session)
             self.sessions.invalidate(session.key)
-            return OutboundMessage(
-                channel=msg.channel, chat_id=msg.chat_id, content="New session started."
-            )
+            return OutboundMessage(channel=msg.channel, chat_id=msg.chat_id, content="New session started.")
         if cmd == "/help":
             return OutboundMessage(
                 channel=msg.channel,
                 chat_id=msg.chat_id,
                 content="🐈 nanobot commands:\n/new — Start a new conversation\n/stop — Stop the current task\n/help — Show available commands",
             )
+        if cmd == "/status":
+            agent_file, info = self.workspace / "AGENT.json", {}
+            if agent_file.exists():
+                with open(agent_file, "r", encoding="utf-8") as f:
+                    info = json.load(f)
+            modes_info = info.get("modes", {})
+            status = {
+                "mode": modes_info.get("current_mode", "unknown"),
+                "price": modes_info.get("current_price", "unknown"),
+                "model": self.provider.get_default_model(),
+                "history": len(session.messages),
+                "skills": len(self.context.skills.list_skills()),
+                "tools": len(self.tools),
+            }
+            return OutboundMessage(channel=msg.channel, chat_id=msg.chat_id, content=json.dumps(status))
 
         unconsolidated = len(session.messages) - session.last_consolidated
-        if (
-            unconsolidated >= self.memory_window
-            and session.key not in self._consolidating
-        ):
+        if unconsolidated >= self.memory_window and session.key not in self._consolidating:
             self._consolidating.add(session.key)
             lock = self._consolidation_locks.setdefault(session.key, asyncio.Lock())
 
@@ -514,16 +481,10 @@ class AgentLoop:
         self._save_turn(session, all_msgs, 1 + len(history))
         self.sessions.save(session)
 
-        if (
-            (mt := self.tools.get("message"))
-            and isinstance(mt, MessageTool)
-            and mt._sent_in_turn
-        ):
+        if (mt := self.tools.get("message")) and isinstance(mt, MessageTool) and mt._sent_in_turn:
             return None
 
-        preview = (
-            final_content[:120] + "..." if len(final_content) > 120 else final_content
-        )
+        preview = final_content[:120] + "..." if len(final_content) > 120 else final_content
         logger.info("Response to {}:{}: {}", msg.channel, msg.sender_id, preview)
         return OutboundMessage(
             channel=msg.channel,
@@ -539,18 +500,10 @@ class AgentLoop:
         for m in messages[skip:]:
             entry = {k: v for k, v in m.items() if k != "reasoning_content"}
             role, content = entry.get("role"), entry.get("content")
-            if (
-                role == "tool"
-                and isinstance(content, str)
-                and len(content) > self._TOOL_RESULT_MAX_CHARS
-            ):
-                entry["content"] = (
-                    content[: self._TOOL_RESULT_MAX_CHARS] + "\n... (truncated)"
-                )
+            if role == "tool" and isinstance(content, str) and len(content) > self._TOOL_RESULT_MAX_CHARS:
+                entry["content"] = content[: self._TOOL_RESULT_MAX_CHARS] + "\n... (truncated)"
             elif role == "user":
-                if isinstance(content, str) and content.startswith(
-                    ContextBuilder._RUNTIME_CONTEXT_TAG
-                ):
+                if isinstance(content, str) and content.startswith(ContextBuilder._RUNTIME_CONTEXT_TAG):
                     continue
                 if isinstance(content, list):
                     entry["content"] = [
@@ -558,9 +511,7 @@ class AgentLoop:
                             {"type": "text", "text": "[image]"}
                             if (
                                 c.get("type") == "image_url"
-                                and c.get("image_url", {})
-                                .get("url", "")
-                                .startswith("data:image/")
+                                and c.get("image_url", {}).get("url", "").startswith("data:image/")
                             )
                             else c
                         )
@@ -575,34 +526,10 @@ class AgentLoop:
         return await MemoryStore(self.workspace).consolidate(
             session,
             self.provider,
-            self.get_current_model(),
+            self.model,
             archive_all=archive_all,
             memory_window=self.memory_window,
         )
-
-    def get_current_model(self) -> str | None:
-        """Load model from workspace/models.json based on current_model setting."""
-
-        models_file = self.workspace / "AGENT.json"
-        if not models_file.exists():
-            return self.provider.get_default_model()
-        try:
-            with open(models_file, "r", encoding="utf-8") as f:
-                config = json.load(f)
-            if "modes" not in config:
-                return self.provider.get_default_model()
-            modes = config["modes"]
-            current_model_name = modes.get("current_model")
-            if not current_model_name:
-                return self.provider.get_default_model()
-            models = modes.get("models", [])
-            for m in models:
-                if m.get("name") == current_model_name:
-                    return m.get("model")
-        except (json.JSONDecodeError, IOError) as e:
-            logger.warning("Failed to load models.json: {}", e)
-
-        return self.provider.get_default_model()
 
     async def process_direct(
         self,
@@ -614,10 +541,6 @@ class AgentLoop:
     ) -> str:
         """Process a message directly (for CLI or cron usage)."""
         await self._connect_mcp()
-        msg = InboundMessage(
-            channel=channel, sender_id="user", chat_id=chat_id, content=content
-        )
-        response = await self._process_message(
-            msg, session_key=session_key, on_progress=on_progress
-        )
+        msg = InboundMessage(channel=channel, sender_id="user", chat_id=chat_id, content=content)
+        response = await self._process_message(msg, session_key=session_key, on_progress=on_progress)
         return response.content if response else ""
