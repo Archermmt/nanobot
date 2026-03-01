@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
 import { marked } from 'marked'
 
 // Configure marked options
@@ -23,6 +23,8 @@ interface Props {
 
 const props = defineProps<Props>()
 const emit = defineEmits(['play-audio', 'stop-audio'])
+
+const messageContainer = ref<HTMLElement | null>(null)
 
 const showThinking = computed(() => {
   // Show thinking only if loading and there are messages
@@ -50,11 +52,11 @@ const playAudio = (audioUrl: string) => {
     }
     currentAudio.value.pause()
   }
-  
+
   currentAudio.value = new Audio(audioUrl)
   currentAudio.value.play()
   emit('play-audio', audioUrl)
-  
+
   currentAudio.value.onended = () => {
     emit('stop-audio')
   }
@@ -80,10 +82,23 @@ const isChineseContent = (content: string) => {
 const renderMarkdown = (content: string) => {
   return marked.parse(content)
 }
+
+// Auto scroll to bottom when messages change
+const scrollToBottom = () => {
+  nextTick(() => {
+    if (messageContainer.value) {
+      messageContainer.value.scrollTop = messageContainer.value.scrollHeight
+    }
+  })
+}
+
+// Watch for messages changes and scroll to bottom
+watch(() => props.messages, scrollToBottom, { deep: true })
+watch(() => props.isLoading, scrollToBottom)
 </script>
 
 <template>
-  <div class="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-900">
+  <div ref="messageContainer" class="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-900">
     <div
       v-for="(msg, index) in messages"
       :key="index"
