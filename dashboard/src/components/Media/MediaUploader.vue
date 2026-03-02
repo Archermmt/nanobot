@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 
-const emit = defineEmits(['upload-image', 'upload-audio'])
+const emit = defineEmits(['upload-image', 'upload-audio', 'upload-file'])
 
 const imageInput = ref<HTMLInputElement | null>(null)
+const fileInput = ref<HTMLInputElement | null>(null)
 const audioInput = ref<HTMLInputElement | null>(null)
 const isRecording = ref(false)
 const mediaRecorder = ref<MediaRecorder | null>(null)
@@ -11,6 +12,10 @@ const audioChunks = ref<Blob[]>([])
 
 const triggerImageUpload = () => {
   imageInput.value?.click()
+}
+
+const triggerFileUpload = () => {
+  fileInput.value?.click()
 }
 
 const triggerAudioUpload = () => {
@@ -38,6 +43,22 @@ const handleAudioUpload = (event: Event) => {
       emit('upload-audio', {
         data: e.target?.result as string,
         type: file.type
+      })
+    }
+    reader.readAsDataURL(file)
+  }
+}
+
+const handleFileUpload = (event: Event) => {
+  const target = event.target as HTMLInputElement
+  const file = target.files?.[0]
+  if (file) {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      emit('upload-file', {
+        data: e.target?.result as string,
+        type: file.type,
+        name: file.name
       })
     }
     reader.readAsDataURL(file)
@@ -117,6 +138,21 @@ const stopRecording = () => {
       title="Upload Audio"
     >
       🎤
+    </button>
+
+    <!-- File Upload -->
+    <input
+      ref="fileInput"
+      type="file"
+      class="hidden"
+      @change="handleFileUpload"
+    />
+    <button
+      @click="triggerFileUpload"
+      class="nes-btn is-primary p-2 rounded transition-colors"
+      title="Upload File"
+    >
+      📎
     </button>
 
     <!-- Voice Recording -->

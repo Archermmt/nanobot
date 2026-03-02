@@ -8,7 +8,7 @@ interface Props {
 }
 
 const props = defineProps<Props>()
-const emit = defineEmits(['send', 'new-chat', 'clear-chat', 'upload-image', 'upload-audio'])
+const emit = defineEmits(['send', 'new-chat', 'clear-chat', 'upload-image', 'upload-audio', 'upload-file'])
 
 const input = ref('')
 
@@ -67,11 +67,22 @@ const handleImageUpload = (imageData: string) => {
 const handleAudioUpload = (audioData: { data: string; type: string; isRecording?: boolean }) => {
   emit('upload-audio', audioData)
 }
+
+const handleFileUpload = (fileData: { data: string; type: string; name: string }) => {
+  emit('upload-file', fileData)
+}
 </script>
 
 <template>
   <div class="border-t-4 border-gray-700 bg-gray-800 p-4">
     <div class="flex items-center space-x-3">
+      <!-- Media Upload Buttons on the left of input -->
+      <MediaUploader
+        @upload-image="handleImageUpload"
+        @upload-audio="handleAudioUpload"
+        @upload-file="handleFileUpload"
+      />
+
       <!-- Text Input -->
       <form @submit.prevent="sendMessage" class="flex-1 flex space-x-2">
         <textarea
@@ -87,15 +98,8 @@ const handleAudioUpload = (audioData: { data: string; type: string; isRecording?
         />
       </form>
 
-      <!-- Action Buttons and Media Upload -->
+      <!-- Action Buttons -->
       <div class="flex items-center space-x-2">
-        <!-- Media Upload Buttons -->
-        <MediaUploader
-          @upload-image="handleImageUpload"
-          @upload-audio="handleAudioUpload"
-        />
-
-        <!-- Action Buttons -->
         <button
           type="submit"
           form="message-form"

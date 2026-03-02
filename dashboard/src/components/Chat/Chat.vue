@@ -11,7 +11,7 @@ interface Message {
   audioUrl?: string
 }
 
-const emit = defineEmits(['send', 'new-chat', 'clear-chat', 'upload-image', 'upload-audio', 'ws-status-change'])
+const emit = defineEmits(['send', 'new-chat', 'clear-chat', 'upload-image', 'upload-audio', 'upload-file', 'ws-status-change'])
 
 const messages = ref<Message[]>([])
 const isLoading = ref(false)
@@ -235,6 +235,17 @@ const handleAudioUpload = async (audioData: { data: string; type: string; isReco
   console.log('Audio uploaded:', audioData.type)
 }
 
+const handleFileUpload = async (fileData: { data: string; type: string; name: string }) => {
+  // Add file to messages
+  messages.value.push({
+    role: 'user',
+    content: `Uploaded file: ${fileData.name}`,
+    timestamp: Date.now()
+  })
+
+  console.log('File uploaded:', fileData.name)
+}
+
 const handleNewChat = () => {
   const userMessage: Message = {
     role: 'user',
@@ -405,6 +416,7 @@ onUnmounted(() => {
       @clear-chat="handleClearChat"
       @upload-image="handleImageUpload"
       @upload-audio="handleAudioUpload"
+      @upload-file="handleFileUpload"
     />
   </div>
 </template>
