@@ -1,0 +1,12 @@
+{
+    "recommendations": [
+        "ms-python.python",
+        "ms-python.black-formatter",
+        "ms-python.flake8",
+        "ms-toolsai.jupyter",
+        "ms-vscode.vscode-json",
+        "bradlc.vscode-tailwindcss",
+        "vue.volar",
+        "esbenp.prettier-vscode"
+    ]
+}

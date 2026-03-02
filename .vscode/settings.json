@@ -1,0 +1,24 @@
+{
+    // Python 相关设置
+    "[python]": {
+        "editor.defaultFormatter": "ms-python.black-formatter",
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+            "source.organizeImports": "explicit"
+        }
+    },
+
+    // Black Formatter 设置
+    "black-formatter.args": [
+        "--line-length=120"
+    ],
+
+    // Python 路径设置
+    "python.defaultInterpreterPath": "./venv/bin/python",
+
+    // 其他有用的设置
+    "editor.rulers": [120],
+    "files.trimTrailingWhitespace": true,
+    "files.insertFinalNewline": true,
+    "files.trimFinalNewlines": true
+}
