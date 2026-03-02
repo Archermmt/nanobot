@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, getCurrentInstance } from 'vue'
 import Sidebar from './components/Sidebar/Sidebar.vue'
 import StatusBar from './components/StatusBar/StatusBar.vue'
 import Chat from './components/Chat/Chat.vue'
@@ -13,6 +13,8 @@ const wsConnectionStatus = ref({
 
 const sidebarExpanded = ref(true)
 const currentSection = ref('chat')
+const chatComponentRef = ref<any>(null)
+const statusBarComponentRef = ref<any>(null)
 
 const handleNavigate = (section: string) => {
   currentSection.value = section
@@ -21,6 +23,25 @@ const handleNavigate = (section: string) => {
 const handleOpenLLMSettings = () => {
   // Could open a modal or navigate to settings
   console.log('Open LLM settings')
+}
+
+// Handle status refresh from StatusBar
+const handleSendStatus = () => {
+  console.log('🔄 Status refresh requested from StatusBar')
+  // Trigger the Chat component to send /status command
+  if (chatComponentRef.value && chatComponentRef.value.handleSendStatus) {
+    chatComponentRef.value.handleSendStatus()
+  }
+}
+
+// Handle status update from Chat component
+const handleStatusUpdate = (data: any) => {
+  console.log('📊 Status update received in App.vue:', data)
+  // Pass the status data to StatusBar via a custom event or prop
+  // We'll use a ref to call StatusBar's method
+  if (statusBarComponentRef.value && statusBarComponentRef.value.handleStatusUpdate) {
+    statusBarComponentRef.value.handleStatusUpdate(data)
+  }
 }
 </script>
 
@@ -52,7 +73,11 @@ const handleOpenLLMSettings = () => {
 
       <!-- Content Area -->
       <main class="flex-1 overflow-hidden bg-gray-900">
-        <Chat v-if="currentSection === 'chat'" />
+        <Chat
+          ref="chatComponentRef"
+          v-if="currentSection === 'chat'"
+          @status-update="handleStatusUpdate"
+        />
         <div v-else class="p-6 text-gray-500 text-center">
           <p class="text-lg">Section under construction</p>
           <p class="text-sm mt-2">{{ currentSection }} view coming soon...</p>
@@ -61,7 +86,9 @@ const handleOpenLLMSettings = () => {
 
       <!-- Status Bar -->
       <StatusBar
+        ref="statusBarComponentRef"
         @open-llm-settings="handleOpenLLMSettings"
+        @send-status="handleSendStatus"
         :ws-status="wsConnectionStatus"
       />
     </div>

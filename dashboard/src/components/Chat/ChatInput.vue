@@ -84,7 +84,7 @@ const handleFileUpload = (fileData: { data: string; type: string; name: string }
       />
 
       <!-- Text Input -->
-      <form @submit.prevent="sendMessage" class="flex-1 flex space-x-2">
+      <form id="message-form" @submit.prevent="sendMessage" class="flex-1 flex space-x-2">
         <textarea
           ref="textareaRef"
           v-model="input"

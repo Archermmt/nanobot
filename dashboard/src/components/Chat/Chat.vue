@@ -11,7 +11,7 @@ interface Message {
   audioUrl?: string
 }
 
-const emit = defineEmits(['send', 'new-chat', 'clear-chat', 'upload-image', 'upload-audio', 'upload-file', 'ws-status-change'])
+const emit = defineEmits(['send', 'new-chat', 'clear-chat', 'upload-image', 'upload-audio', 'upload-file', 'ws-status-change', 'send-status', 'status-update'])
 
 const messages = ref<Message[]>([])
 const isLoading = ref(false)
@@ -71,6 +71,25 @@ const connectWebSocket = () => {
       }
       ws.send(JSON.stringify(authMsg))
     }
+
+    // 连接成功后自动请求状态
+    console.log('🔗 WebSocket connected, requesting status...')
+    if (ws) {
+      const statusMsg = {
+        type: 'message',
+        message_id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        sender_id: 'web_user',
+        chat_id: 'default_room',
+        content: '/status',
+        media: [],
+        metadata: {
+          source: 'web_dashboard',
+          timestamp: Date.now(),
+          session_id: sessionId.value
+        }
+      }
+      ws.send(JSON.stringify(statusMsg))
+    }
   }
 
   ws.onmessage = (event) => {
@@ -85,6 +104,17 @@ const connectWebSocket = () => {
       }
 
       if (data.type === 'message') {
+        // Check if this is a status response
+        if (data.content && data.content.includes('mode') && data.content.includes('price')) {
+          // This looks like a status update, emit it for StatusBar
+          try {
+            const statusData = JSON.parse(data.content)
+            emit('status-update', statusData)
+          } catch (e) {
+            console.log('Status message content:', data.content)
+          }
+        }
+
         messages.value.push({
           role: 'assistant',
           content: data.content || 'Message received',
@@ -246,6 +276,44 @@ const handleFileUpload = async (fileData: { data: string; type: string; name: st
   console.log('File uploaded:', fileData.name)
 }
 
+const handleSendStatus = () => {
+  const userMessage: Message = {
+    role: 'user',
+    content: '/status',
+    timestamp: Date.now()
+  }
+  messages.value.push(userMessage)
+
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    const statusMsg = {
+      type: 'message',
+      message_id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      sender_id: 'web_user',
+      chat_id: 'default_room',
+      content: '/status',
+      media: [],
+      metadata: {
+        source: 'web_dashboard',
+        timestamp: Date.now(),
+        session_id: sessionId.value
+      }
+    }
+    console.log('📤 Sending /status command:', statusMsg)
+    ws.send(JSON.stringify(statusMsg))
+  } else {
+    messages.value.push({
+      role: 'system',
+      content: 'WebSocket not connected. Please connect first.',
+      timestamp: Date.now()
+    })
+  }
+}
+
+// Expose handleSendStatus to parent component
+defineExpose({
+  handleSendStatus
+})
+
 const handleNewChat = () => {
   const userMessage: Message = {
     role: 'user',
@@ -369,29 +437,6 @@ onUnmounted(() => {
         >
           Disconnect
         </button>
-
-        <div class="flex items-center space-x-1">
-          <div
-            class="w-2 h-2 rounded-sm"
-            :class="{
-              'bg-yellow-500': isConnecting,
-              'bg-green-500': isConnected,
-              'bg-red-500': connectionError,
-              'bg-gray-500': !isConnecting && !isConnected && !connectionError
-            }"
-          ></div>
-          <span
-            class="text-xs"
-            :class="{
-              'text-yellow-500': isConnecting,
-              'text-green-500': isConnected,
-              'text-red-500': connectionError,
-              'text-gray-400': !isConnecting && !isConnected && !connectionError
-            }"
-          >
-            {{ connectionStatus }}
-          </span>
-        </div>
       </div>
 
         <div v-if="connectionError" class="text-xs text-red-500">
@@ -417,6 +462,7 @@ onUnmounted(() => {
       @upload-image="handleImageUpload"
       @upload-audio="handleAudioUpload"
       @upload-file="handleFileUpload"
+      @send-status="handleSendStatus"
     />
   </div>
 </template>
