@@ -97,6 +97,14 @@ const handleAudioUpload = (audioData: { data: string; type: string; isRecording?
 
         <!-- Action Buttons -->
         <button
+          type="submit"
+          form="message-form"
+          class="nes-btn is-primary px-4 py-2 rounded text-xs font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed uppercase"
+          :disabled="isLoading || !input.trim() || props.disabled"
+        >
+          SEND
+        </button>
+        <button
           @click="handleNewChat"
           class="nes-btn is-success text-xs px-3 py-2 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           :disabled="props.disabled"
@@ -111,14 +119,6 @@ const handleAudioUpload = (audioData: { data: string; type: string; isRecording?
           title="Clear Chat History"
         >
           CLEAR
-        </button>
-        <button
-          type="submit"
-          form="message-form"
-          class="nes-btn is-primary px-4 py-2 rounded text-xs font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed uppercase"
-          :disabled="isLoading || !input.trim() || props.disabled"
-        >
-          SEND
         </button>
       </div>
     </div>
