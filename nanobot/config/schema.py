@@ -13,6 +13,7 @@ class Base(BaseModel):
 
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
+
 class ChannelsConfig(Base):
     """Configuration for chat channels.
 
@@ -33,9 +34,7 @@ class AgentDefaults(Base):
 
     workspace: str = "~/.nanobot/workspace"
     model: str = "anthropic/claude-opus-4-5"
-    provider: str = (
-        "auto"  # Provider name (e.g. "anthropic", "openrouter") or "auto" for auto-detection
-    )
+    provider: str = "auto"  # Provider name (e.g. "anthropic", "openrouter") or "auto" for auto-detection
     max_tokens: int = 8192
     context_window_tokens: int = 65_536
     temperature: float = 0.1
@@ -116,9 +115,7 @@ class WebSearchConfig(Base):
 class WebToolsConfig(Base):
     """Web tools configuration."""
 
-    proxy: str | None = (
-        None  # HTTP/SOCKS5 proxy URL, e.g. "http://127.0.0.1:7890" or "socks5://127.0.0.1:1080"
-    )
+    proxy: str | None = None  # HTTP/SOCKS5 proxy URL, e.g. "http://127.0.0.1:7890" or "socks5://127.0.0.1:1080"
     search: WebSearchConfig = Field(default_factory=WebSearchConfig)
 
 
@@ -128,6 +125,7 @@ class ExecToolConfig(Base):
     enable: bool = True
     timeout: int = 60
     path_append: str = ""
+
 
 class MCPServerConfig(Base):
     """MCP server connection configuration (stdio or HTTP)."""
@@ -139,7 +137,10 @@ class MCPServerConfig(Base):
     url: str = ""  # HTTP/SSE: endpoint URL
     headers: dict[str, str] = Field(default_factory=dict)  # HTTP/SSE: custom headers
     tool_timeout: int = 30  # seconds before a tool call is cancelled
-    enabled_tools: list[str] = Field(default_factory=lambda: ["*"])  # Only register these tools; accepts raw MCP names or wrapped mcp_<server>_<tool> names; ["*"] = all tools; [] = no tools
+    enabled_tools: list[str] = Field(
+        default_factory=lambda: ["*"]
+    )  # Only register these tools; accepts raw MCP names or wrapped mcp_<server>_<tool> names; ["*"] = all tools; [] = no tools
+
 
 class ToolsConfig(Base):
     """Tools configuration."""
@@ -164,9 +165,7 @@ class Config(BaseSettings):
         """Get expanded workspace path."""
         return Path(self.agents.defaults.workspace).expanduser()
 
-    def _match_provider(
-        self, model: str | None = None
-    ) -> tuple["ProviderConfig | None", str | None]:
+    def _match_provider(self, model: str | None = None) -> tuple["ProviderConfig | None", str | None]:
         """Match provider config and its registry name. Returns (config, spec_name)."""
         from nanobot.providers.registry import PROVIDERS, find_by_name
 

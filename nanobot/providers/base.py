@@ -13,6 +13,7 @@ from loguru import logger
 @dataclass
 class ToolCallRequest:
     """A tool call request from the LLM."""
+
     id: str
     name: str
     arguments: dict[str, Any]
@@ -42,13 +43,14 @@ class ToolCallRequest:
 @dataclass
 class LLMResponse:
     """Response from an LLM provider."""
+
     content: str | None
     tool_calls: list[ToolCallRequest] = field(default_factory=list)
     finish_reason: str = "stop"
     usage: dict[str, int] = field(default_factory=dict)
     reasoning_content: str | None = None  # Kimi, DeepSeek-R1 etc.
     thinking_blocks: list[dict] | None = None  # Anthropic extended thinking
-    
+
     @property
     def has_tool_calls(self) -> bool:
         """Check if response contains tool calls."""
@@ -73,7 +75,7 @@ class GenerationSettings:
 class LLMProvider(ABC):
     """
     Abstract base class for LLM providers.
-    
+
     Implementations should handle the specifics of each provider's API
     while maintaining a consistent interface.
     """
@@ -177,7 +179,7 @@ class LLMProvider(ABC):
     ) -> LLMResponse:
         """
         Send a chat completion request.
-        
+
         Args:
             messages: List of message dicts with 'role' and 'content'.
             tools: Optional list of tool definitions.
@@ -185,7 +187,7 @@ class LLMProvider(ABC):
             max_tokens: Maximum tokens in response.
             temperature: Sampling temperature.
             tool_choice: Tool selection strategy ("auto", "required", or specific tool dict).
-        
+
         Returns:
             LLMResponse with content and/or tool calls.
         """
@@ -246,9 +248,13 @@ class LLMProvider(ABC):
         streaming should override this method.
         """
         response = await self.chat(
-            messages=messages, tools=tools, model=model,
-            max_tokens=max_tokens, temperature=temperature,
-            reasoning_effort=reasoning_effort, tool_choice=tool_choice,
+            messages=messages,
+            tools=tools,
+            model=model,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            reasoning_effort=reasoning_effort,
+            tool_choice=tool_choice,
         )
         if on_content_delta and response.content:
             await on_content_delta(response.content)
@@ -283,9 +289,13 @@ class LLMProvider(ABC):
             reasoning_effort = self.generation.reasoning_effort
 
         kw: dict[str, Any] = dict(
-            messages=messages, tools=tools, model=model,
-            max_tokens=max_tokens, temperature=temperature,
-            reasoning_effort=reasoning_effort, tool_choice=tool_choice,
+            messages=messages,
+            tools=tools,
+            model=model,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            reasoning_effort=reasoning_effort,
+            tool_choice=tool_choice,
             on_content_delta=on_content_delta,
         )
 
@@ -304,7 +314,9 @@ class LLMProvider(ABC):
 
             logger.warning(
                 "LLM transient error (attempt {}/{}), retrying in {}s: {}",
-                attempt, len(self._CHAT_RETRY_DELAYS), delay,
+                attempt,
+                len(self._CHAT_RETRY_DELAYS),
+                delay,
                 (response.content or "")[:120].lower(),
             )
             await asyncio.sleep(delay)
@@ -335,9 +347,13 @@ class LLMProvider(ABC):
             reasoning_effort = self.generation.reasoning_effort
 
         kw: dict[str, Any] = dict(
-            messages=messages, tools=tools, model=model,
-            max_tokens=max_tokens, temperature=temperature,
-            reasoning_effort=reasoning_effort, tool_choice=tool_choice,
+            messages=messages,
+            tools=tools,
+            model=model,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            reasoning_effort=reasoning_effort,
+            tool_choice=tool_choice,
         )
 
         for attempt, delay in enumerate(self._CHAT_RETRY_DELAYS, start=1):
@@ -355,7 +371,9 @@ class LLMProvider(ABC):
 
             logger.warning(
                 "LLM transient error (attempt {}/{}), retrying in {}s: {}",
-                attempt, len(self._CHAT_RETRY_DELAYS), delay,
+                attempt,
+                len(self._CHAT_RETRY_DELAYS),
+                delay,
                 (response.content or "")[:120].lower(),
             )
             await asyncio.sleep(delay)
@@ -365,4 +383,8 @@ class LLMProvider(ABC):
     @abstractmethod
     def get_default_model(self) -> str:
         """Get the default model for this provider."""
+        pass
+
+    def change_model(self, config: Config, model: str):
+        """Change the default model for this provider."""
         pass
