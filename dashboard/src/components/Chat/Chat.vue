@@ -258,12 +258,12 @@ const handleImageUpload = async (imageData: string) => {
       chat_id: 'default_room',
       content: '',  // Empty content for image-only messages
       media: [imageData],  // Send base64 data as media
-      metadata: {
+      metadata: [{
         source: 'web_dashboard',
         timestamp: Date.now(),
         session_id: sessionId.value,
         msg_type: 'image'  // Indicate this is an image message
-      }
+      }]
     }
 
     console.log('📤 Sending image message:', messageData)
@@ -295,14 +295,14 @@ const handleAudioUpload = async (audioData: { data: string; type: string; isReco
       chat_id: 'default_room',
       content: '',  // Empty content for audio-only messages
       media: [audioData.data],  // Send base64 data as media
-      metadata: {
+      metadata: [{
         source: 'web_dashboard',
         timestamp: Date.now(),
         session_id: sessionId.value,
         msg_type: 'audio',  // Indicate this is an audio message
         file_type: audioData.type,
         is_recording: audioData.isRecording
-      }
+      }]
     }
 
     console.log('📤 Sending audio message:', messageData)
@@ -333,14 +333,14 @@ const handleFileUpload = async (fileData: { data: string; type: string; name: st
       chat_id: 'default_room',
       content: '',  // Empty content for file-only messages
       media: [fileData.data],  // Send base64 data as media
-      metadata: {
+      metadata: [{
         source: 'web_dashboard',
         timestamp: Date.now(),
         session_id: sessionId.value,
         msg_type: 'file',  // Indicate this is a file message
         file_name: fileData.name,
         file_type: fileData.type
-      }
+      }]
     }
 
     console.log('📤 Sending file message:', messageData)

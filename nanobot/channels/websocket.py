@@ -284,7 +284,7 @@ class WebSocketChannel(BaseChannel):
         chat_id = msg_data.get("chat_id", "default")
         content = msg_data.get("content", "")
         media = msg_data.get("media", [])
-        metadata = msg_data.get("metadata", {})
+        metadata = msg_data.get("metadata", [])
 
         # Deduplication check
         if message_id in self._processed_message_ids:
@@ -296,8 +296,7 @@ class WebSocketChannel(BaseChannel):
             self._processed_message_ids.popitem(last=False)
 
         # Skip empty messages (unless it's a media message)
-        msg_type_meta = metadata.get("msg_type", "")
-        if not content and not media and not msg_type_meta:
+        if not content and not media and not metadata:
             return
 
         # Handle base64-encoded media (images, audio, files)
@@ -310,7 +309,8 @@ class WebSocketChannel(BaseChannel):
             media_dir = Path.home() / ".nanobot" / "media"
             media_dir.mkdir(parents=True, exist_ok=True)
 
-            for i, media_item in enumerate(media):
+            for media_item, media_data in zip(media, metadata):
+                filename = media_data.get("file_name", "")
                 # Check if media is base64 data (data URL format: data:<mime>;base64,<data>)
                 if isinstance(media_item, str) and media_item.startswith("data:"):
                     try:
@@ -320,28 +320,29 @@ class WebSocketChannel(BaseChannel):
 
                         # Decode base64
                         file_data = base64.b64decode(b64_data)
+                        if not filename:
+                            # Determine file extension from mime type
+                            ext_map = {
+                                "image/jpeg": ".jpg",
+                                "image/png": ".png",
+                                "image/gif": ".gif",
+                                "image/webp": ".webp",
+                                "audio/webm": ".webm",
+                                "audio/mp3": ".mp3",
+                                "audio/aac": ".aac",
+                                "audio/ogg": ".ogg",
+                                "audio/wav": ".wav",
+                                "video/mp4": ".mp4",
+                            }
+                            ext = ext_map.get(mime_type, ".bin")
 
-                        # Determine file extension from mime type
-                        ext_map = {
-                            "image/jpeg": ".jpg",
-                            "image/png": ".png",
-                            "image/gif": ".gif",
-                            "image/webp": ".webp",
-                            "audio/webm": ".webm",
-                            "audio/mp3": ".mp3",
-                            "audio/aac": ".aac",
-                            "audio/ogg": ".ogg",
-                            "audio/wav": ".wav",
-                            "video/mp4": ".mp4",
-                        }
-                        ext = ext_map.get(mime_type, ".bin")
-
-                        # Save to temporary file
-                        filename = f"ws_{message_id[:8]}_{i}{ext}"
+                            # Save to temporary file
+                            filename = f"ws_{message_id[:8]}_{i}{ext}"
                         file_path = media_dir / filename
                         file_path.write_bytes(file_data)
                         processed_media.append(str(file_path))
                         logger.debug("Saved base64 media to {}", file_path)
+                        content += f"download {filename}({mime_type}) to {file_path}"
                     except Exception as e:
                         logger.error("Failed to process base64 media: {}", e)
                 else:
