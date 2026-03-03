@@ -22,6 +22,10 @@ const status = ref<Status>({
 })
 
 const emit = defineEmits(['send-status'])
+const receiveWsStatusChange = (data: any) => {
+  console.log('📡 Received WebSocket status change:', data)
+  status.value.connected = data.isConnected || false
+}
 
 // Listen for status updates from parent component
 const handleStatusUpdate = (data: any) => {
@@ -50,9 +54,10 @@ const fetchStatus = async () => {
   emit('send-status')
 }
 
-// Expose handleStatusUpdate to parent component
+// Expose handleStatusUpdate and receiveWsStatusChange to parent component
 defineExpose({
-  handleStatusUpdate
+  handleStatusUpdate,
+  receiveWsStatusChange
 })
 
 onMounted(() => {
@@ -77,8 +82,6 @@ onMounted(() => {
           <span class="text-white-600">{{ status.price }}</span>
           <span class="text-gray-400">MODEL </span>
           <span class="text-white-600">{{ status.model }}</span>
-          <span class="text-gray-400">HISTORY </span>
-          <span class="text-white-600">{{ status.history }}</span>
           <span class="text-gray-400">SKILLS </span>
           <span class="text-white-600">{{ status.skills }}</span>
           <span class="text-gray-400">TOOLS</span>

@@ -43,6 +43,21 @@ const handleStatusUpdate = (data: any) => {
     statusBarComponentRef.value.handleStatusUpdate(data)
   }
 }
+
+// Handle WebSocket status change from Chat component
+const handleWsStatusChange = (data: any) => {
+  console.log('🔌 WebSocket status change received in App.vue:', data)
+  // Update wsConnectionStatus for header display
+  wsConnectionStatus.value = {
+    isConnected: data.isConnected,
+    isConnecting: data.isConnecting,
+    url: data.url
+  }
+  // Pass the status data to StatusBar to update connected state
+  if (statusBarComponentRef.value && statusBarComponentRef.value.receiveWsStatusChange) {
+    statusBarComponentRef.value.receiveWsStatusChange(data)
+  }
+}
 </script>
 
 <template>
@@ -77,6 +92,7 @@ const handleStatusUpdate = (data: any) => {
           ref="chatComponentRef"
           v-if="currentSection === 'chat'"
           @status-update="handleStatusUpdate"
+          @ws-status-change="handleWsStatusChange"
         />
         <div v-else class="p-6 text-gray-500 text-center">
           <p class="text-lg">Section under construction</p>
