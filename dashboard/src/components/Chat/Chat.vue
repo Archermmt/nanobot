@@ -249,8 +249,32 @@ const handleImageUpload = async (imageData: string) => {
     imageUrl: imageData
   })
 
-  // Send to backend (would need backend support for image processing)
-  console.log('Image uploaded:', imageData.substring(0, 50) + '...')
+  // Send image to backend with msg_type
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    const messageData = {
+      type: 'message',
+      message_id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      sender_id: 'web_user',
+      chat_id: 'default_room',
+      content: '',  // Empty content for image-only messages
+      media: [imageData],  // Send base64 data as media
+      metadata: {
+        source: 'web_dashboard',
+        timestamp: Date.now(),
+        session_id: sessionId.value,
+        msg_type: 'image'  // Indicate this is an image message
+      }
+    }
+
+    console.log('📤 Sending image message:', messageData)
+    ws.send(JSON.stringify(messageData))
+  } else {
+    messages.value.push({
+      role: 'system',
+      content: 'WebSocket not connected. Please connect first.',
+      timestamp: Date.now()
+    })
+  }
 }
 
 const handleAudioUpload = async (audioData: { data: string; type: string; isRecording?: boolean }) => {
@@ -262,7 +286,34 @@ const handleAudioUpload = async (audioData: { data: string; type: string; isReco
     audioUrl: audioData.data
   })
 
-  console.log('Audio uploaded:', audioData.type)
+  // Send audio to backend with msg_type
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    const messageData = {
+      type: 'message',
+      message_id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      sender_id: 'web_user',
+      chat_id: 'default_room',
+      content: '',  // Empty content for audio-only messages
+      media: [audioData.data],  // Send base64 data as media
+      metadata: {
+        source: 'web_dashboard',
+        timestamp: Date.now(),
+        session_id: sessionId.value,
+        msg_type: 'audio',  // Indicate this is an audio message
+        file_type: audioData.type,
+        is_recording: audioData.isRecording
+      }
+    }
+
+    console.log('📤 Sending audio message:', messageData)
+    ws.send(JSON.stringify(messageData))
+  } else {
+    messages.value.push({
+      role: 'system',
+      content: 'WebSocket not connected. Please connect first.',
+      timestamp: Date.now()
+    })
+  }
 }
 
 const handleFileUpload = async (fileData: { data: string; type: string; name: string }) => {
@@ -273,7 +324,34 @@ const handleFileUpload = async (fileData: { data: string; type: string; name: st
     timestamp: Date.now()
   })
 
-  console.log('File uploaded:', fileData.name)
+  // Send file to backend with msg_type
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    const messageData = {
+      type: 'message',
+      message_id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      sender_id: 'web_user',
+      chat_id: 'default_room',
+      content: '',  // Empty content for file-only messages
+      media: [fileData.data],  // Send base64 data as media
+      metadata: {
+        source: 'web_dashboard',
+        timestamp: Date.now(),
+        session_id: sessionId.value,
+        msg_type: 'file',  // Indicate this is a file message
+        file_name: fileData.name,
+        file_type: fileData.type
+      }
+    }
+
+    console.log('📤 Sending file message:', messageData)
+    ws.send(JSON.stringify(messageData))
+  } else {
+    messages.value.push({
+      role: 'system',
+      content: 'WebSocket not connected. Please connect first.',
+      timestamp: Date.now()
+    })
+  }
 }
 
 const handleSendStatus = () => {
