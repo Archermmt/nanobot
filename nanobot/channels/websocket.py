@@ -307,7 +307,7 @@ class WebSocketChannel(BaseChannel):
         if content:
             content_parts.append(content)
         elif media:
-            content_parts.append("The following files are saved: ")
+            content_parts.append("The following files are saved, do not analysis them nor display them: ")
         if media:
             import base64
             from pathlib import Path
