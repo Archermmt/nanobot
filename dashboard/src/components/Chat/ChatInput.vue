@@ -33,8 +33,8 @@ const resetTextareaHeight = async () => {
 }
 
 const handleKeydown = (event: KeyboardEvent) => {
-  // Send on Enter, but only if Shift is NOT pressed
-  if (event.key === 'Enter' && !event.shiftKey) {
+  // Send on Enter, but only if Shift is NOT pressed and user is not composing text (e.g., Chinese input method)
+  if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
     event.preventDefault()
     sendMessage()
   }
@@ -77,51 +77,33 @@ const handleFileUpload = (fileData: { data: string; type: string; name: string }
   <div class="border-t-4 border-gray-700 bg-gray-800 p-4">
     <div class="flex items-center space-x-3">
       <!-- Media Upload Buttons on the left of input -->
-      <MediaUploader
-        @upload-image="handleImageUpload"
-        @upload-audio="handleAudioUpload"
-        @upload-file="handleFileUpload"
-      />
+      <MediaUploader @upload-image="handleImageUpload" @upload-audio="handleAudioUpload"
+        @upload-file="handleFileUpload" />
 
       <!-- Text Input -->
       <form id="message-form" @submit.prevent="sendMessage" class="flex-1 flex space-x-2">
-        <textarea
-          ref="textareaRef"
-          v-model="input"
+        <textarea ref="textareaRef" v-model="input"
           :placeholder="props.disabled ? 'Please connect WebSocket first' : 'Type a message...'"
           class="flex-1 border-2 border-gray-600 rounded shadow-[inset_2px_2px_4px_rgba(0,0,0,0.3)] px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-700 disabled:text-gray-500 resize-none min-h-[48px] max-h-[200px] overflow-y-auto nes-input text-xs pixel-font"
-          :class="{ 'zh': hasChineseCharacters }"
-          :disabled="isLoading || props.disabled"
-          rows="1"
-          @input="autoResize"
-          @keydown="handleKeydown"
-        />
+          :class="{ 'zh': hasChineseCharacters }" :disabled="isLoading || props.disabled" rows="1" @input="autoResize"
+          @keydown="handleKeydown" />
       </form>
 
       <!-- Action Buttons -->
       <div class="flex items-center space-x-2">
-        <button
-          type="submit"
-          form="message-form"
+        <button type="submit" form="message-form"
           class="nes-btn is-primary px-4 py-2 rounded text-xs font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed uppercase"
-          :disabled="isLoading || !input.trim() || props.disabled"
-        >
+          :disabled="isLoading || !input.trim() || props.disabled">
           SEND
         </button>
-        <button
-          @click="handleNewChat"
+        <button @click="handleNewChat"
           class="nes-btn is-success text-xs px-3 py-2 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          :disabled="props.disabled"
-          title="Start New Chat"
-        >
+          :disabled="props.disabled" title="Start New Chat">
           NEW
         </button>
-        <button
-          @click="handleClearChat"
+        <button @click="handleClearChat"
           class="nes-btn is-error text-xs px-3 py-2 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          :disabled="props.disabled"
-          title="Clear Chat History"
-        >
+          :disabled="props.disabled" title="Clear Chat History">
           CLEAR
         </button>
       </div>

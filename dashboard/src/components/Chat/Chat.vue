@@ -240,13 +240,13 @@ const sendMessage = async (text: string) => {
   }
 }
 
-const handleImageUpload = async (imageData: string) => {
+const handleImageUpload = async (imageData: { data: string; type: string; name: string }) => {
   // Add image to messages
   messages.value.push({
     role: 'user',
     content: 'Uploaded an image',
     timestamp: Date.now(),
-    imageUrl: imageData
+    imageUrl: imageData.data
   })
 
   // Send image to backend with msg_type
@@ -257,13 +257,17 @@ const handleImageUpload = async (imageData: string) => {
       sender_id: 'web_user',
       chat_id: 'default_room',
       content: '',  // Empty content for image-only messages
-      media: [imageData],  // Send base64 data as media
-      metadata: [{
+      media: [{
+        data: imageData.data,
+        file_name: imageData.name
+      }],  // Send base64 data as media with filename
+      metadata: {
         source: 'web_dashboard',
         timestamp: Date.now(),
         session_id: sessionId.value,
-        msg_type: 'image'  // Indicate this is an image message
-      }]
+        msg_type: 'image',  // Indicate this is an image message
+        file_type: imageData.type
+      }
     }
 
     console.log('📤 Sending image message:', messageData)
@@ -295,14 +299,14 @@ const handleAudioUpload = async (audioData: { data: string; type: string; isReco
       chat_id: 'default_room',
       content: '',  // Empty content for audio-only messages
       media: [audioData.data],  // Send base64 data as media
-      metadata: [{
+      metadata: {
         source: 'web_dashboard',
         timestamp: Date.now(),
         session_id: sessionId.value,
         msg_type: 'audio',  // Indicate this is an audio message
         file_type: audioData.type,
         is_recording: audioData.isRecording
-      }]
+      }
     }
 
     console.log('📤 Sending audio message:', messageData)
@@ -332,15 +336,17 @@ const handleFileUpload = async (fileData: { data: string; type: string; name: st
       sender_id: 'web_user',
       chat_id: 'default_room',
       content: '',  // Empty content for file-only messages
-      media: [fileData.data],  // Send base64 data as media
-      metadata: [{
+      media: [{
+        data: fileData.data,
+        file_name: fileData.name
+      }],
+      metadata: {
         source: 'web_dashboard',
         timestamp: Date.now(),
         session_id: sessionId.value,
         msg_type: 'file',  // Indicate this is a file message
-        file_name: fileData.name,
         file_type: fileData.type
-      }]
+      }
     }
 
     console.log('📤 Sending file message:', messageData)
@@ -491,56 +497,31 @@ onUnmounted(() => {
     <div class="border-b-4 border-gray-700 bg-gray-800 p-3 pixel-font">
       <div class="flex items-center space-x-3 flex-wrap gap-2">
         <label class="text-xs font-bold text-gray-300 whitespace-nowrap">WebSocket url:</label>
-        <input
-          v-model="wsUrl"
-          type="text"
-          :disabled="isConnecting || isConnected"
+        <input v-model="wsUrl" type="text" :disabled="isConnecting || isConnected"
           class="nes-input flex-1 min-w-[200px] max-w-[400px] text-xs py-1 px-2 border-2 border-gray-600 bg-gray-900 text-gray-300 disabled:bg-gray-700 disabled:text-gray-500"
-          placeholder="ws://localhost:8765"
-        />
+          placeholder="ws://localhost:8765" />
 
-        <button
-          v-if="!isConnected"
-          @click="connectWebSocket"
-          :disabled="isConnecting || !wsUrl.trim()"
-          class="nes-btn is-primary text-xs px-3 py-1"
-        >
+        <button v-if="!isConnected" @click="connectWebSocket" :disabled="isConnecting || !wsUrl.trim()"
+          class="nes-btn is-primary text-xs px-3 py-1">
           {{ isConnecting ? 'Connecting...' : 'Connect' }}
         </button>
 
-        <button
-          v-if="isConnected"
-          @click="disconnectWebSocket"
-          class="nes-btn is-danger text-xs px-3 py-1"
-        >
+        <button v-if="isConnected" @click="disconnectWebSocket" class="nes-btn is-danger text-xs px-3 py-1">
           Disconnect
         </button>
       </div>
 
-        <div v-if="connectionError" class="text-xs text-red-500">
-          Error: {{ connectionError }}
-        </div>
+      <div v-if="connectionError" class="text-xs text-red-500">
+        Error: {{ connectionError }}
+      </div>
     </div>
 
     <!-- Messages -->
-    <MessageList
-      :messages="messages"
-      :isLoading="isLoading"
-      @play-audio="playAudio"
-      @stop-audio="stopAudio"
-    />
+    <MessageList :messages="messages" :isLoading="isLoading" @play-audio="playAudio" @stop-audio="stopAudio" />
 
     <!-- Input -->
-    <ChatInput
-      :isLoading="isLoading"
-      :disabled="!isConnected"
-      @send="sendMessage"
-      @new-chat="handleNewChat"
-      @clear-chat="handleClearChat"
-      @upload-image="handleImageUpload"
-      @upload-audio="handleAudioUpload"
-      @upload-file="handleFileUpload"
-      @send-status="handleSendStatus"
-    />
+    <ChatInput :isLoading="isLoading" :disabled="!isConnected" @send="sendMessage" @new-chat="handleNewChat"
+      @clear-chat="handleClearChat" @upload-image="handleImageUpload" @upload-audio="handleAudioUpload"
+      @upload-file="handleFileUpload" @send-status="handleSendStatus" />
   </div>
 </template>

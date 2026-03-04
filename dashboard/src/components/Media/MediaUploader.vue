@@ -28,7 +28,11 @@ const handleImageUpload = (event: Event) => {
   if (file) {
     const reader = new FileReader()
     reader.onload = (e) => {
-      emit('upload-image', e.target?.result as string)
+      emit('upload-image', {
+        data: e.target?.result as string,
+        type: file.type,
+        name: file.name
+      })
     }
     reader.readAsDataURL(file)
   }
@@ -70,11 +74,11 @@ const startRecording = async () => {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
     mediaRecorder.value = new MediaRecorder(stream)
     audioChunks.value = []
-    
+
     mediaRecorder.value.ondataavailable = (event) => {
       audioChunks.value.push(event.data)
     }
-    
+
     mediaRecorder.value.onstop = () => {
       const audioBlob = new Blob(audioChunks.value, { type: 'audio/webm' })
       const reader = new FileReader()
@@ -87,7 +91,7 @@ const startRecording = async () => {
       }
       reader.readAsDataURL(audioBlob)
     }
-    
+
     mediaRecorder.value.start()
     isRecording.value = true
   } catch (error) {
@@ -99,7 +103,7 @@ const stopRecording = () => {
   if (mediaRecorder.value && isRecording.value) {
     mediaRecorder.value.stop()
     isRecording.value = false
-    
+
     // Stop all tracks
     mediaRecorder.value.stream.getTracks().forEach(track => track.stop())
   }
@@ -109,59 +113,20 @@ const stopRecording = () => {
 <template>
   <div class="flex items-center space-x-2">
     <!-- Image Upload -->
-    <input
-      ref="imageInput"
-      type="file"
-      accept="image/*"
-      class="hidden"
-      @change="handleImageUpload"
-    />
-    <button
-      @click="triggerImageUpload"
-      class="nes-btn is-primary p-2 rounded transition-colors"
-      title="Upload Image"
-    >
+    <input ref="imageInput" type="file" accept="image/*" class="hidden" @change="handleImageUpload" />
+    <button @click="triggerImageUpload" class="nes-btn is-primary p-2 rounded transition-colors" title="Upload Image">
       📷
     </button>
 
-    <!-- Audio Upload -->
-    <input
-      ref="audioInput"
-      type="file"
-      accept="audio/*"
-      class="hidden"
-      @change="handleAudioUpload"
-    />
-    <button
-      @click="triggerAudioUpload"
-      class="nes-btn is-primary p-2 rounded transition-colors"
-      title="Upload Audio"
-    >
-      🎤
-    </button>
-
     <!-- File Upload -->
-    <input
-      ref="fileInput"
-      type="file"
-      class="hidden"
-      @change="handleFileUpload"
-    />
-    <button
-      @click="triggerFileUpload"
-      class="nes-btn is-primary p-2 rounded transition-colors"
-      title="Upload File"
-    >
+    <input ref="fileInput" type="file" class="hidden" @change="handleFileUpload" />
+    <button @click="triggerFileUpload" class="nes-btn is-primary p-2 rounded transition-colors" title="Upload File">
       📎
     </button>
 
     <!-- Voice Recording -->
-    <button
-      @click="isRecording ? stopRecording() : startRecording()"
-      class="nes-btn"
-      :class="isRecording ? 'is-danger' : 'is-primary'"
-      :title="isRecording ? 'Stop Recording' : 'Start Recording'"
-    >
+    <button @click="isRecording ? stopRecording() : startRecording()" class="nes-btn"
+      :class="isRecording ? 'is-danger' : 'is-primary'" :title="isRecording ? 'Stop Recording' : 'Start Recording'">
       {{ isRecording ? '⏹️' : '🎙️' }}
     </button>
   </div>

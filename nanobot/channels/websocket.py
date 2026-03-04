@@ -284,7 +284,8 @@ class WebSocketChannel(BaseChannel):
         chat_id = msg_data.get("chat_id", "default")
         content = msg_data.get("content", "")
         media = msg_data.get("media", [])
-        metadata = msg_data.get("metadata", [])
+        metadata = msg_data.get("metadata", {})
+        msg_type = metadata.get("msg_type", "text")
 
         # Deduplication check
         if message_id in self._processed_message_ids:
@@ -301,7 +302,12 @@ class WebSocketChannel(BaseChannel):
 
         # Handle base64-encoded media (images, audio, files)
         # Convert base64 data to temporary files
-        processed_media = []
+        content_parts = []
+        media_paths = []
+        if content:
+            content_parts.append(content)
+        elif media:
+            content_parts.append("The following files are saved: ")
         if media:
             import base64
             from pathlib import Path
@@ -309,13 +315,14 @@ class WebSocketChannel(BaseChannel):
             media_dir = Path.home() / ".nanobot" / "media"
             media_dir.mkdir(parents=True, exist_ok=True)
 
-            for media_item, media_data in zip(media, metadata):
-                filename = media_data.get("file_name", "")
+            for media_item in media:
+                media_data = media_item["data"]
+                filename = media_item.get("file_name", "")
                 # Check if media is base64 data (data URL format: data:<mime>;base64,<data>)
-                if isinstance(media_item, str) and media_item.startswith("data:"):
+                if isinstance(media_data, str) and media_data.startswith("data:"):
                     try:
                         # Parse data URL
-                        header, b64_data = media_item.split(",", 1)
+                        header, b64_data = media_data.split(",", 1)
                         mime_type = header.split(";")[0].replace("data:", "")
 
                         # Decode base64
@@ -340,21 +347,22 @@ class WebSocketChannel(BaseChannel):
                             filename = f"ws_{message_id[:8]}_{i}{ext}"
                         file_path = media_dir / filename
                         file_path.write_bytes(file_data)
-                        processed_media.append(str(file_path))
+                        media_paths.append(str(file_path))
+                        content_parts.append(f"[{msg_type}: {filename}]")
                         logger.debug("Saved base64 media to {}", file_path)
-                        content += f"download {filename}({mime_type}) to {file_path}"
                     except Exception as e:
                         logger.error("Failed to process base64 media: {}", e)
                 else:
                     # Already a file path
-                    processed_media.append(media_item)
+                    media_paths.append(media_item)
 
+        content = "\n".join(content_parts) if content_parts else ""
         # Forward to message bus
         await self._handle_message(
             sender_id=sender_id,
             chat_id=chat_id,
             content=content,
-            media=processed_media,
+            media=media_paths,
             metadata=metadata,
         )
 
