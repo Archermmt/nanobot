@@ -1,93 +1,54 @@
 ---
 name: image-vision
-description: |
-  Analyze images using the image_vision tool. Use when: (1) User asks to describe/analyze image content, (2) User requests OCR/text extraction, (3) User asks questions about visual content, (4) User provides image paths for interpretation. NEVER call LLM APIs directly - ALWAYS use the image_vision tool with an appropriate multimodal model based on current mode's price tier.
+description: Analyze images using the image_vision tool. Use when: (1) User asks to describe/analyze image content, (2) User requests OCR/text extraction, (3) User asks questions about visual content, (4) User provides image paths for interpretation. NEVER call LLM APIs directly - ALWAYS use the image_vision tool with an appropriate multimodal model based on current mode's price tier.
+metadata: {"nanobot":{"emoji":"👁️"}}
 ---
 
 # Image Vision Skill
 
-Analyze images using the `image_vision` tool. This skill automatically selects the appropriate multimodal model based on your current mode's price tier.
+Analyze images using the `image_vision` tool. Before using the tool, choose a multimodal model via `agent_mode` tool, make sure the multimodal model in same price tier with current model.
 
-## Quick Start
+## Features
 
-```python
-# Describe an image
-image_vision(text="Describe this image", images=["/path/to/image.png"])
+- Describe and analyze image content
+- Extract text from images (OCR)
+- Answer questions about visual content
+- Support multiple image formats: PNG, JPG, JPEG, GIF, WEBP, BMP
 
-# Extract text (OCR)
-image_vision(text="Extract all text from this image", images=["/path/to/doc.png"])
+## Tools
 
-# Answer questions
-image_vision(text="How many cats are in this photo?", images=["/path/to/cats.jpg"], model_id="moonshot/kimi-k2.5:cloud")
-```
+This skill provides the following tool:
 
-## Model Selection Guide
+### `image_vision`
 
-The skill automatically selects a multimodal model based on your current mode's price tier, use `agent_mode` to find all available models
+Analyze images using computer vision.
 
-## Workflow
-
-1. **Extract image paths** from user request
-   - Convert relative paths to absolute paths
-   - Expand `~` to home directory
-   - Check media folder: `~/.nanobot/media/`
-
-2. **Select appropriate model** based on current mode's price tier
-   - multimodal mode: Use mode-appropriate model
-   - common/coding mode: Use free/medium tier multimodal model
-
-3. **Call image_vision tool** with:
-   - `text`: User's question/request
-   - `images`: List of absolute image paths
-   - `model_id`: Selected multimodal model
-
-4. **Return results** to user
-
-## Supported Formats
-
-PNG, JPG, JPEG, GIF, WEBP, BMP
-
-## Parameters Reference
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| text | string | Yes | Question or request about the image |
-| images | string[] | Yes | Absolute paths to image files |
-| model_id | string | No | Vision model to use (auto-selected if omitted) |
+**Parameters**:
+- `text` (string, required): Question or request about the image
+- `images` (string[], required): Absolute paths to image files
+- `model_id` (string, optional): Vision model to use (auto-selected if omitted)
 
 ## Examples
 
-**User**: "Describe this image ~/Downloads/photo.png"
-
-**Action**:
-```python
-image_vision(
-    text="Describe this image",
-    images=["/Users/archer/Downloads/photo.png"],
-    model_id="openai/kimi-k2.5:cloud"  # free tier multimodal model
-)
+**Example - Describe an image**:
+```
+<tool>image_vision</tool>
+<parameter name="text">Describe this image</parameter>
+<parameter model_id="text">openai/kimi-k2.5:cloud</parameter>
 ```
 
-**User**: "Get words in this image /tmp/document.jpg"
-
-**Action**:
-```python
-image_vision(
-    text="Get words in this image",
-    images=["/tmp/document.jpg"],
-    model_id="openai/kimi-k2.5:cloud"
-)
+**Example - Extract text from image**:
+```
+<tool>image_vision</tool>
+<parameter name="text">Get words in this image</parameter>
+<parameter model_id="text">openai/kimi-k2.5:cloud</parameter>
 ```
 
-**User**: "Is there a cat in this image？"
-
-**Action**:
-```python
-image_vision(
-    text="Is there a cat in this image?",
-    images=["/path/to/image.png"],
-    model_id="openai/kimi-k2.5:cloud"
-)
+**Example - Answer question about image**:
+```
+<tool>image_vision</tool>
+<parameter name="text">Is there a cat in this image?</parameter>
+<parameter model_id="text">openai/kimi-k2.5:cloud</parameter>
 ```
 
 ## Important Rules

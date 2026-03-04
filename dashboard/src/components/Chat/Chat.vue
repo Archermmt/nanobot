@@ -128,7 +128,7 @@ const connectWebSocket = () => {
         if (data.media && data.media.length > 0) {
           const msgType = data.metadata?.msg_type
           const fileType = data.metadata?.file_type
-          
+
           // Check if this is an image message
           if (msgType === 'image' || (fileType && fileType.startsWith('image/'))) {
             // Extract image from media data
@@ -268,6 +268,19 @@ const sendMessage = async (text: string) => {
 }
 
 const handleImageUpload = async (imageData: { data: string; type: string; name: string }) => {
+  // Check file size (limit to 20MB)
+  const fileSizeInBytes = Math.round((imageData.data.length * 3) / 4) // Approximate size from base64
+  const maxSize = 20 * 1024 * 1024 // 20MB
+
+  if (fileSizeInBytes > maxSize) {
+    messages.value.push({
+      role: 'system',
+      content: `Image file is too large. Maximum size is 20MB. Your image is approximately ${(fileSizeInBytes / (1024 * 1024)).toFixed(2)}MB.`,
+      timestamp: Date.now()
+    })
+    return
+  }
+
   // Add image to messages
   messages.value.push({
     role: 'user',
@@ -298,7 +311,16 @@ const handleImageUpload = async (imageData: { data: string; type: string; name: 
     }
 
     console.log('📤 Sending image message:', messageData)
-    ws.send(JSON.stringify(messageData))
+    try {
+      ws.send(JSON.stringify(messageData))
+    } catch (error) {
+      console.error('Failed to send image:', error)
+      messages.value.push({
+        role: 'system',
+        content: 'Failed to send image. Please try again.',
+        timestamp: Date.now()
+      })
+    }
   } else {
     messages.value.push({
       role: 'system',

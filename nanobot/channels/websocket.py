@@ -169,7 +169,8 @@ class WebSocketChannel(BaseChannel):
 
         # Start server
         try:
-            async with websockets.serve(handler, host, port):
+            # Set max_size to 20MB to support large file uploads
+            async with websockets.serve(handler, host, port, max_size=20 * 1024 * 1024):
                 logger.info("WebSocket server started and listening")
                 # Keep server running
                 while self._running:

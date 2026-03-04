@@ -1,77 +1,61 @@
 ---
 name: display-image
-description: |
-  Display images to the frontend using the display_image tool. Use when: (1) User requests to see an image, (2) You need to show visual content, (3) User asks to display a specific image file. Do not use in CLI mode - only works with WebSocket channel.
+description: Display images to the frontend using the display_image tool. Use when: (1) User requests to see an image, (2) You need to show visual content, (3) User asks to display a specific image file. Do not use in CLI mode - only works with WebSocket channel.
+metadata: {"nanobot":{"emoji":"🖼️"}}
 ---
 
 # Display Image Skill
 
 Display images to the frontend using the `display_image` tool. This skill reads image files from disk and sends them to the WebSocket channel for display.
 
-## Quick Start
+## Features
 
-```python
-# Display an image with a caption
-display_image(image_path="/path/to/image.png", caption="Here is the image you requested")
+- Display images to the frontend
+- Support optional captions
+- Support multiple image formats: PNG, JPG, JPEG, GIF, WEBP, BMP
+- Automatic image loading from absolute paths
 
-# Display an image without a caption
-display_image(image_path="/path/to/image.jpg")
-```
+## Tools
 
-## Workflow
+This skill provides the following tool:
 
-1. **Extract image paths** from user request
-   - Convert relative paths to absolute paths
-   - Expand `~` to home directory
-   - Check media folder: `~/.nanobot/media/`
+### `display_image`
 
-2. **Call display_image tool** with:
-   - `image_path`: Absolute path to image file
-   - `caption`: Optional caption to display above the image
+Display an image to the frontend.
 
-3. **Frontend displays** the image automatically
-
-## Supported Formats
-
-PNG, JPG, JPEG, GIF, WEBP, BMP
-
-## Parameters Reference
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| image_path | string | Yes | Absolute path to the image file |
-| caption | string | No | Optional caption to display with the image |
+**Parameters**:
+- `image_path` (string, required): Absolute path to the image file
+- `caption` (string, optional): Optional caption to display with the image
 
 ## Examples
 
-**User**: "Show me the screenshot I saved at ~/Downloads/screen.png"
-
-**Action**:
-```python
-display_image(
-    image_path="/Users/archer/Downloads/screen.png",
-    caption="Screenshot you requested"
-)
+**Example - Display image with caption**:
+```
+<tool>display_image</tool>
+<parameter name="image_path">/Users/archer/Downloads/screen.png
 ```
 
-**User**: "Display the logo from ./assets/logo.svg"
-
-**Action**:
-```python
-display_image(
-    image_path="/path/to/project/assets/logo.svg"
-)
+**Example - Display image without caption**:
+```
+<tool>display_image</tool>
+<parameter name="image_path">/path/to/project/assets/logo.svg
 ```
 
-**User**: "Can you show me the chart we generated?"
-
-**Action**:
-```python
-display_image(
-    image_path="/path/to/project/output/chart.png",
-    caption="Generated chart"
-)
+**Example - Display chart with caption**:
 ```
+<tool>display_image</tool>
+<parameter name="image_path">/path/to/project/output/chart.png
+```
+
+## Usage
+
+When users want to display images:
+
+- "Show me this image" → Call `display_image` with `image_path: "/path/to/image.png"`
+- "Display the screenshot" → Call `display_image` with `image_path: "..."`, optional `caption`
+- "Can you show me the chart" → Call `display_image` with `image_path: "..."`, `caption: "..."`
+
+Always use absolute paths for images. Convert relative paths and expand `~` to home directory before calling.
 
 ## Important Rules
 
@@ -79,4 +63,3 @@ display_image(
 2. **Absolute paths only** - Convert all paths to absolute before calling
 3. **WebSocket channel required** - This tool only works when WebSocket channel is active
 4. **Do not use in CLI mode** - The frontend is required to display images
-- `memory`: Two-layer memory system with grep-based recall
