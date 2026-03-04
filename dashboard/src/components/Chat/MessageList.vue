@@ -8,12 +8,22 @@ marked.setOptions({
   gfm: true
 })
 
+interface MediaData {
+  data: string
+  file_name: string
+}
+
 interface Message {
   role: 'user' | 'assistant' | 'system'
   content: string
   timestamp: number
   imageUrl?: string
   audioUrl?: string
+  media?: MediaData[]
+  metadata?: {
+    msg_type?: string
+    file_type?: string
+  }
 }
 
 interface Props {
@@ -33,6 +43,21 @@ const showThinking = computed(() => {
 
 const currentAudio = ref<HTMLAudioElement | null>(null)
 const expandedImages = ref<string[]>([])
+
+// Extract image URL from media data
+const getImageUrlFromMessage = (msg: Message): string | null => {
+  if (msg.imageUrl) {
+    return msg.imageUrl
+  }
+  if (msg.media && msg.media.length > 0) {
+    // Check if this is an image message based on metadata
+    const msgType = msg.metadata?.msg_type
+    if (msgType === 'image' || msg.metadata?.file_type?.startsWith('image/')) {
+      return msg.media[0]?.data || null
+    }
+  }
+  return null
+}
 
 const toggleImageExpand = (imageUrl: string) => {
   const index = expandedImages.value.indexOf(imageUrl)
@@ -107,11 +132,11 @@ watch(() => props.isLoading, scrollToBottom)
         'bg-gradient-to-br from-red-100 to-red-200 border-red-300 text-red-800': msg.role === 'system'
       }">
         <!-- Image Display -->
-        <div v-if="msg.imageUrl" class="mb-3">
-          <img :src="msg.imageUrl" alt="Generated image"
+        <div v-if="getImageUrlFromMessage(msg)" class="mb-3">
+          <img :src="getImageUrlFromMessage(msg)!" alt="Image"
             class="max-w-full rounded border-2 cursor-pointer hover:opacity-90 transition-opacity"
-            :class="expandedImages.includes(msg.imageUrl) ? 'fixed inset-0 w-full h-full object-contain bg-black bg-opacity-90 z-50 p-8' : ''"
-            @click="toggleImageExpand(msg.imageUrl)" />
+            :class="expandedImages.includes(getImageUrlFromMessage(msg)!) ? 'fixed inset-0 w-full h-full object-contain bg-black bg-opacity-90 z-50 p-8' : ''"
+            @click="toggleImageExpand(getImageUrlFromMessage(msg)!)" />
         </div>
 
         <!-- Audio Display -->

@@ -9,6 +9,14 @@ interface Message {
   timestamp: number
   imageUrl?: string
   audioUrl?: string
+  media?: Array<{
+    data: string
+    file_name: string
+  }>
+  metadata?: {
+    msg_type?: string
+    file_type?: string
+  }
 }
 
 const emit = defineEmits(['send', 'new-chat', 'clear-chat', 'upload-image', 'upload-audio', 'upload-file', 'ws-status-change', 'send-status', 'status-update'])
@@ -115,10 +123,29 @@ const connectWebSocket = () => {
           }
         }
 
+        // Handle image messages from media
+        let imageUrl: string | undefined
+        if (data.media && data.media.length > 0) {
+          const msgType = data.metadata?.msg_type
+          const fileType = data.metadata?.file_type
+          
+          // Check if this is an image message
+          if (msgType === 'image' || (fileType && fileType.startsWith('image/'))) {
+            // Extract image from media data
+            const mediaItem = data.media[0]
+            if (mediaItem && mediaItem.data) {
+              imageUrl = mediaItem.data
+            }
+          }
+        }
+
         messages.value.push({
           role: 'assistant',
           content: data.content || 'Message received',
-          timestamp: Date.now()
+          timestamp: Date.now(),
+          imageUrl: imageUrl,
+          media: data.media,
+          metadata: data.metadata
         })
         isLoading.value = false
       } else if (data.type === 'heartbeat') {

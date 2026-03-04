@@ -1,10 +1,11 @@
-"""Image vision tool for analyzing images using multimodal LLM models."""
+"""Image tools for analyzing and displaying images."""
 
 import base64
 from pathlib import Path
-from typing import Any
+from typing import Any, Awaitable, Callable
 
 from nanobot.agent.tools.base import Tool
+from nanobot.bus.events import OutboundMessage
 from nanobot.providers.base import LLMProvider
 from nanobot.config.loader import load_config
 
@@ -173,3 +174,165 @@ class ImageVisionTool(Tool):
 
         except Exception as e:
             return f"Error calling vision model: {str(e)}"
+
+
+class DisplayImageTool(Tool):
+    """
+    Tool for displaying images to users through WebSocket channel.
+    
+    This tool reads image files, encodes them as base64, and sends them to the frontend
+    for display in the message box.
+    """
+
+    def __init__(
+        self,
+        send_callback: Callable[[OutboundMessage], Awaitable[None]] | None = None,
+        default_channel: str = "",
+        default_chat_id: str = "",
+    ):
+        """Initialize the display image tool with send callback and default context."""
+        self._send_callback = send_callback
+        self._default_channel = default_channel
+        self._default_chat_id = default_chat_id
+
+    def set_context(self, channel: str, chat_id: str) -> None:
+        """Set the current message context."""
+        self._default_channel = channel
+        self._default_chat_id = chat_id
+
+    def set_send_callback(self, callback: Callable[[OutboundMessage], Awaitable[None]]) -> None:
+        """Set the callback for sending messages."""
+        self._send_callback = callback
+
+    @property
+    def name(self) -> str:
+        return "display_image"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Display an image to the user by reading it from disk and sending it to the frontend. "
+            "This tool reads the image file, encodes it as base64, and sends it via WebSocket "
+            "for display in the message box. "
+            "Use this when you want to show an image to the user directly."
+        )
+
+    @property
+    def parameters(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "image_path": {
+                    "type": "string",
+                    "description": (
+                        "Path to the image file to display. "
+                        "Can be an absolute or relative path. "
+                        "Supported formats: PNG, JPG, JPEG, GIF, WEBP, BMP."
+                    ),
+                },
+                "caption": {
+                    "type": "string",
+                    "description": (
+                        "Optional caption to display with the image. "
+                        "This text will appear above the image in the message box."
+                    ),
+                },
+            },
+            "required": ["image_path"],
+        }
+
+    def _encode_image(self, image_path: str) -> tuple[str, str]:
+        """
+        Encode an image file to base64 string and get MIME type.
+
+        Args:
+            image_path: Path to the image file.
+
+        Returns:
+            Tuple of (base64 encoded string, MIME type).
+
+        Raises:
+            FileNotFoundError: If image file doesn't exist.
+            ValueError: If file is not a valid image.
+        """
+        path = Path(image_path)
+        if not path.exists():
+            raise FileNotFoundError(f"Image file not found: {image_path}")
+
+        # Check file extension
+        valid_extensions = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
+        if path.suffix.lower() not in valid_extensions:
+            raise ValueError(
+                f"Unsupported image format: {path.suffix}. " f"Supported formats: {', '.join(valid_extensions)}"
+            )
+
+        # Read and encode image
+        with open(path, "rb") as image_file:
+            encoded = base64.b64encode(image_file.read()).decode("utf-8")
+
+        # Get MIME type
+        ext = path.suffix.lower()
+        mime_types = {
+            ".png": "image/png",
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".gif": "image/gif",
+            ".webp": "image/webp",
+            ".bmp": "image/bmp",
+        }
+        mime_type = mime_types.get(ext, "image/png")
+
+        return encoded, mime_type
+
+    async def execute(
+        self,
+        image_path: str,
+        caption: str = "",
+        **kwargs: Any,
+    ) -> str:
+        """
+        Execute image display by sending image data to frontend.
+
+        Args:
+            image_path: Path to the image file to display.
+            caption: Optional caption text to display above the image.
+
+        Returns:
+            Status message indicating success or error.
+        """
+        if not self._send_callback:
+            return "Error: Message sending not configured"
+
+        try:
+            # Encode image to base64
+            encoded_image, mime_type = self._encode_image(image_path)
+
+            # Prepare media data for the message
+            media_data = {
+                "data": f"data:{mime_type};base64,{encoded_image}",
+                "file_name": Path(image_path).name,
+            }
+
+            # Create outbound message with image as media
+            msg = OutboundMessage(
+                channel=self._default_channel,
+                chat_id=self._default_chat_id,
+                content=caption or "Image display",
+                media=[media_data],
+                metadata={
+                    "msg_type": "image",  # Indicate this is an image message
+                    "file_type": mime_type,
+                },
+            )
+
+            # Send the message through the callback
+            await self._send_callback(msg)
+
+            return f"Image displayed successfully: {Path(image_path).name}"
+
+        except FileNotFoundError as e:
+            return f"Error: {str(e)}"
+        except ValueError as e:
+            return f"Error: {str(e)}"
+        except Exception as e:
+            return f"Error displaying image: {str(e)}"
