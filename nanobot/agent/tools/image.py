@@ -276,12 +276,15 @@ class ImageTool(Tool):
         Returns:
             Status message indicating success or error.
         """
+
+        print("[TMINFO] calling _execute_display")
         if not self._send_callback:
             return "Error: Message sending not configured"
 
         try:
             # Encode image to base64
-            encoded_image, mime_type = self._encode_image(image_path)
+            encoded_image = self._encode_image(image_path)
+            mime_type = self._get_mime_type(image_path)
 
             # Prepare media data for the message
             media_data = {

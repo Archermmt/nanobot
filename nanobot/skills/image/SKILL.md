@@ -12,6 +12,7 @@ Unified tool for analyzing and displaying images. Supports two modes: vision ana
 
 - Analyze images using multimodal LLM models (OCR, description, visual QA)
 - Display images to users by sending them to the frontend
+- Generate images from text prompts using AI models
 - Support multiple image formats: PNG, JPG, JPEG, GIF, WEBP, BMP
 - Base64 encoding for image processing and transmission
 
@@ -21,14 +22,17 @@ This skill provides the following tool:
 
 ### `image`
 
-Unified tool for image analysis and display.
+Unified tool for image analysis, display, and generation.
 
 **Parameters**:
-- `mode` (string, required): The operation mode - `vision` for image analysis, `display` for showing images to users
-- `image_path` (string, required): Absolute path to the image file (e.g., "/Users/archer/Desktop/photo.png")
+- `mode` (string, required): The operation mode - `vision` for image analysis, `display` for showing images to users, `generate` for creating images from text prompts
+- `image_path` (string, required):
+  - In vision/display mode: Absolute path to the image file (e.g., "/Users/archer/Desktop/photo.png")
+  - In generate mode: Absolute path where the generated image will be saved
 - `text` (string, optional):
   - In vision mode: User's request or question about the image (e.g., "Describe this image", "Extract text from this image")
   - In display mode: Caption to display with the image (appears above the image in the message box)
+  - In generate mode: Text prompt describing the desired image content, style, and composition (supports Chinese and English, max 800 characters)
 
 ## Examples
 
@@ -71,7 +75,24 @@ Unified tool for image analysis and display.
 <parameter name="image_path">image.png</parameter>
 ```
 
+**Example for generate - Create an image of a cat at cat.png**:
+```
+<tool>image</tool>
+<parameter name="mode">generate</parameter>
+<parameter name="text">A sitting orange cat with happy expression</parameter>
+<parameter name="image_path">cat.png</parameter>
+```
+
+**Example for generate - Create a landscape painting at sunset.png**:
+```
+<tool>image</tool>
+<parameter name="mode">generate</parameter>
+<parameter name="text">A beautiful sunset over mountains in oil painting style</parameter>
+<parameter name="image_path">sunset.png</parameter>
+```
+
 ## Important Rules
 
 1. **ALWAYS use image tool** - Never attempt direct LLM API calls
 2. **Absolute paths only** - Convert all paths to absolute before calling
+3. **Generation root** - Use ~/.nanobot/media as root folder for generating image
