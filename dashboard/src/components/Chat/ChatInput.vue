@@ -77,7 +77,7 @@ const handleFileUpload = (fileData: { data: string; type: string; name: string }
   <div class="border-t-4 border-gray-700 bg-gray-800 p-4">
     <div class="flex items-center space-x-3">
       <!-- Media Upload Buttons on the left of input -->
-      <MediaUploader @upload-image="handleImageUpload" @upload-audio="handleAudioUpload"
+      <MediaUploader :disabled="props.disabled" @upload-image="handleImageUpload" @upload-audio="handleAudioUpload"
         @upload-file="handleFileUpload" />
 
       <!-- Text Input -->

@@ -193,9 +193,9 @@ const handleWsStatusChange = (data: any) => {
 
       <!-- Content Area -->
       <main class="flex-1 overflow-hidden bg-gray-900">
-        <Chat ref="chatComponentRef" v-if="currentSection === 'chat'" @status-update="handleStatusUpdate"
+        <Chat ref="chatComponentRef" v-show="currentSection === 'chat'" @status-update="handleStatusUpdate"
           @ws-status-change="handleWsStatusChange" />
-        <div v-else class="p-6 text-gray-500 text-center">
+        <div v-show="currentSection !== 'chat'" class="p-6 text-gray-500 text-center">
           <p class="text-lg">Section under construction</p>
           <p class="text-sm mt-2">{{ currentSection }} view coming soon...</p>
         </div>
