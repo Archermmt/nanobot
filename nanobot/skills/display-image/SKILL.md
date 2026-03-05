@@ -32,19 +32,19 @@ Display an image to the frontend.
 **Example - Display image with caption**:
 ```
 <tool>display_image</tool>
-<parameter name="image_path">/Users/archer/Downloads/screen.png
+<parameter name="image_path">/Users/archer/Downloads/screen.png</parameter>
 ```
 
 **Example - Display image without caption**:
 ```
 <tool>display_image</tool>
-<parameter name="image_path">/path/to/project/assets/logo.svg
+<parameter name="image_path">/path/to/project/assets/logo.svg</parameter>
 ```
 
 **Example - Display chart with caption**:
 ```
 <tool>display_image</tool>
-<parameter name="image_path">/path/to/project/output/chart.png
+<parameter name="image_path">/path/to/project/output/chart.png</parameter>
 ```
 
 ## Usage

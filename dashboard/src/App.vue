@@ -1,10 +1,17 @@
 <script setup lang="ts">
-import { ref, getCurrentInstance } from 'vue'
+import { ref, getCurrentInstance, onUnmounted } from 'vue'
 import Sidebar from './components/Sidebar/Sidebar.vue'
 import StatusBar from './components/StatusBar/StatusBar.vue'
 import Chat from './components/Chat/Chat.vue'
 
-// WebSocket connection status
+// WebSocket connection state
+const wsUrl = ref('ws://localhost:8765')
+const isConnected = ref(false)
+const isConnecting = ref(false)
+const connectionError = ref<string | null>(null)
+let ws: WebSocket | null = null
+
+// Other states
 const wsConnectionStatus = ref({
   isConnected: false,
   isConnecting: false,
@@ -15,6 +22,109 @@ const sidebarExpanded = ref(true)
 const currentSection = ref('chat')
 const chatComponentRef = ref<any>(null)
 const statusBarComponentRef = ref<any>(null)
+
+// WebSocket connection methods
+const connectWebSocket = () => {
+  if (isConnecting.value || isConnected.value) return
+
+  isConnecting.value = true
+  connectionError.value = null
+
+  // Update status for header display
+  wsConnectionStatus.value = {
+    isConnected: false,
+    isConnecting: true,
+    url: wsUrl.value
+  }
+
+  ws = new WebSocket(wsUrl.value)
+
+  ws.onopen = () => {
+    console.log('✅ WebSocket connected to WebSocketChannel')
+    isConnecting.value = false
+    isConnected.value = true
+    connectionError.value = null
+
+    // Update status for header display
+    wsConnectionStatus.value = {
+      isConnected: true,
+      isConnecting: false,
+      url: wsUrl.value
+    }
+
+    // Send auth message
+    if (ws) {
+      const authMsg = {
+        type: 'auth',
+        token: 'your_auth_token_here'
+      }
+      ws.send(JSON.stringify(authMsg))
+    }
+
+    // Notify Chat component
+    if (chatComponentRef.value && chatComponentRef.value.setWebSocket) {
+      chatComponentRef.value.setWebSocket(ws)
+    }
+  }
+
+  ws.onmessage = (event) => {
+    // Forward messages to Chat component
+    if (chatComponentRef.value && chatComponentRef.value.handleWebSocketMessage) {
+      chatComponentRef.value.handleWebSocketMessage(event)
+    }
+  }
+
+  ws.onclose = () => {
+    console.log('WebSocket disconnected')
+    isConnecting.value = false
+    isConnected.value = false
+
+    wsConnectionStatus.value = {
+      isConnected: false,
+      isConnecting: false,
+      url: wsUrl.value
+    }
+  }
+
+  ws.onerror = (error) => {
+    console.error('WebSocket error:', error)
+    isConnecting.value = false
+    isConnected.value = false
+    connectionError.value = 'Connection error'
+
+    wsConnectionStatus.value = {
+      isConnected: false,
+      isConnecting: false,
+      url: wsUrl.value
+    }
+  }
+}
+
+const disconnectWebSocket = () => {
+  if (ws) {
+    ws.close()
+    ws = null
+  }
+  isConnected.value = false
+  isConnecting.value = false
+
+  wsConnectionStatus.value = {
+    isConnected: false,
+    isConnecting: false,
+    url: wsUrl.value
+  }
+
+  // Notify Chat component
+  if (chatComponentRef.value && chatComponentRef.value.setWebSocket) {
+    chatComponentRef.value.setWebSocket(null)
+  }
+}
+
+onUnmounted(() => {
+  if (ws) {
+    ws.close()
+  }
+})
 
 const handleNavigate = (section: string) => {
   currentSection.value = section
@@ -44,19 +154,10 @@ const handleStatusUpdate = (data: any) => {
   }
 }
 
-// Handle WebSocket status change from Chat component
+// Handle WebSocket status change from Chat component (no longer needed, managed in App.vue)
 const handleWsStatusChange = (data: any) => {
-  console.log('🔌 WebSocket status change received in App.vue:', data)
-  // Update wsConnectionStatus for header display
-  wsConnectionStatus.value = {
-    isConnected: data.isConnected,
-    isConnecting: data.isConnecting,
-    url: data.url
-  }
-  // Pass the status data to StatusBar to update connected state
-  if (statusBarComponentRef.value && statusBarComponentRef.value.receiveWsStatusChange) {
-    statusBarComponentRef.value.receiveWsStatusChange(data)
-  }
+  // This is now managed directly in App.vue
+  console.log('🔌 WebSocket status change (managed in App.vue):', data)
 }
 </script>
 
@@ -67,6 +168,29 @@ const handleWsStatusChange = (data: any) => {
 
     <!-- Main Content -->
     <div class="flex-1 flex flex-col overflow-hidden">
+      <!-- WebSocket Connection Control Panel -->
+      <div class="border-b-4 border-gray-700 bg-gray-800 p-3 pixel-font">
+        <div class="flex items-center space-x-3 flex-wrap gap-2">
+          <label class="text-xs font-bold text-gray-300 whitespace-nowrap">WebSocket url:</label>
+          <input v-model="wsUrl" type="text" :disabled="isConnecting || isConnected"
+            class="nes-input flex-1 min-w-[200px] max-w-[400px] text-xs py-1 px-2 border-2 border-gray-600 bg-gray-900 text-gray-300 disabled:bg-gray-700 disabled:text-gray-500"
+            placeholder="ws://localhost:8765" />
+
+          <button v-if="!isConnected" @click="connectWebSocket" :disabled="isConnecting || !wsUrl.trim()"
+            class="nes-btn is-primary text-xs px-3 py-1">
+            {{ isConnecting ? 'Connecting...' : 'Connect' }}
+          </button>
+
+          <button v-if="isConnected" @click="disconnectWebSocket" class="nes-btn is-danger text-xs px-3 py-1">
+            Disconnect
+          </button>
+        </div>
+
+        <div v-if="connectionError" class="text-xs text-red-500">
+          Error: {{ connectionError }}
+        </div>
+      </div>
+
       <!-- Content Area -->
       <main class="flex-1 overflow-hidden bg-gray-900">
         <Chat ref="chatComponentRef" v-if="currentSection === 'chat'" @status-update="handleStatusUpdate"
