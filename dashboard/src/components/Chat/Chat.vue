@@ -311,8 +311,20 @@ const handleImageUpload = async (imageData: { data: string; type: string; name: 
     }
 
     console.log('📤 Sending image message:', messageData)
+    isLoading.value = true
     try {
       ws.send(JSON.stringify(messageData))
+
+      // Set timeout: if no response within 30 seconds, stop loading
+      const timeoutId = setTimeout(() => {
+        if (isLoading.value) {
+          isLoading.value = false
+          console.warn('No response received within 30 seconds')
+        }
+      }, 30000)
+
+      // Store timeout ID in a ref so we can clear it on message receive
+      currentTimeoutId.value = timeoutId
     } catch (error) {
       console.error('Failed to send image:', error)
       messages.value.push({
@@ -320,6 +332,7 @@ const handleImageUpload = async (imageData: { data: string; type: string; name: 
         content: 'Failed to send image. Please try again.',
         timestamp: Date.now()
       })
+      isLoading.value = false
     }
   } else {
     messages.value.push({
@@ -359,7 +372,19 @@ const handleAudioUpload = async (audioData: { data: string; type: string; isReco
     }
 
     console.log('📤 Sending audio message:', messageData)
+    isLoading.value = true
     ws.send(JSON.stringify(messageData))
+
+    // Set timeout: if no response within 30 seconds, stop loading
+    const timeoutId = setTimeout(() => {
+      if (isLoading.value) {
+        isLoading.value = false
+        console.warn('No response received within 30 seconds')
+      }
+    }, 30000)
+
+    // Store timeout ID in a ref so we can clear it on message receive
+    currentTimeoutId.value = timeoutId
   } else {
     messages.value.push({
       role: 'system',
@@ -399,7 +424,19 @@ const handleFileUpload = async (fileData: { data: string; type: string; name: st
     }
 
     console.log('📤 Sending file message:', messageData)
+    isLoading.value = true
     ws.send(JSON.stringify(messageData))
+
+    // Set timeout: if no response within 30 seconds, stop loading
+    const timeoutId = setTimeout(() => {
+      if (isLoading.value) {
+        isLoading.value = false
+        console.warn('No response received within 30 seconds')
+      }
+    }, 30000)
+
+    // Store timeout ID in a ref so we can clear it on message receive
+    currentTimeoutId.value = timeoutId
   } else {
     messages.value.push({
       role: 'system',
