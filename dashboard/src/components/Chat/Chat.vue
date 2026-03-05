@@ -578,7 +578,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="flex flex-col h-full">
+  <div class="flex flex-col h-full chat-container">
     <!-- WebSocket Connection Control Panel -->
     <div class="border-b-4 border-gray-700 bg-gray-800 p-3 pixel-font">
       <div class="flex items-center space-x-3 flex-wrap gap-2">
