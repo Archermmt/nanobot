@@ -6,8 +6,7 @@ from typing import Any, Awaitable, Callable
 
 from nanobot.agent.tools.base import Tool
 from nanobot.bus.events import OutboundMessage
-from nanobot.providers.base import LLMProvider
-from nanobot.config.loader import load_config
+from nanobot.providers.providers_manager import ProvidersManager
 
 
 class ImageVisionTool(Tool):
@@ -17,7 +16,7 @@ class ImageVisionTool(Tool):
     Supports image analysis, text extraction (OCR), and visual question answering.
     """
 
-    def __init__(self, provider: LLMProvider):
+    def __init__(self, provider: ProvidersManager):
         """Initialize the agent mode tool with workspace and provider."""
         self.provider = provider
 
@@ -54,14 +53,6 @@ class ImageVisionTool(Tool):
                         "List of image paths to analyze. Each path should be an absolute path "
                         "to a local image file (e.g., '/Users/archer/Desktop/photo.png'). "
                         "Supported formats: PNG, JPG, JPEG, GIF, WEBP."
-                    ),
-                },
-                "model_id": {
-                    "type": "string",
-                    "description": (
-                        "The multimodal model to use for image analysis. "
-                        "Examples: 'moonshot/kimi-k2.5', 'dashscope/qwen-vl', "
-                        "'anthropic/claude-3-opus'. If not specified, uses a default vision model."
                     ),
                 },
             },
@@ -112,20 +103,13 @@ class ImageVisionTool(Tool):
         }
         return mime_types.get(ext, "image/png")
 
-    async def execute(
-        self,
-        text: str,
-        images: list[str],
-        model_id: str = "moonshot/kimi-k2.5",
-        **kwargs: Any,
-    ) -> str:
+    async def execute(self, text: str, images: list[str], **kwargs: Any) -> str:
         """
         Execute image vision analysis.
 
         Args:
             text: User's request/question about the image.
             images: List of image file paths.
-            model_id: Model identifier for vision analysis.
 
         Returns:
             Analysis result from the vision model.
@@ -153,25 +137,11 @@ class ImageVisionTool(Tool):
 
         # Build messages for chat completion
         messages = [{"role": "system", "content": "Your are a multimodal model"}, {"role": "user", "content": content}]
-
         try:
-            current_model, change_model = self.provider.get_default_model(), False
-            if current_model != model_id:
-                self.provider.change_model(load_config(), model_id)
-                change_model = True
-            response = await self.provider.chat(
-                messages=messages,
-                model=model_id,
-                max_tokens=4096,
-                temperature=0.7,
-            )
-            if change_model:
-                self.provider.change_model(load_config(), current_model)
+            response = await self.provider.chat(messages=messages, mode="multimodal")
             if response.content:
                 return response.content
-            else:
-                return "Error: No response content from vision model."
-
+            return "Error: No response content from vision model."
         except Exception as e:
             return f"Error calling vision model: {str(e)}"
 
@@ -179,7 +149,7 @@ class ImageVisionTool(Tool):
 class DisplayImageTool(Tool):
     """
     Tool for displaying images to users through WebSocket channel.
-    
+
     This tool reads image files, encodes them as base64, and sends them to the frontend
     for display in the message box.
     """

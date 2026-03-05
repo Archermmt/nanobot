@@ -76,26 +76,21 @@ onMounted(() => {
         </div>
 
         <div class="flex items-center space-x-2 text-xs">
-          <span class="text-gray-400">MODE </span>
-          <span class="text-white-600">{{ status.mode }}</span>
-          <span class="text-gray-400">PRICE </span>
-          <span class="text-white-600">{{ status.price }}</span>
-          <span class="text-gray-400">MODEL </span>
-          <span class="text-white-600">{{ status.model }}</span>
           <span class="text-gray-400">SKILLS </span>
           <span class="text-white-600">{{ status.skills }}</span>
           <span class="text-gray-400">TOOLS</span>
           <span class="text-white-600">{{ status.tools }}</span>
+          <span class="text-gray-400">MODE </span>
+          <span class="text-white-600">{{ status.mode }}</span>
+          <span class="text-gray-400">MODELS </span>
+          <span class="text-white-600">{{ status.model }}</span>
         </div>
       </div>
 
       <!-- Refresh button -->
       <div class="flex items-center space-x-2">
-        <button
-          @click="fetchStatus"
-          class="nes-btn is-primary px-3 py-1 rounded transition-colors"
-          title="Refresh Status"
-        >
+        <button @click="fetchStatus" class="nes-btn is-primary px-3 py-1 rounded transition-colors"
+          title="Refresh Status">
           🔄
         </button>
       </div>

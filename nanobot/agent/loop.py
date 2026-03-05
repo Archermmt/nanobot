@@ -127,7 +127,7 @@ class AgentLoop:
         self.tools.register(SpawnTool(manager=self.subagents))
         if self.cron_service:
             self.tools.register(CronTool(self.cron_service))
-        self.tools.register(AgentModeTool(self.workspace, self.provider))
+        self.tools.register(AgentModeTool(self.provider))
         self.tools.register(ImageVisionTool(self.provider))
         self.tools.register(DisplayImageTool(send_callback=self.bus.publish_outbound))
 
@@ -416,15 +416,11 @@ class AgentLoop:
             self.sessions.invalidate(session.key)
             return OutboundMessage(channel=msg.channel, chat_id=msg.chat_id, content="Session cleared.")
         if cmd == "/status":
-            agent_file, info = self.workspace / "AGENT.json", {}
-            if agent_file.exists():
-                with open(agent_file, "r", encoding="utf-8") as f:
-                    info = json.load(f)
-            modes_info = info.get("modes", {})
+            modes = [f"{m['model']}({m['name']})" for m in self.provider.list_models()]
             status = {
-                "mode": modes_info.get("current_mode", "unknown"),
-                "price": modes_info.get("current_price", "unknown"),
-                "model": self.provider.get_default_model(),
+                "mode": self.provider.get_default_mode(),
+                "price": "free",
+                "model": "\n".join(modes),
                 "history": len(session.messages),
                 "skills": len(self.context.skills.list_skills()),
                 "tools": len(self.tools),

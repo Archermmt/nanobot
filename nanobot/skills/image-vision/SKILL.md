@@ -6,7 +6,7 @@ metadata: {"nanobot":{"emoji":"👁️"}}
 
 # Image Vision Skill
 
-Analyze images using the `image_vision` tool. Before using the tool, choose a multimodal model via `agent_mode` tool, make sure the multimodal model in same price tier with current model.
+Analyze images using the `image_vision` tool.
 
 ## Features
 
@@ -26,29 +26,28 @@ Analyze images using computer vision.
 **Parameters**:
 - `text` (string, required): Question or request about the image
 - `images` (string[], required): Absolute paths to image files
-- `model_id` (string, optional): Vision model to use (auto-selected if omitted)
 
 ## Examples
 
-**Example - Describe an image**:
+**Example - Describe an image at image.png**:
 ```
 <tool>image_vision</tool>
 <parameter name="text">Describe this image</parameter>
-<parameter model_id="text">openai/kimi-k2.5:cloud</parameter>
+<parameter name="images">["image.png"]</parameter>
 ```
 
-**Example - Extract text from image**:
+**Example - Extract text from image image.jpeg**:
 ```
 <tool>image_vision</tool>
 <parameter name="text">Get words in this image</parameter>
-<parameter model_id="text">openai/kimi-k2.5:cloud</parameter>
+<parameter name="images">["image.jpeg"]</parameter>
 ```
 
-**Example - Answer question about image**:
+**Example - How many birds in image image.png**:
 ```
 <tool>image_vision</tool>
-<parameter name="text">Is there a cat in this image?</parameter>
-<parameter model_id="text">openai/kimi-k2.5:cloud</parameter>
+<parameter name="text">How many birds in image?</parameter>
+<parameter name="images">["image.png"]</parameter>
 ```
 
 ## Important Rules

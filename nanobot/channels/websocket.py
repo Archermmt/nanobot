@@ -308,7 +308,7 @@ class WebSocketChannel(BaseChannel):
         if content:
             content_parts.append(content)
         elif media:
-            content_parts.append("The following files are saved, do not analysis them nor display them: ")
+            content_parts.append("Just save the following files, do nothing else: ")
         if media:
             import base64
             from pathlib import Path
@@ -349,7 +349,7 @@ class WebSocketChannel(BaseChannel):
                         file_path = media_dir / filename
                         file_path.write_bytes(file_data)
                         media_paths.append(str(file_path))
-                        content_parts.append(f"[{msg_type}: {filename}]")
+                        content_parts.append(f"{filename}({msg_type}) saved to {file_path}")
                         logger.debug("Saved base64 media to {}", file_path)
                     except Exception as e:
                         logger.error("Failed to process base64 media: {}", e)
