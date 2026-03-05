@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 
 interface Status {
   mode: string
@@ -22,6 +22,22 @@ const status = ref<Status>({
 })
 
 const emit = defineEmits(['send-status'])
+
+// Receive WebSocket status from parent via prop
+const props = defineProps<{
+  wsStatus?: {
+    isConnected: boolean
+    isConnecting: boolean
+    url: string
+  }
+}>()
+
+// Watch for WebSocket status changes from parent
+watch(() => props.wsStatus?.isConnected, (newVal) => {
+  console.log('🔌 WebSocket status changed from parent:', newVal)
+  status.value.connected = newVal || false
+})
+
 const receiveWsStatusChange = (data: any) => {
   console.log('📡 Received WebSocket status change:', data)
   status.value.connected = data.isConnected || false
