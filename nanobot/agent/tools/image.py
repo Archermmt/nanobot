@@ -38,12 +38,14 @@ class ImageTool(Tool):
     @property
     def description(self) -> str:
         return (
-            "Analyze or display images. Supports two modes:\n"
+            "Analyze or display images. Supports three modes:\n"
             "- vision: Analyze and describe images using multimodal LLM models. "
             "Supports image description, text extraction (OCR), visual analysis, "
             "and answering questions about image content.\n"
             "- display: Display images to users by reading from disk and sending to frontend. "
             "Use this when you want to show an image to the user directly.\n"
+            "- generate: Generate images from text prompts using Alibaba Cloud Qwen-Image API. "
+            "Supports various artistic styles and text rendering in images.\n"
             "Images are encoded as base64 for processing or display."
         )
 
@@ -54,9 +56,10 @@ class ImageTool(Tool):
             "properties": {
                 "mode": {
                     "type": "string",
-                    "enum": ["vision", "display"],
+                    "enum": ["vision", "display", "generate"],
                     "description": (
-                        "The operation mode: 'vision' for image analysis, 'display' for showing images to users."
+                        "The operation mode: 'vision' for image analysis, 'display' for showing images to users, "
+                        "'generate' for creating images from text prompts."
                     ),
                 },
                 "text": {
@@ -64,17 +67,58 @@ class ImageTool(Tool):
                     "description": (
                         "[In vision mode] The user's request or question about the image. "
                         "Examples: 'Describe this image', 'Extract text from this image', "
-                        "'What objects are in this picture?', 'Is there a cat in this photo?'"
+                        "'What objects are in this picture?', 'Is there a cat in this photo?'\n"
                         "[In display mode] Caption to display with the image. "
-                        "This text will appear above the image in the message box."
+                        "This text will appear above the image in the message box.\n"
+                        "[In generate mode] Text prompt describing the desired image content, style, and composition. "
+                        "Supports Chinese and English, max 800 characters. Example: 'A sitting orange cat with happy expression'."
                     ),
                 },
                 "image_path": {
                     "type": "string",
                     "description": (
-                        "Path to the image file to analyze. Should be an absolute path "
+                        "[In vision/display mode] Path to the image file to analyze or display. Should be an absolute path "
                         "to a local image file (e.g., '/Users/archer/Desktop/photo.png'). "
-                        "Supported formats: PNG, JPG, JPEG, GIF, WEBP."
+                        "Supported formats: PNG, JPG, JPEG, GIF, WEBP.\n"
+                        "[In generate mode] Absolute path where the generated image will be saved."
+                    ),
+                },
+                "size": {
+                    "type": "string",
+                    "description": (
+                        "[Optional for generate mode] Output image resolution in format 'width*height'. "
+                        "For qwen-image-2.0 series: total pixels must be between 512*512 and 2048*2048, default is 1024*1024. "
+                        "Examples: '1024*1024', '1664*928', '1328*1328'."
+                    ),
+                },
+                "negative_prompt": {
+                    "type": "string",
+                    "description": (
+                        "[Optional for generate mode] Negative prompt describing what should NOT appear in the image. "
+                        "Max 500 characters. Example: 'low resolution, low quality, deformed limbs, blurry text'."
+                    ),
+                },
+                "n": {
+                    "type": "integer",
+                    "description": (
+                        "[Optional for generate mode] Number of images to generate. "
+                        "For qwen-image-2.0 series: 1-6 images, default is 1. "
+                        "For qwen-image-max/plus series: fixed at 1."
+                    ),
+                },
+                "prompt_extend": {
+                    "type": "boolean",
+                    "description": (
+                        "[Optional for generate mode] Enable AI-powered prompt enhancement. "
+                        "When enabled, the model will optimize and refine the prompt for better results. "
+                        "Default is true. Set to false for more controlled output."
+                    ),
+                },
+                "watermark": {
+                    "type": "boolean",
+                    "description": (
+                        "[Optional for generate mode] Add 'Qwen-Image' watermark to bottom-right corner. "
+                        "Default is false."
                     ),
                 },
             },
@@ -134,24 +178,51 @@ class ImageTool(Tool):
         """Set the callback for sending messages."""
         self._send_callback = callback
 
-    async def execute(self, mode: str, text: str = "", image_path: str = "", **kwargs: Any) -> str:
+    async def execute(
+        self,
+        mode: str,
+        text: str = "",
+        image_path: str = "",
+        size: str = "1024*1024",
+        negative_prompt: str = "",
+        n: int = 1,
+        prompt_extend: bool = True,
+        watermark: bool = False,
+        **kwargs: Any,
+    ) -> str:
         """
         Execute image tool based on mode.
 
         Args:
-            mode: Operation mode - 'vision' for analysis, 'display' for showing images.
-            text: [Vision mode] User's request/question about the image. [Display mode] Caption to display with the image.]
-            image_path: Path to the image file to display.
+            mode: Operation mode - 'vision' for analysis, 'display' for showing images, 'generate' for creating images.
+            text: [Vision mode] User's request/question about the image. [Display mode] Caption to display. [Generate mode] Image generation prompt.
+            image_path: Path to the image file (for vision/display) or save path (for generate).
+            size: [Generate mode] Output image resolution.
+            negative_prompt: [Generate mode] Negative prompt for undesired content.
+            n: [Generate mode] Number of images to generate.
+            prompt_extend: [Generate mode] Enable AI prompt enhancement.
+            watermark: [Generate mode] Add watermark.
 
         Returns:
-            Analysis result (vision mode) or status message (display mode).
+            Analysis result (vision mode), status message (display mode), or generation result (generate mode).
         """
         if mode == "vision":
             return await self._execute_vision(text=text, image_path=image_path, **kwargs)
         elif mode == "display":
             return await self._execute_display(text=text, image_path=image_path, **kwargs)
+        elif mode == "generate":
+            return await self._execute_generate(
+                text=text,
+                image_path=image_path,
+                size=size,
+                negative_prompt=negative_prompt,
+                n=n,
+                prompt_extend=prompt_extend,
+                watermark=watermark,
+                **kwargs,
+            )
         else:
-            return f"Error: Invalid mode '{mode}'. Must be 'vision' or 'display'."
+            return f"Error: Invalid mode '{mode}'. Must be 'vision', 'display', or 'generate'."
 
     async def _execute_vision(self, text: str, image_path: str, **kwargs: Any) -> str:
         """
@@ -241,3 +312,157 @@ class ImageTool(Tool):
             return f"Error: {str(e)}"
         except Exception as e:
             return f"Error: {str(e)}"
+
+    async def _execute_generate(
+        self,
+        text: str,
+        image_path: str,
+        size: str = "1024*1024",
+        negative_prompt: str = "",
+        n: int = 1,
+        prompt_extend: bool = True,
+        watermark: bool = False,
+        **kwargs: Any,
+    ) -> str:
+        """
+        Execute image generation using Alibaba Cloud Qwen-Image API.
+
+        Args:
+            text: Text prompt describing the desired image content, style, and composition.
+            image_path: Absolute path where the generated image will be saved.
+            size: Output image resolution in format 'width*height'.
+            negative_prompt: Negative prompt for undesired content.
+            n: Number of images to generate (1-6 for qwen-image-2.0 series, fixed 1 for max/plus).
+            prompt_extend: Enable AI-powered prompt enhancement.
+            watermark: Add 'Qwen-Image' watermark.
+
+        Returns:
+            Status message with generation result or error details.
+        """
+        import httpx
+        import os
+        import json
+
+        if not text:
+            return "Error: Text prompt is required for image generation."
+
+        if not image_path:
+            return "Error: Image save path is required."
+
+        # Get API key from environment
+        api_key = os.getenv("DASHSCOPE_API_KEY")
+        if not api_key:
+            return (
+                "Error: DASHSCOPE_API_KEY not found. Please set it in environment variables. "
+                "Get your API key from https://dashscope.console.aliyun.com/"
+            )
+
+        # Determine endpoint based on region
+        # You can set DASHSCOPE_REGION to 'beijing' or 'singapore', default is beijing
+        region = os.getenv("DASHSCOPE_REGION", "beijing").lower()
+        if region == "beijing":
+            endpoint = "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
+        elif region == "singapore":
+            endpoint = "https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
+        else:
+            return f"Error: Invalid region '{region}'. Must be 'beijing' or 'singapore'."
+
+        # Build request payload
+        payload = {
+            "model": "qwen-image-2.0-pro",
+            "input": {"messages": [{"role": "user", "content": [{"text": text}]}]},
+            "parameters": {
+                "size": size,
+                "prompt_extend": prompt_extend,
+                "watermark": watermark,
+            },
+        }
+
+        # Add optional parameters
+        if negative_prompt:
+            payload["parameters"]["negative_prompt"] = negative_prompt
+
+        # Only add n parameter for qwen-image-2.0 series (supports 1-6 images)
+        if n > 1:
+            payload["parameters"]["n"] = min(n, 6)  # Cap at 6 for 2.0 series
+
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}",
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                response = await client.post(endpoint, headers=headers, json=payload)
+                response.raise_for_status()
+                result = response.json()
+
+            # Parse response
+            output = result.get("output", {})
+            choices = output.get("choices", [])
+
+            if not choices:
+                return f"Error: No image generated. Response: {json.dumps(result, ensure_ascii=False)}"
+
+            # Get image URLs
+            image_urls = []
+            for choice in choices:
+                message = choice.get("message", {})
+                content = message.get("content", [])
+                for item in content:
+                    if "image" in item:
+                        image_urls.append(item["image"])
+
+            if not image_urls:
+                return f"Error: No image URL in response. Response: {json.dumps(result, ensure_ascii=False)}"
+
+            # Download and save the first image (or all images if n > 1)
+            saved_paths = []
+            for idx, img_url in enumerate(image_urls):
+                async with httpx.AsyncClient(timeout=30.0) as download_client:
+                    img_response = await download_client.get(img_url)
+                    img_response.raise_for_status()
+
+                    # Determine save path
+                    if len(image_urls) > 1:
+                        # Multiple images: add index to filename
+                        path_obj = Path(image_path)
+                        save_path = path_obj.parent / f"{path_obj.stem}_{idx + 1}{path_obj.suffix}"
+                    else:
+                        save_path = Path(image_path)
+
+                    # Save image
+                    save_path.parent.mkdir(parents=True, exist_ok=True)
+                    with open(save_path, "wb") as f:
+                        f.write(img_response.content)
+
+                    saved_paths.append(str(save_path))
+
+            # Get usage info
+            usage = result.get("usage", {})
+            width = usage.get("width", "unknown")
+            height = usage.get("height", "unknown")
+
+            if len(saved_paths) == 1:
+                return f"Image generated successfully: {saved_paths[0]} ({width}x{height})"
+            else:
+                return (
+                    f"Generated {len(saved_paths)} images successfully:\n"
+                    + "\n".join(f"- {path}" for path in saved_paths)
+                    + f"\nResolution: {width}x{height}"
+                )
+
+        except httpx.HTTPStatusError as e:
+            error_detail = e.response.text if e.response else str(e)
+            try:
+                error_json = e.response.json()
+                error_msg = error_json.get("message", error_json.get("error", error_detail))
+            except Exception:
+                error_msg = error_detail
+            return f"Error: HTTP {e.response.status_code} - {error_msg}"
+        except httpx.TimeoutException:
+            return "Error: Request timed out. The generation may take 10-30 seconds, please try again."
+        except httpx.RequestError as e:
+            return f"Error: Network request failed - {str(e)}"
+        except Exception as e:
+            return f"Error: Generation failed - {str(e)}"
