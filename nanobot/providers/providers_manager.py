@@ -3,7 +3,7 @@
 from typing import Any
 from loguru import logger
 
-from nanobot.config.loader import load_config
+from nanobot.config.schema import Config
 from nanobot.providers.base import LLMProvider, LLMResponse
 from nanobot.providers.litellm_provider import LiteLLMProvider
 
@@ -16,7 +16,7 @@ class ProvidersManager:
     (main, coding, multimodal) to optimize for different use cases.
     """
 
-    def __init__(self, modes: dict, default_mode: str = "auto"):
+    def __init__(self, config: Config, modes: dict, default_mode: str = "auto"):
         """
         Initialize the providers manager.
 
@@ -26,6 +26,7 @@ class ProvidersManager:
         """
         self._modes = modes
         self._default_mode = default_mode
+        self._config = config
 
     def _create_provider(self, model_id: str, provider_name: str = "auto") -> LLMProvider:
         """
@@ -37,11 +38,10 @@ class ProvidersManager:
         Returns:
             Initialized LLMProvider instance
         """
-        config = load_config()
-        p = config.get_provider(model_id)
+        p = self._config.get_provider(model_id)
         return LiteLLMProvider(
             api_key=p.api_key if p else None,
-            api_base=config.get_api_base(model_id),
+            api_base=self._config.get_api_base(model_id),
             default_model=model_id,
             extra_headers=p.extra_headers if p else None,
             provider_name=provider_name,
@@ -75,12 +75,12 @@ class ProvidersManager:
         """
 
         mode = mode or self._default_mode
+        user_content = messages[-1]["content"]
         if mode == "auto":
             assert "main" in self._modes, "No main mode configured for auto mode"
             # For auto mode, use decider to choose the best mode
             decider = self.get_provider("main")
             system_prompt = f"You are mode decider. You can choose the best mode for process the user's task. The modes are:\n{self.summary_modes()}"
-            user_content = messages[-1]["content"]
             # Create messages for decider
             decider_messages = [{"role": "system", "content": system_prompt}]
             decider_messages.append(
@@ -97,17 +97,17 @@ class ProvidersManager:
             selected_mode = decider_response.content.strip() if decider_response.content else "main"
             # Use the selected mode's provider
             if selected_mode in self._modes:
-                logger.info(f"Choose mode {selected_mode} for handle the task")
+                logger.info(f"Choose {selected_mode} for task: {user_content[:20]}")
                 provider = self.get_provider(selected_mode)
             else:
                 # Fallback to main if selected mode not found
-                logger.info(f"Fall back to mode main for handle the task")
+                logger.info(f"Fallback to main for task: {user_content[:20]}")
                 provider = self.get_provider("main")
         elif mode in self._modes:
-            logger.info(f"Use specified mode {mode} for handle the task")
+            logger.info(f"Use specified {mode} for task: {user_content[:20]}")
             provider = self.get_provider(mode)
         elif "main" in self._modes:
-            logger.info(f"Fall back to mode main for handle the task")
+            logger.info(f"Fallback to main for task: {user_content[:20]}")
             provider = self.get_provider("main")
         else:
             raise ValueError(f"Unknown mode: {mode} and no fallback available")

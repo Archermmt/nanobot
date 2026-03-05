@@ -239,7 +239,7 @@ def _make_provider(config: Config):
         modes = {}
         for k, v in config.agents.modes.models.items():
             modes[k] = {"provider": _create_provider(v.model), "describe": v.describe}
-        return ProvidersManager(modes, default_mode=config.agents.modes.default_mode)
+        return ProvidersManager(config, modes, default_mode=config.agents.modes.default_mode)
     return _create_provider(config.agents.defaults.model)
 
 
