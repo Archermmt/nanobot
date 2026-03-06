@@ -133,10 +133,27 @@ watch(() => props.isLoading, scrollToBottom)
       }">
         <!-- Image Display -->
         <div v-if="getImageUrlFromMessage(msg)" class="mb-3">
-          <img :src="getImageUrlFromMessage(msg)!" alt="Image"
-            class="max-w-full rounded border-2 cursor-pointer hover:opacity-90 transition-opacity"
-            :class="expandedImages.includes(getImageUrlFromMessage(msg)!) ? 'fixed inset-0 w-full h-full object-contain bg-black bg-opacity-90 z-50 p-8' : ''"
-            @click="toggleImageExpand(getImageUrlFromMessage(msg)!)" />
+          <!-- Collapsed state: 50% size -->
+          <div v-if="!expandedImages.includes(getImageUrlFromMessage(msg)!)" 
+            class="relative inline-block transform scale-50 origin-top-left"
+            style="margin-bottom: -50%;">
+            <img :src="getImageUrlFromMessage(msg)!" alt="Image"
+              class="rounded border-2 cursor-pointer hover:opacity-90 transition-opacity max-w-full"
+              @click="toggleImageExpand(getImageUrlFromMessage(msg)!)" />
+            <!-- Zoom hint -->
+            <div class="absolute top-1 right-1 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded opacity-0 hover:opacity-100 transition-opacity pointer-events-none">
+              点击查看原图
+            </div>
+          </div>
+          <!-- Expanded state: full screen overlay -->
+          <div v-else class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-90 p-8"
+            @click="toggleImageExpand(getImageUrlFromMessage(msg)!)">
+            <img :src="getImageUrlFromMessage(msg)!" alt="Image"
+              class="max-w-full max-h-full object-contain cursor-pointer rounded" />
+            <div class="absolute top-4 right-4 text-white text-sm bg-black bg-opacity-50 px-3 py-2 rounded">
+              点击关闭
+            </div>
+          </div>
         </div>
 
         <!-- Audio Display -->
