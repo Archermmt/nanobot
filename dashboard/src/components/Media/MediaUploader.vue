@@ -52,9 +52,11 @@ const handleAudioUpload = (event: Event) => {
   if (file) {
     const reader = new FileReader()
     reader.onload = (e) => {
+      // Emit audio data in the same format as image upload
       emit('upload-audio', {
         data: e.target?.result as string,
-        type: file.type
+        type: file.type,
+        name: file.name
       })
     }
     reader.readAsDataURL(file)
@@ -81,7 +83,14 @@ const startRecording = async () => {
   if (props.disabled) return
 
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        sampleRate: 16000,
+        channelCount: 1
+      }
+    })
     mediaRecorder.value = new MediaRecorder(stream)
     audioChunks.value = []
 
@@ -93,9 +102,11 @@ const startRecording = async () => {
       const audioBlob = new Blob(audioChunks.value, { type: 'audio/webm' })
       const reader = new FileReader()
       reader.onload = (e) => {
+        // Emit audio data in the same format as image upload
         emit('upload-audio', {
           data: e.target?.result as string,
           type: 'audio/webm',
+          name: `recording_${Date.now()}.webm`,
           isRecording: true
         })
       }

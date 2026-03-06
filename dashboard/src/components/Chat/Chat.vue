@@ -252,7 +252,10 @@ const handleAudioUpload = async (audioData: { data: string; type: string; isReco
       sender_id: 'web_user',
       chat_id: 'default_room',
       content: '',  // Empty content for audio-only messages
-      media: [audioData.data],  // Send base64 data as media
+      media: [{
+        data: audioData.data,
+        file_name: `audio_${Date.now()}.${audioData.type.split('/').pop()}`
+      }],  // Send base64 data as media with filename
       metadata: {
         source: 'web_dashboard',
         timestamp: Date.now(),
