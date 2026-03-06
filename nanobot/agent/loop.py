@@ -415,7 +415,11 @@ class AgentLoop:
             self.sessions.invalidate(session.key)
             return OutboundMessage(channel=msg.channel, chat_id=msg.chat_id, content="Session cleared.")
         if cmd == "/status":
-            modes = [f"{m['model']}({m['name']})" for m in self.provider.list_models()]
+            mode = self.provider.get_default_mode()
+            if mode == "auto":
+                modes = [f"{m['model']}({m['name']})" for m in self.provider.list_models()]
+            else:
+                modes = [f"{m['model']}({m['name']})" for m in self.provider.list_models() if m["model"] == mode]
             status = {
                 "mode": self.provider.get_default_mode(),
                 "price": "free",

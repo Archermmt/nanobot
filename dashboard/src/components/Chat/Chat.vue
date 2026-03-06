@@ -339,6 +339,16 @@ const handleFileUpload = async (fileData: { data: string; type: string; name: st
 }
 
 const handleSendStatus = () => {
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    console.log('⚠️ Cannot send /status: WebSocket not connected')
+    messages.value.push({
+      role: 'system',
+      content: 'WebSocket not connected. Please connect first.',
+      timestamp: Date.now()
+    })
+    return
+  }
+
   const userMessage: Message = {
     role: 'user',
     content: '/status',
@@ -346,29 +356,21 @@ const handleSendStatus = () => {
   }
   messages.value.push(userMessage)
 
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    const statusMsg = {
-      type: 'message',
-      message_id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      sender_id: 'web_user',
-      chat_id: 'default_room',
-      content: '/status',
-      media: [],
-      metadata: {
-        source: 'web_dashboard',
-        timestamp: Date.now(),
-        session_id: sessionId.value
-      }
+  const statusMsg = {
+    type: 'message',
+    message_id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    sender_id: 'web_user',
+    chat_id: 'default_room',
+    content: '/status',
+    media: [],
+    metadata: {
+      source: 'web_dashboard',
+      timestamp: Date.now(),
+      session_id: sessionId.value
     }
-    console.log('📤 Sending /status command:', statusMsg)
-    ws.send(JSON.stringify(statusMsg))
-  } else {
-    messages.value.push({
-      role: 'system',
-      content: 'WebSocket not connected. Please connect first.',
-      timestamp: Date.now()
-    })
   }
+  console.log('📤 Sending /status command:', statusMsg)
+  ws.send(JSON.stringify(statusMsg))
 }
 
 const handleNewChat = () => {
