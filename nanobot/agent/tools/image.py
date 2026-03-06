@@ -3,6 +3,7 @@
 import base64
 from pathlib import Path
 from typing import Any, Awaitable, Callable
+from loguru import logger
 
 from nanobot.agent.tools.base import Tool
 from nanobot.bus.events import OutboundMessage
@@ -13,9 +14,10 @@ class ImageTool(Tool):
     """
     Tool for analyzing and displaying images.
 
-    Supports two modes:
+    Supports three modes:
     - vision: Analyze images using multimodal LLM models (OCR, description, visual QA)
     - display: Display images to users through WebSocket channel
+    - generate: Generate images from text prompts
     """
 
     def __init__(
@@ -24,12 +26,14 @@ class ImageTool(Tool):
         send_callback: Callable[[OutboundMessage], Awaitable[None]] | None = None,
         default_channel: str = "",
         default_chat_id: str = "",
+        default_message_id: str | None = None,
     ):
         """Initialize the image tool with all required parameters."""
         self.provider = provider
         self._send_callback = send_callback
         self._default_channel = default_channel
         self._default_chat_id = default_chat_id
+        self._default_message_id = default_message_id
 
     @property
     def name(self) -> str:
@@ -169,10 +173,11 @@ class ImageTool(Tool):
         }
         return mime_types.get(ext, "image/png")
 
-    def set_context(self, channel: str, chat_id: str) -> None:
+    def set_context(self, channel: str, chat_id: str, message_id: str | None = None) -> None:
         """Set the current message context."""
         self._default_channel = channel
         self._default_chat_id = chat_id
+        self._default_message_id = message_id
 
     def set_send_callback(self, callback: Callable[[OutboundMessage], Awaitable[None]]) -> None:
         """Set the callback for sending messages."""
@@ -277,7 +282,6 @@ class ImageTool(Tool):
             Status message indicating success or error.
         """
 
-        print("[TMINFO] calling _execute_display")
         if not self._send_callback:
             return "Error: Message sending not configured"
 
@@ -332,7 +336,7 @@ class ImageTool(Tool):
 
         Args:
             text: Text prompt describing the desired image content, style, and composition.
-            image_path: Absolute path where the generated image will be saved.
+            image_path: File name where the generated image will be saved.
             size: Output image resolution in format 'width*height'.
             negative_prompt: Negative prompt for undesired content.
             n: Number of images to generate (1-6 for qwen-image-2.0 series, fixed 1 for max/plus).
@@ -372,7 +376,7 @@ class ImageTool(Tool):
 
         # Build request payload
         payload = {
-            "model": "qwen-image-2.0-pro",
+            "model": os.getenv("DASHSCOPE_IMAGE_GEN_MODEL", "qwen-imag-max"),
             "input": {"messages": [{"role": "user", "content": [{"text": text}]}]},
             "parameters": {
                 "size": size,
@@ -429,10 +433,10 @@ class ImageTool(Tool):
                     # Determine save path
                     if len(image_urls) > 1:
                         # Multiple images: add index to filename
-                        path_obj = Path(image_path)
+                        path_obj = Path("~/.nanobot/media") / image_path
                         save_path = path_obj.parent / f"{path_obj.stem}_{idx + 1}{path_obj.suffix}"
                     else:
-                        save_path = Path(image_path)
+                        save_path = Path("~/.nanobot/media") / image_path
 
                     # Save image
                     save_path.parent.mkdir(parents=True, exist_ok=True)
@@ -447,13 +451,13 @@ class ImageTool(Tool):
             height = usage.get("height", "unknown")
 
             if len(saved_paths) == 1:
-                return f"Image generated successfully: {saved_paths[0]} ({width}x{height})"
-            else:
-                return (
-                    f"Generated {len(saved_paths)} images successfully:\n"
-                    + "\n".join(f"- {path}" for path in saved_paths)
-                    + f"\nResolution: {width}x{height}"
-                )
+                logger.info(f"Image generated successfully: {saved_paths[0]} ({width}x{height})")
+                return await self._execute_display(f"Generated image({saved_paths[0]})", saved_paths[0])
+            return (
+                f"Generated {len(saved_paths)} images successfully:\n"
+                + "\n".join(f"- {path}" for path in saved_paths)
+                + f"\nResolution: {width}x{height}"
+            )
 
         except httpx.HTTPStatusError as e:
             error_detail = e.response.text if e.response else str(e)

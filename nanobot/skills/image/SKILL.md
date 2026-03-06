@@ -28,7 +28,7 @@ Unified tool for image analysis, display, and generation.
 - `mode` (string, required): The operation mode - `vision` for image analysis, `display` for showing images to users, `generate` for creating images from text prompts
 - `image_path` (string, required):
   - In vision/display mode: Absolute path to the image file (e.g., "/Users/archer/Desktop/photo.png")
-  - In generate mode: Absolute path where the generated image will be saved
+  - In generate mode: File name where the generated image will be saved. This parameter should contain few words which generalize the `text`
 - `text` (string, optional):
   - In vision mode: User's request or question about the image (e.g., "Describe this image", "Extract text from this image")
   - In display mode: Caption to display with the image (appears above the image in the message box)
@@ -75,24 +75,24 @@ Unified tool for image analysis, display, and generation.
 <parameter name="image_path">image.png</parameter>
 ```
 
-**Example for generate - Create an image of a cat at cat.png**:
+**Example for generate - Create an image of a cute orange cat**:
 ```
 <tool>image</tool>
 <parameter name="mode">generate</parameter>
 <parameter name="text">A sitting orange cat with happy expression</parameter>
-<parameter name="image_path">cat.png</parameter>
+<parameter name="image_path">sitting_orange_cat.png</parameter>
 ```
 
-**Example for generate - Create a landscape painting at sunset.png**:
+**Example for generate - Create a landscape painting**:
 ```
 <tool>image</tool>
 <parameter name="mode">generate</parameter>
 <parameter name="text">A beautiful sunset over mountains in oil painting style</parameter>
-<parameter name="image_path">sunset.png</parameter>
+<parameter name="image_path">sunset_painting_style.png</parameter>
 ```
 
 ## Important Rules
 
 1. **ALWAYS use image tool** - Never attempt direct LLM API calls
 2. **Absolute paths only** - Convert all paths to absolute before calling
-3. **Generation root** - Use ~/.nanobot/media as root folder for generating image
+3. **Keep text unchanged in generate mode** - Do not change the text when generating image

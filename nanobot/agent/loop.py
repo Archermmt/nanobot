@@ -9,6 +9,7 @@ from contextlib import AsyncExitStack
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
+from dotenv import load_dotenv
 from loguru import logger
 
 from nanobot.agent.context import ContextBuilder
@@ -107,6 +108,7 @@ class AgentLoop:
         self._active_tasks: dict[str, list[asyncio.Task]] = {}  # session_key -> tasks
         self._processing_lock = asyncio.Lock()
         self._register_default_tools()
+        load_dotenv(dotenv_path=self.workspace / ".env")
 
     def _register_default_tools(self) -> None:
         """Register the default set of tools."""
@@ -155,7 +157,7 @@ class AgentLoop:
 
     def _set_tool_context(self, channel: str, chat_id: str, message_id: str | None = None) -> None:
         """Update context for all tools that need routing info."""
-        for name in ("message", "spawn", "cron", "display_image"):
+        for name in ("message", "spawn", "cron", "image"):
             if tool := self.tools.get(name):
                 if hasattr(tool, "set_context"):
                     tool.set_context(channel, chat_id, *([message_id] if name == "message" else []))
@@ -419,7 +421,7 @@ class AgentLoop:
             if mode == "auto":
                 modes = [f"{m['model']}({m['name']})" for m in self.provider.list_models()]
             else:
-                modes = [f"{m['model']}({m['name']})" for m in self.provider.list_models() if m["model"] == mode]
+                modes = [f"{m['model']}({m['name']})" for m in self.provider.list_models() if m["name"] == mode]
             status = {
                 "mode": self.provider.get_default_mode(),
                 "price": "free",
