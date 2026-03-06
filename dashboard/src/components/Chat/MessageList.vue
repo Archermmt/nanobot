@@ -133,12 +133,12 @@ watch(() => props.isLoading, scrollToBottom)
       }">
         <!-- Image Display -->
         <div v-if="getImageUrlFromMessage(msg)" class="mb-3">
-          <!-- Collapsed state: 50% size -->
+          <!-- Collapsed state: display at actual size with max-width constraint -->
           <div v-if="!expandedImages.includes(getImageUrlFromMessage(msg)!)" 
-            class="relative inline-block transform scale-50 origin-top-left"
-            style="margin-bottom: -50%;">
+            class="relative inline-block max-w-full">
             <img :src="getImageUrlFromMessage(msg)!" alt="Image"
-              class="rounded border-2 cursor-pointer hover:opacity-90 transition-opacity max-w-full"
+              class="rounded border-2 cursor-pointer hover:opacity-90 transition-opacity max-w-full h-auto"
+              style="max-width: 400px;"
               @click="toggleImageExpand(getImageUrlFromMessage(msg)!)" />
             <!-- Zoom hint -->
             <div class="absolute top-1 right-1 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded opacity-0 hover:opacity-100 transition-opacity pointer-events-none">
