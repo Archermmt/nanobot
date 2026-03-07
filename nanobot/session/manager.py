@@ -1,16 +1,29 @@
 """Session management for conversation history."""
 
+import asyncio
 import json
+import random
 import shutil
+import time
 from dataclasses import dataclass, field
 from datetime import datetime
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
 from loguru import logger
 
+from nanobot.bus.events import InboundMessage, OutboundMessage
 from nanobot.config.paths import get_legacy_sessions_dir
+from nanobot.config.schema import SessionConfig
 from nanobot.utils.helpers import ensure_dir, safe_filename
+
+
+class ChatStatus(Enum):
+    """Chat status enum."""
+
+    LISTEN = "listen"
+    MUTE = "mute"
 
 
 @dataclass
@@ -31,15 +44,39 @@ class Session:
     updated_at: datetime = field(default_factory=datetime.now)
     metadata: dict[str, Any] = field(default_factory=dict)
     last_consolidated: int = 0  # Number of messages already consolidated to files
+    _last_activity_time: float = 0.0  # Last activity timestamp in milliseconds
+    _status: ChatStatus = field(default=ChatStatus.MUTE)  # Current chat status
+    _timeout_task: Any = None  # Background timeout check task
+    _stop_timeout_check: bool = False  # Flag to stop timeout checking
+
+    def setup(self, config: SessionConfig):
+        self.wakeup_words = config.wakeup_words
+        self.wakeup_response = config.wakeup_response
+        if self.wakeup_words:
+            self.goodbye_words = config.goodbye_words
+            self.goodbye_response = config.goodbye_response
+        else:
+            self.goodbye_words, self.goodbye_response = [], []
+        self._status = ChatStatus.MUTE if self.wakeup_words else ChatStatus.LISTEN
+        self._default_channel = None
+        self._default_chat_id = None
+        self._default_message_id = None
+        self._send_callback = None
+        self._last_meta = None
+        # Start background timeout checking task
+        if self.wakeup_words:
+            self._stop_timeout_check = False
+            self._timeout_task = asyncio.create_task(
+                self._check_timeout_loop(
+                    timeout_seconds=config.timeout_seconds, check_interval=config.check_interval
+                )
+            )
+        else:
+            self._stop_timeout_check, self._timeout_task = True, None
 
     def add_message(self, role: str, content: str, **kwargs: Any) -> None:
         """Add a message to the session."""
-        msg = {
-            "role": role,
-            "content": content,
-            "timestamp": datetime.now().isoformat(),
-            **kwargs
-        }
+        msg = {"role": role, "content": content, "timestamp": datetime.now().isoformat(), **kwargs}
         self.messages.append(msg)
         self.updated_at = datetime.now()
 
@@ -59,7 +96,7 @@ class Session:
                 if tid and str(tid) not in declared:
                     start = i + 1
                     declared.clear()
-                    for prev in messages[start:i + 1]:
+                    for prev in messages[start : i + 1]:
                         if prev.get("role") == "assistant":
                             for tc in prev.get("tool_calls") or []:
                                 if isinstance(tc, dict) and tc.get("id"):
@@ -68,7 +105,7 @@ class Session:
 
     def get_history(self, max_messages: int = 500) -> list[dict[str, Any]]:
         """Return unconsolidated messages for LLM input, aligned to a legal tool-call boundary."""
-        unconsolidated = self.messages[self.last_consolidated:]
+        unconsolidated = self.messages[self.last_consolidated :]
         sliced = unconsolidated[-max_messages:]
 
         # Drop leading non-user messages to avoid starting mid-turn when possible.
@@ -124,6 +161,85 @@ class Session:
         self.last_consolidated = max(0, self.last_consolidated - dropped)
         self.updated_at = datetime.now()
 
+    def set_send_callback(self, send_callback) -> None:
+        """Set the callback for sending messages."""
+        self._send_callback = send_callback
+
+    def set_context(self, channel: str, chat_id: str, message_id: str | None = None) -> None:
+        """Set the current message context."""
+        self._default_channel = channel
+        self._default_chat_id = chat_id
+        self._default_message_id = message_id
+
+    def check_status(self, msg: InboundMessage) -> dict[str, Any]:
+        """Check the chat status based on the message content."""
+        response = ""
+        if self._status == ChatStatus.LISTEN and msg.content in self.goodbye_words:
+            self._status = ChatStatus.MUTE
+            response = random.choice(self.goodbye_response)
+        elif self._status == ChatStatus.MUTE and msg.content in self.wakeup_words:
+            self._status = ChatStatus.LISTEN
+            response = random.choice(self.wakeup_response)
+
+        # Update last activity time when in LISTEN state and received a message
+        if self._status == ChatStatus.LISTEN:
+            self._last_meta = msg.metadata
+            self._last_activity_time = time.time() * 1000
+
+        return {"status": self._status, "response": response}
+
+    async def _check_timeout_loop(
+        self, timeout_seconds: int = 300, check_interval: float = 10.0
+    ) -> None:
+        """
+        Background task to continuously check for connection timeout.
+
+        Args:
+            timeout_seconds: Timeout threshold in seconds (default: 5 minutes)
+            check_interval: How often to check for timeout in seconds (default: 10 seconds)
+        """
+        try:
+            while not self._stop_timeout_check:
+                await asyncio.sleep(check_interval)
+
+                # Only check timeout if _last_activity_time has been initialized
+                if self._last_activity_time > 0.0:
+                    current_time = time.time() * 1000
+                    if current_time - self._last_activity_time > timeout_seconds * 1000:
+                        logger.info(f"Session {self.key} timed out, setting status to MUTE")
+                        self._status = ChatStatus.MUTE
+                        # Reset _last_activity_time to avoid repeated triggers
+                        self._last_activity_time = 0.0
+                        if self.goodbye_response:
+                            content = random.choice(self.goodbye_response)
+                        else:
+                            content = "GoodBye"
+                        msg = OutboundMessage(
+                            channel=self._default_channel,
+                            chat_id=self._default_chat_id,
+                            content=content,
+                            metadata=self._last_meta,
+                        )
+                        await self._send_callback(msg)
+        except asyncio.CancelledError:
+            logger.debug(f"Timeout check loop cancelled for session {self.key}")
+        except Exception as e:
+            logger.error(f"Error in timeout check loop for session {self.key}: {e}")
+
+    async def stop_timeout_check(self) -> None:
+        """Stop the background timeout checking task."""
+        self._stop_timeout_check = True
+        if self._timeout_task:
+            try:
+                self._timeout_task.cancel()
+                await self._timeout_task
+            except asyncio.CancelledError:
+                pass
+            except Exception as e:
+                logger.error(f"Error stopping timeout check: {e}")
+            finally:
+                self._timeout_task = None
+
 
 class SessionManager:
     """
@@ -132,11 +248,12 @@ class SessionManager:
     Sessions are stored as JSONL files in the sessions directory.
     """
 
-    def __init__(self, workspace: Path):
+    def __init__(self, workspace: Path, config: SessionConfig):
         self.workspace = workspace
         self.sessions_dir = ensure_dir(self.workspace / "sessions")
         self.legacy_sessions_dir = get_legacy_sessions_dir()
         self._cache: dict[str, Session] = {}
+        self._config = config
 
     def _get_session_path(self, key: str) -> Path:
         """Get the file path for a session."""
@@ -164,6 +281,7 @@ class SessionManager:
         session = self._load(key)
         if session is None:
             session = Session(key=key)
+            session.setup(self._config)
 
         self._cache[key] = session
         return session
@@ -199,18 +317,24 @@ class SessionManager:
 
                     if data.get("_type") == "metadata":
                         metadata = data.get("metadata", {})
-                        created_at = datetime.fromisoformat(data["created_at"]) if data.get("created_at") else None
+                        created_at = (
+                            datetime.fromisoformat(data["created_at"])
+                            if data.get("created_at")
+                            else None
+                        )
                         last_consolidated = data.get("last_consolidated", 0)
                     else:
                         messages.append(data)
 
-            return Session(
+            session = Session(
                 key=key,
                 messages=messages,
                 created_at=created_at or datetime.now(),
                 metadata=metadata,
-                last_consolidated=last_consolidated
+                last_consolidated=last_consolidated,
             )
+            session.setup(self._config)
+            return session
         except Exception as e:
             logger.warning("Failed to load session {}: {}", key, e)
             return None
@@ -226,7 +350,7 @@ class SessionManager:
                 "created_at": session.created_at.isoformat(),
                 "updated_at": session.updated_at.isoformat(),
                 "metadata": session.metadata,
-                "last_consolidated": session.last_consolidated
+                "last_consolidated": session.last_consolidated,
             }
             f.write(json.dumps(metadata_line, ensure_ascii=False) + "\n")
             for msg in session.messages:
@@ -256,12 +380,14 @@ class SessionManager:
                         data = json.loads(first_line)
                         if data.get("_type") == "metadata":
                             key = data.get("key") or path.stem.replace("_", ":", 1)
-                            sessions.append({
-                                "key": key,
-                                "created_at": data.get("created_at"),
-                                "updated_at": data.get("updated_at"),
-                                "path": str(path)
-                            })
+                            sessions.append(
+                                {
+                                    "key": key,
+                                    "created_at": data.get("created_at"),
+                                    "updated_at": data.get("updated_at"),
+                                    "path": str(path),
+                                }
+                            )
             except Exception:
                 continue
 

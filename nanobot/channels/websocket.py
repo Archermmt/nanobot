@@ -4,14 +4,31 @@ import asyncio
 import json
 import threading
 from collections import OrderedDict
-from typing import Any
+from pathlib import Path
 
+from botpy import Any
 from loguru import logger
+from pydantic import Field
 
 from nanobot.bus.events import OutboundMessage
 from nanobot.bus.queue import MessageBus
 from nanobot.channels.base import BaseChannel
-from nanobot.config.schema import WebSocketConfig
+from nanobot.config.schema import Base
+from nanobot.utils.media import save_media
+
+
+class WebSocketConfig(Base):
+    """Generic WebSocket channel configuration."""
+
+    enabled: bool = False
+    server_url: str = "ws://localhost:8765"  # WebSocket server URL
+    auth_token: str = ""  # Authentication token for WebSocket connection
+    allow_from: list[str] = Field(default_factory=list)  # Allowed sender identifiers
+    reconnect_interval: int = 5  # Reconnection interval in seconds
+    heartbeat_interval: int = 30  # Heartbeat interval in seconds
+    as_server: bool = True  # If True, act as WebSocket server; if False, connect as client
+    frame_duration: int = 60  # Frame duration in milliseconds
+    cache_media: bool = False  # If True, save media files locally
 
 
 class WebSocketChannel(BaseChannel):
@@ -43,23 +60,33 @@ class WebSocketChannel(BaseChannel):
 
     name = "websocket"
 
+    @classmethod
+    def default_config(cls) -> dict[str, Any]:
+        return WebSocketConfig().model_dump(by_alias=True)
+
     def __init__(self, config: WebSocketConfig, bus: MessageBus):
+        """Initialize the WebSocket channel with the given configuration and message bus.
+
+        Args:
+            config: WebSocket channel configuration.
+            bus: Message bus for communication.
+        """
+        if isinstance(config, dict):
+            config = WebSocketConfig.model_validate(config)
         super().__init__(config, bus)
         self.config: WebSocketConfig = config
         self._ws = None
-        self._ws_thread: threading.Thread | None = None
-        self._processed_message_ids: OrderedDict[str, None] = (
-            OrderedDict()
-        )  # Ordered dedup cache
-        self._loop: asyncio.AbstractEventLoop | None = None
+        self._processed_message_ids: OrderedDict[str, None] = OrderedDict()  # Ordered dedup cache
+        # self._loop: asyncio.AbstractEventLoop | None = None
         self._heartbeat_task: asyncio.Task | None = None
         self._reconnect_task: asyncio.Task | None = None
         self._connected = False
+        self._mcp_result_queue: asyncio.Queue = asyncio.Queue()  # Queue for MCP results
 
     async def start(self) -> None:
         """Start the WebSocket channel with reconnection logic."""
         self._running = True
-        self._loop = asyncio.get_running_loop()
+        # self._loop = asyncio.get_running_loop()
 
         if self.config.as_server:
             # Act as WebSocket server
@@ -67,9 +94,7 @@ class WebSocketChannel(BaseChannel):
             await self._start_server()
         else:
             # Act as WebSocket client (connect to external server)
-            logger.info(
-                "Starting WebSocket client connecting to {}", self.config.server_url
-            )
+            logger.info("Starting WebSocket client connecting to {}", self.config.server_url)
             await self._connect_with_retry()
 
             # Keep running until stopped
@@ -115,10 +140,10 @@ class WebSocketChannel(BaseChannel):
 
     async def _start_server(self) -> None:
         """Start WebSocket server to accept client connections."""
-        import websockets
-
         # Parse server URL to get host and port
         from urllib.parse import urlparse
+
+        import websockets
 
         parsed = urlparse(self.config.server_url)
         host = parsed.hostname or "localhost"
@@ -128,9 +153,7 @@ class WebSocketChannel(BaseChannel):
 
         async def handler(websocket, *args):
             """Handle individual WebSocket connections."""
-            logger.info(
-                "New WebSocket client connected from {}", websocket.remote_address
-            )
+            logger.info("New WebSocket client connected from {}", websocket.remote_address)
             self._ws = websocket
             self._connected = True
 
@@ -138,9 +161,7 @@ class WebSocketChannel(BaseChannel):
                 # Handle authentication if token is required
                 if self.config.auth_token:
                     try:
-                        auth_msg = await asyncio.wait_for(
-                            websocket.recv(), timeout=10.0
-                        )
+                        auth_msg = await asyncio.wait_for(websocket.recv(), timeout=10.0)
                         auth_data = json.loads(auth_msg)
                         if (
                             auth_data.get("type") == "auth"
@@ -182,7 +203,8 @@ class WebSocketChannel(BaseChannel):
 
         # Start server
         try:
-            async with websockets.serve(handler, host, port):
+            # Set max_size to 20MB to support large file uploads
+            async with websockets.serve(handler, host, port, max_size=20 * 1024 * 1024):
                 logger.info("WebSocket server started and listening")
                 # Keep server running
                 while self._running:
@@ -198,7 +220,12 @@ class WebSocketChannel(BaseChannel):
                 break
 
             try:
-                msg_data = json.loads(message)
+                if isinstance(message, str):
+                    msg_data = json.loads(message)
+                elif isinstance(message, bytes):
+                    msg_data = {"type": "audio_clip", "bytes": message}
+                else:
+                    return
                 await self._process_incoming_message(msg_data)
             except json.JSONDecodeError as e:
                 logger.warning("Invalid JSON message received: {}", e)
@@ -225,9 +252,7 @@ class WebSocketChannel(BaseChannel):
             try:
                 import websockets
 
-                logger.info(
-                    "Connecting to WebSocket server at {}", self.config.server_url
-                )
+                logger.info("Connecting to WebSocket server at {}", self.config.server_url)
 
                 self._ws = await websockets.connect(self.config.server_url)
                 self._connected = True
@@ -284,15 +309,6 @@ class WebSocketChannel(BaseChannel):
     async def _process_incoming_message(self, msg_data: dict) -> None:
         """Process an incoming message from WebSocket."""
         msg_type = msg_data.get("type", "message")
-
-        if msg_type == "heartbeat":
-            # Respond to heartbeat
-            await self._send_heartbeat_response()
-            return
-        elif msg_type != "message":
-            # Ignore unknown message types
-            return
-
         # Extract message fields
         message_id = msg_data.get("message_id") or str(hash(str(msg_data)))
         sender_id = msg_data.get("sender_id", "unknown")
@@ -301,6 +317,71 @@ class WebSocketChannel(BaseChannel):
         media = msg_data.get("media", [])
         metadata = msg_data.get("metadata", {})
 
+        if msg_type == "audio_clip":
+            await self._handle_message(
+                sender_id=sender_id,
+                chat_id=chat_id,
+                content=msg_data["bytes"],
+                metadata={"msg_type": "audio_clip"},
+            )
+            return
+        if content == "/register_extern_tools":
+            mcp_tools, tools_data = [], metadata["tools"]
+            logger.info(f"Number of tools supported by client device: {len(tools_data)}")
+            for i, tool in enumerate(tools_data):
+                if not isinstance(tool, dict):
+                    continue
+                name = tool.get("name", "")
+                description = tool.get("description", "")
+                input_schema = {"type": "object", "properties": {}, "required": []}
+                if "inputSchema" in tool and isinstance(tool["inputSchema"], dict):
+                    schema = tool["inputSchema"]
+                    input_schema["type"] = schema.get("type", "object")
+                    input_schema["properties"] = schema.get("properties", {})
+                    input_schema["required"] = [
+                        s for s in schema.get("required", []) if isinstance(s, str)
+                    ]
+                new_tool = {
+                    "name": name,
+                    "description": description,
+                    "inputSchema": input_schema,
+                }
+                mcp_tools.append(new_tool)
+                logger.debug(f"Client tool #{i + 1}: {name}")
+            await self._handle_message(
+                sender_id=sender_id,
+                chat_id=chat_id,
+                content="/register_extern_tools",
+                metadata={
+                    "type": "websocket",
+                    "kwargs": {
+                        "websocket": self._ws,
+                        "timeout": 30,
+                        "result_queue": self._mcp_result_queue,
+                    },
+                    "tools": mcp_tools,
+                },
+            )
+            return
+        if msg_type == "heartbeat":
+            # Respond to heartbeat
+            await self._send_heartbeat_response()
+            return
+        if msg_type == "tool_call":
+            # Put result into queue for tool to fetch
+            try:
+                tool_name = msg_data.get("name") or metadata.get("tool_name")
+                await self._mcp_result_queue.put(
+                    {"msg_id": tool_name, "result": msg_data.get("result", {})}
+                )
+                logger.debug(f"Put tool call result into queue, tool_name={tool_name}")
+            except Exception as e:
+                logger.error(f"Failed to put tool call result into queue: {e}")
+        if msg_type != "message":
+            # Ignore unknown message types
+            return
+
+        meta_type = metadata.get("msg_type", "text")
         # Deduplication check
         if message_id in self._processed_message_ids:
             return
@@ -310,16 +391,63 @@ class WebSocketChannel(BaseChannel):
         while len(self._processed_message_ids) > 1000:
             self._processed_message_ids.popitem(last=False)
 
-        # Skip empty messages
-        if not content and not media:
+        # Skip empty messages (unless it's a media message)
+        if not content and not media and not metadata:
             return
 
+        media_dir = Path.home() / ".nanobot" / "media"
+        media_dir.mkdir(parents=True, exist_ok=True)
+        if not content and meta_type == "audio":
+            # Save media if cache_media is enabled
+            if self.config.cache_media and media:
+                for media_item in media:
+                    media_data, filename = media_item["data"], media_item.get("file_name", "")
+                    if isinstance(media_data, str) and media_data.startswith("data:"):
+                        try:
+                            file_path, filename = save_media(media_data, filename)
+                            logger.info("Saved audio file to: {}", file_path)
+                        except Exception as e:
+                            logger.error("Failed to save audio media: {}", e)
+            # Handle the message
+            await self._handle_message(
+                sender_id=sender_id,
+                chat_id=chat_id,
+                content=content,
+                media=media,
+                metadata=metadata,
+            )
+            return
+
+        # Handle base64-encoded media (images, audio, files)
+        # Convert base64 data to temporary files
+        content_parts = []
+        media_paths = []
+        if content:
+            content_parts.append(content)
+        elif media:
+            content_parts.append("Just save the following files, do nothing else: ")
+        if media:
+            for media_item in media:
+                media_data, filename = media_item["data"], media_item.get("file_name", "")
+                # Check if media is base64 data (data URL format: data:<mime>;base64,<data>)
+                if isinstance(media_data, str) and media_data.startswith("data:"):
+                    try:
+                        file_path, filename = save_media(media_data, filename)
+                        media_paths.append(str(file_path))
+                        content_parts.append(f"{filename}({meta_type}) saved to {file_path}")
+                    except Exception as e:
+                        logger.error("Failed to process base64 media: {}", e)
+                else:
+                    # Already a file path
+                    media_paths.append(media_item)
+
+        content = "\n".join(content_parts) if content_parts else ""
         # Forward to message bus
         await self._handle_message(
             sender_id=sender_id,
             chat_id=chat_id,
             content=content,
-            media=media,
+            media=media_paths,
             metadata=metadata,
         )
 
@@ -354,22 +482,58 @@ class WebSocketChannel(BaseChannel):
             logger.warning("WebSocket not connected, cannot send message")
             return
 
-        try:
-            # Prepare message data
-            message_data = {
-                "type": "message",
-                "message_id": f"msg_{hash(msg.content)}",
-                "sender_id": "bot",
-                "chat_id": msg.chat_id,
-                "content": msg.content,
-                "media": msg.media,
-                "metadata": msg.metadata,
-                "timestamp": asyncio.get_event_loop().time(),
-            }
+        if (
+            msg.metadata.get("msg_type", "text") == "audio"
+            and msg.metadata.get("encoder_type", "") == "opus"
+        ):
+            # Send opus back for testing
+            await self._ws.send(
+                json.dumps({"type": "tts", "state": "start", "session_id": msg.chat_id})
+            )
+            await self._ws.send(
+                json.dumps(
+                    {
+                        "type": "tts",
+                        "state": "sentence_start",
+                        "session_id": msg.chat_id,
+                        "text": msg.content,
+                    }
+                )
+            )
+            for media in msg.media:
+                await self._ws.send(media)
+            await self._ws.send(
+                json.dumps({"type": "tts", "state": "sentence_end", "session_id": msg.chat_id})
+            )
+            play_time = len(msg.media) * self.config.frame_duration / 1000.0
+            logger.debug(f"Sending audio message as opus frames, wait {play_time} s")
+            await asyncio.sleep(play_time)
+            await self._ws.send(
+                json.dumps({"type": "tts", "state": "stop", "session_id": msg.chat_id})
+            )
+        else:
+            try:
+                # Convert media bytes to base64 for JSON serialization
+                media_items = []
+                if msg.media:
+                    for media_item in msg.media:
+                        if isinstance(media_item, bytes):
+                            import base64
 
-            # Send message (works for both client and server mode)
-            await self._ws.send(json.dumps(message_data, ensure_ascii=False))
-            logger.debug("Sent message to chat_id: {}", msg.chat_id)
-
-        except Exception as e:
-            logger.error("Error sending WebSocket message: {}", e)
+                            media_items.append(base64.b64encode(media_item).decode("utf-8"))
+                        else:
+                            media_items.append(media_item)
+                message_data = {
+                    "type": "message",
+                    "message_id": f"msg_{hash(msg.content)}",
+                    "sender_id": "bot",
+                    "chat_id": msg.chat_id,
+                    "content": msg.content,
+                    "media": media_items,
+                    "metadata": msg.metadata,
+                    "timestamp": asyncio.get_event_loop().time(),
+                }
+                # Send message ( works for both client and server mode)
+                await self._ws.send(json.dumps(message_data, ensure_ascii=False))
+            except Exception as e:
+                logger.error("Error sending WebSocket message: {}", e)

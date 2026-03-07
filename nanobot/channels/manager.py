@@ -11,6 +11,7 @@ from nanobot.bus.events import OutboundMessage
 from nanobot.bus.queue import MessageBus
 from nanobot.channels.base import BaseChannel
 from nanobot.config.schema import Config
+from nanobot.utils.message import RetType
 
 # Retry delays for message sending (exponential backoff: 1s, 2s, 4s)
 _SEND_RETRY_DELAYS = (1, 2, 4)
@@ -44,7 +45,11 @@ class ChannelManager:
             section = getattr(self.config.channels, name, None)
             if section is None:
                 continue
-            enabled = section.get("enabled", False) if isinstance(section, dict) else getattr(section, "enabled", False)
+            enabled = (
+                section.get("enabled", False)
+                if isinstance(section, dict)
+                else getattr(section, "enabled", False)
+            )
             if not enabled:
                 continue
             try:
@@ -54,16 +59,6 @@ class ChannelManager:
                 logger.info("{} channel enabled", cls.display_name)
             except Exception as e:
                 logger.warning("{} channel not available: {}", name, e)
-
-        # WebSocket channel
-        if self.config.channels.websocket.enabled:
-            try:
-                from nanobot.channels.websocket import WebSocketChannel
-
-                self.channels["websocket"] = WebSocketChannel(self.config.channels.websocket, self.bus)
-                logger.info("WebSocket channel enabled")
-            except ImportError as e:
-                logger.warning("WebSocket channel not available: {}", e)
 
         self._validate_allow_from()
 
@@ -136,10 +131,16 @@ class ChannelManager:
                 else:
                     msg = await asyncio.wait_for(self.bus.consume_outbound(), timeout=1.0)
 
+                if msg.metadata.get("ret_type", RetType.NORMAL) == RetType.IGNORE:
+                    continue
+
                 if msg.metadata.get("_progress"):
                     if msg.metadata.get("_tool_hint") and not self.config.channels.send_tool_hints:
                         continue
-                    if not msg.metadata.get("_tool_hint") and not self.config.channels.send_progress:
+                    if (
+                        not msg.metadata.get("_tool_hint")
+                        and not self.config.channels.send_progress
+                    ):
                         continue
 
                 # Coalesce consecutive _stream_delta messages for the same (channel, chat_id)
@@ -167,7 +168,9 @@ class ChannelManager:
         elif not msg.metadata.get("_streamed"):
             await channel.send(msg)
 
-    def _coalesce_stream_deltas(self, first_msg: OutboundMessage) -> tuple[OutboundMessage, list[OutboundMessage]]:
+    def _coalesce_stream_deltas(
+        self, first_msg: OutboundMessage
+    ) -> tuple[OutboundMessage, list[OutboundMessage]]:
         """Merge consecutive _stream_delta messages for the same (channel, chat_id).
 
         This reduces the number of API calls when the queue has accumulated multiple
@@ -258,7 +261,10 @@ class ChannelManager:
 
     def get_status(self) -> dict[str, Any]:
         """Get status of all channels."""
-        return {name: {"enabled": True, "running": channel.is_running} for name, channel in self.channels.items()}
+        return {
+            name: {"enabled": True, "running": channel.is_running}
+            for name, channel in self.channels.items()
+        }
 
     @property
     def enabled_channels(self) -> list[str]:

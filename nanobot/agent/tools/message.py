@@ -68,8 +68,16 @@ class MessageTool(Tool):
                 },
                 "media": {
                     "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Optional: list of file paths to attach (images, audio, documents)"
+                    "items": {
+                        "anyOf": [
+                            {"type": "string"},
+                            {"type": "object", "properties": {
+                                "data": {"type": "string"},
+                                "file_name": {"type": "string"}
+                            }}
+                        ]
+                    },
+                    "description": "Optional: list of file paths or media objects to attach (images, audio, documents)"
                 }
             },
             "required": ["content"]

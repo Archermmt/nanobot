@@ -1,6 +1,7 @@
 """Configuration schema using Pydantic."""
 
 from pathlib import Path
+from pydoc import describe
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -26,7 +27,24 @@ class ChannelsConfig(Base):
 
     send_progress: bool = True  # stream agent's text progress to the channel
     send_tool_hints: bool = False  # stream tool-call hints (e.g. read_file("…"))
-    send_max_retries: int = Field(default=3, ge=0, le=10)  # Max delivery attempts (initial send included)
+    send_max_retries: int = Field(
+        default=3, ge=0, le=10
+    )  # Max delivery attempts (initial send included)
+
+
+class ModeConfig(Base):
+    """Configuration for agent mode."""
+
+    model: str = "anthropic/claude-opus-4-5"
+    describe: str = "This is a description of the mode."
+
+
+class AgentModes(Base):
+    """Configuration for agent modes."""
+
+    enabled: bool = False
+    default_mode: str = "auto"
+    models: dict[str, ModeConfig] = Field(default_factory=dict)
 
 
 class AgentDefaults(Base):
@@ -34,7 +52,9 @@ class AgentDefaults(Base):
 
     workspace: str = "~/.nanobot/workspace"
     model: str = "anthropic/claude-opus-4-5"
-    provider: str = "auto"  # Provider name (e.g. "anthropic", "openrouter") or "auto" for auto-detection
+    provider: str = (
+        "auto"  # Provider name (e.g. "anthropic", "openrouter") or "auto" for auto-detection
+    )
     max_tokens: int = 8192
     context_window_tokens: int = 65_536
     temperature: float = 0.1
@@ -47,6 +67,7 @@ class AgentsConfig(Base):
     """Agent configuration."""
 
     defaults: AgentDefaults = Field(default_factory=AgentDefaults)
+    modes: AgentModes = Field(default_factory=AgentModes)
 
 
 class ProviderConfig(Base):
@@ -61,7 +82,9 @@ class ProvidersConfig(Base):
     """Configuration for LLM providers."""
 
     custom: ProviderConfig = Field(default_factory=ProviderConfig)  # Any OpenAI-compatible endpoint
-    azure_openai: ProviderConfig = Field(default_factory=ProviderConfig)  # Azure OpenAI (model = deployment name)
+    azure_openai: ProviderConfig = Field(
+        default_factory=ProviderConfig
+    )  # Azure OpenAI (model = deployment name)
     anthropic: ProviderConfig = Field(default_factory=ProviderConfig)
     openai: ProviderConfig = Field(default_factory=ProviderConfig)
     openrouter: ProviderConfig = Field(default_factory=ProviderConfig)
@@ -80,11 +103,21 @@ class ProvidersConfig(Base):
     aihubmix: ProviderConfig = Field(default_factory=ProviderConfig)  # AiHubMix API gateway
     siliconflow: ProviderConfig = Field(default_factory=ProviderConfig)  # SiliconFlow (硅基流动)
     volcengine: ProviderConfig = Field(default_factory=ProviderConfig)  # VolcEngine (火山引擎)
-    volcengine_coding_plan: ProviderConfig = Field(default_factory=ProviderConfig)  # VolcEngine Coding Plan
-    byteplus: ProviderConfig = Field(default_factory=ProviderConfig)  # BytePlus (VolcEngine international)
-    byteplus_coding_plan: ProviderConfig = Field(default_factory=ProviderConfig)  # BytePlus Coding Plan
-    openai_codex: ProviderConfig = Field(default_factory=ProviderConfig, exclude=True)  # OpenAI Codex (OAuth)
-    github_copilot: ProviderConfig = Field(default_factory=ProviderConfig, exclude=True)  # Github Copilot (OAuth)
+    volcengine_coding_plan: ProviderConfig = Field(
+        default_factory=ProviderConfig
+    )  # VolcEngine Coding Plan
+    byteplus: ProviderConfig = Field(
+        default_factory=ProviderConfig
+    )  # BytePlus (VolcEngine international)
+    byteplus_coding_plan: ProviderConfig = Field(
+        default_factory=ProviderConfig
+    )  # BytePlus Coding Plan
+    openai_codex: ProviderConfig = Field(
+        default_factory=ProviderConfig, exclude=True
+    )  # OpenAI Codex (OAuth)
+    github_copilot: ProviderConfig = Field(
+        default_factory=ProviderConfig, exclude=True
+    )  # Github Copilot (OAuth)
 
 
 class HeartbeatConfig(Base):
@@ -110,12 +143,15 @@ class WebSearchConfig(Base):
     api_key: str = ""
     base_url: str = ""  # SearXNG base URL
     max_results: int = 5
+    provider: str = "brave"
 
 
 class WebToolsConfig(Base):
     """Web tools configuration."""
 
-    proxy: str | None = None  # HTTP/SOCKS5 proxy URL, e.g. "http://127.0.0.1:7890" or "socks5://127.0.0.1:1080"
+    proxy: str | None = (
+        None  # HTTP/SOCKS5 proxy URL, e.g. "http://127.0.0.1:7890" or "socks5://127.0.0.1:1080"
+    )
     search: WebSearchConfig = Field(default_factory=WebSearchConfig)
 
 
@@ -151,6 +187,78 @@ class ToolsConfig(Base):
     mcp_servers: dict[str, MCPServerConfig] = Field(default_factory=dict)
 
 
+class ASRHandlerConfig(Base):
+    """Configuration for ASR (Automatic Speech Recognition) handler."""
+
+    enabled: bool = False
+    handler_type: str = "funasr"  # vosk or custom
+    model: str = "paraformer-zh"
+
+
+class VADHandlerConfig(Base):
+    """Configuration for VAD (Voice Activity Detection) handler."""
+
+    enabled: bool = False
+    handler_type: str = "silero"  # silero or custom
+    audio_format: str = "opus"  # opus or pcm
+    model: str = "~/.nanobot/models/silero_vad"  # Path to Silero VAD model directory
+    threshold: float = 0.5  # High threshold for voice detection
+    threshold_low: float = 0.2  # Low threshold for voice detection
+    min_silence_duration_ms: int = 1000  # Silence duration in ms to consider speech ended
+
+
+class TTSHandlerConfig(Base):
+    """Configuration for TTS (Text-to-Speech) handler."""
+
+    enabled: bool = False
+    handler_type: str = "edge_tts"  # edge_tts or custom
+    depends_folder: str = "~/.nanobot/depends/tts"  # Depends folder for voice configuration
+    output_dir: str = "~/.nanobot/media"
+    model: str | None = None  # Model name for TTS service (e.g., cosyvoice-v3.5-plus for Qwen TTS)
+    voice: str = "zh-CN-XiaoxiaoNeural"
+    audio_format: str = "opus"  # Edge TTS returns mp3 format
+    sample_rate: int = 16000
+
+
+class HandlersConfig(Base):
+    """Configuration for input handlers."""
+
+    asr: ASRHandlerConfig | None = None
+    vad: VADHandlerConfig | None = None
+    tts: TTSHandlerConfig | None = None
+
+    def model_post_init(self, __context):
+        if self.asr is None:
+            self.asr = ASRHandlerConfig()
+        if self.vad is None:
+            self.vad = VADHandlerConfig()
+        if self.tts is None:
+            self.tts = TTSHandlerConfig()
+
+
+class BusConfig(Base):
+    """Configuration for MessageBus."""
+
+    handlers: HandlersConfig | None = None
+
+    def model_post_init(self, __context):
+        if self.handlers is None:
+            self.handlers = HandlersConfig()
+
+
+class SessionConfig(BaseSettings):
+    """Configuration for a single session with wake word detection."""
+
+    wakeup_words: list[str] = Field(default_factory=list)  # Wake words to trigger response
+    wakeup_response: list[str] = Field(default_factory=list)  # Responses when wake word detected
+    goodbye_words: list[str] = Field(default_factory=list)  # Goodbye words to trigger response
+    goodbye_response: list[str] = Field(
+        default_factory=list
+    )  # Responses when goodbye word detected
+    timeout_seconds: int = 300  # Timeout threshold in seconds (default: 5 minutes)
+    check_interval: float = 10.0  # How often to check for timeout in seconds (default: 10 seconds)
+
+
 class Config(BaseSettings):
     """Root configuration for nanobot."""
 
@@ -159,13 +267,17 @@ class Config(BaseSettings):
     providers: ProvidersConfig = Field(default_factory=ProvidersConfig)
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
     tools: ToolsConfig = Field(default_factory=ToolsConfig)
+    bus: BusConfig = Field(default_factory=BusConfig)
+    session: SessionConfig = Field(default_factory=SessionConfig)
 
     @property
     def workspace_path(self) -> Path:
         """Get expanded workspace path."""
         return Path(self.agents.defaults.workspace).expanduser()
 
-    def _match_provider(self, model: str | None = None) -> tuple["ProviderConfig | None", str | None]:
+    def _match_provider(
+        self, model: str | None = None
+    ) -> tuple["ProviderConfig | None", str | None]:
         """Match provider config and its registry name. Returns (config, spec_name)."""
         from nanobot.providers.registry import PROVIDERS, find_by_name
 

@@ -36,7 +36,9 @@ class ToolCallRequest:
         if self.provider_specific_fields:
             tool_call["provider_specific_fields"] = self.provider_specific_fields
         if self.function_provider_specific_fields:
-            tool_call["function"]["provider_specific_fields"] = self.function_provider_specific_fields
+            tool_call["function"]["provider_specific_fields"] = (
+                self.function_provider_specific_fields
+            )
         return tool_call
 
 
@@ -112,7 +114,11 @@ class LLMProvider(ABC):
 
             if isinstance(content, str) and not content:
                 clean = dict(msg)
-                clean["content"] = None if (msg.get("role") == "assistant" and msg.get("tool_calls")) else "(empty)"
+                clean["content"] = (
+                    None
+                    if (msg.get("role") == "assistant" and msg.get("tool_calls"))
+                    else "(empty)"
+                )
                 result.append(clean)
                 continue
 
@@ -308,7 +314,9 @@ class LLMProvider(ABC):
             if not self._is_transient_error(response.content):
                 stripped = self._strip_image_content(messages)
                 if stripped is not None:
-                    logger.warning("Non-transient LLM error with image content, retrying without images")
+                    logger.warning(
+                        "Non-transient LLM error with image content, retrying without images"
+                    )
                     return await self._safe_chat_stream(**{**kw, "messages": stripped})
                 return response
 
@@ -365,7 +373,9 @@ class LLMProvider(ABC):
             if not self._is_transient_error(response.content):
                 stripped = self._strip_image_content(messages)
                 if stripped is not None:
-                    logger.warning("Non-transient LLM error with image content, retrying without images")
+                    logger.warning(
+                        "Non-transient LLM error with image content, retrying without images"
+                    )
                     return await self._safe_chat(**{**kw, "messages": stripped})
                 return response
 
@@ -383,8 +393,4 @@ class LLMProvider(ABC):
     @abstractmethod
     def get_default_model(self) -> str:
         """Get the default model for this provider."""
-        pass
-
-    def change_model(self, config: Config, model: str):
-        """Change the default model for this provider."""
         pass

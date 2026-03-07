@@ -9,6 +9,8 @@ from contextlib import contextmanager, nullcontext
 from pathlib import Path
 from typing import Any
 
+from dotenv import load_dotenv
+
 # Force UTF-8 encoding for Windows console
 if sys.platform == "win32":
     if sys.stdout.encoding != "utf-8":
@@ -274,8 +276,12 @@ def onboard(
             config = _apply_workspace_override(load_config(config_path))
         else:
             console.print(f"[yellow]Config already exists at {config_path}[/yellow]")
-            console.print("  [bold]y[/bold] = overwrite with defaults (existing values will be lost)")
-            console.print("  [bold]N[/bold] = refresh config, keeping existing values and adding new fields")
+            console.print(
+                "  [bold]y[/bold] = overwrite with defaults (existing values will be lost)"
+            )
+            console.print(
+                "  [bold]N[/bold] = refresh config, keeping existing values and adding new fields"
+            )
             if typer.confirm("Overwrite?"):
                 config = _apply_workspace_override(Config())
                 save_config(config, config_path)
@@ -283,7 +289,9 @@ def onboard(
             else:
                 config = _apply_workspace_override(load_config(config_path))
                 save_config(config, config_path)
-                console.print(f"[green]✓[/green] Config refreshed at {config_path} (existing values preserved)")
+                console.print(
+                    f"[green]✓[/green] Config refreshed at {config_path} (existing values preserved)"
+                )
     else:
         config = _apply_workspace_override(Config())
         # In wizard mode, don't save yet - the wizard will handle saving if should_save=True
@@ -333,7 +341,9 @@ def onboard(
         console.print(f"  1. Add your API key to [cyan]{config_path}[/cyan]")
         console.print("     Get one at: https://openrouter.ai/keys")
         console.print(f"  2. Chat: [cyan]{agent_cmd}[/cyan]")
-    console.print("\n[dim]Want Telegram/WhatsApp? See: https://github.com/HKUDS/nanobot#-chat-apps[/dim]")
+    console.print(
+        "\n[dim]Want Telegram/WhatsApp? See: https://github.com/HKUDS/nanobot#-chat-apps[/dim]"
+    )
 
 
 def _merge_missing_defaults(existing: Any, defaults: Any) -> Any:
@@ -382,67 +392,87 @@ def _make_provider(config: Config):
     from nanobot.providers.base import GenerationSettings
     from nanobot.providers.registry import find_by_name
 
-    model = config.agents.defaults.model
-    provider_name = config.get_provider_name(model)
-    p = config.get_provider(model)
-    spec = find_by_name(provider_name) if provider_name else None
-    backend = spec.backend if spec else "openai_compat"
+    def _create_provider(model):
+        provider_name = config.get_provider_name(model)
+        p = config.get_provider(model)
+        spec = find_by_name(provider_name) if provider_name else None
+        backend = spec.backend if spec else "openai_compat"
 
-    # --- validation ---
-    if backend == "azure_openai":
-        if not p or not p.api_key or not p.api_base:
-            console.print("[red]Error: Azure OpenAI requires api_key and api_base.[/red]")
-            console.print("Set them in ~/.nanobot/config.json under providers.azure_openai section")
-            console.print("Use the model field to specify the deployment name.")
-            raise typer.Exit(1)
-    elif backend == "openai_compat" and not model.startswith("bedrock/"):
-        needs_key = not (p and p.api_key)
-        exempt = spec and (spec.is_oauth or spec.is_local or spec.is_direct)
-        if needs_key and not exempt:
-            console.print("[red]Error: No API key configured.[/red]")
-            console.print("Set one in ~/.nanobot/config.json under providers section")
-            raise typer.Exit(1)
+        # --- validation ---
+        if backend == "azure_openai":
+            if not p or not p.api_key or not p.api_base:
+                console.print("[red]Error: Azure OpenAI requires api_key and api_base.[/red]")
+                console.print(
+                    "Set them in ~/.nanobot/config.json under providers.azure_openai section"
+                )
+                console.print("Use the model field to specify the deployment name.")
+                raise typer.Exit(1)
+        elif backend == "openai_compat" and not model.startswith("bedrock/"):
+            needs_key = not (p and p.api_key)
+            exempt = spec and (spec.is_oauth or spec.is_local or spec.is_direct)
+            if needs_key and not exempt:
+                console.print("[red]Error: No API key configured.[/red]")
+                console.print("Set one in ~/.nanobot/config.json under providers section")
+                raise typer.Exit(1)
 
-    # --- instantiation by backend ---
-    if backend == "openai_codex":
-        from nanobot.providers.openai_codex_provider import OpenAICodexProvider
+        # --- instantiation by backend ---
+        if backend == "openai_codex":
+            from nanobot.providers.openai_codex_provider import OpenAICodexProvider
 
-        provider = OpenAICodexProvider(default_model=model)
-    elif backend == "azure_openai":
-        from nanobot.providers.azure_openai_provider import AzureOpenAIProvider
+            provider = OpenAICodexProvider(default_model=model)
+        elif backend == "azure_openai":
+            from nanobot.providers.azure_openai_provider import AzureOpenAIProvider
 
-        provider = AzureOpenAIProvider(
-            api_key=p.api_key,
-            api_base=p.api_base,
-            default_model=model,
+            provider = AzureOpenAIProvider(
+                api_key=p.api_key, api_base=p.api_base, default_model=model
+            )
+        elif backend == "anthropic":
+            from nanobot.providers.anthropic_provider import AnthropicProvider
+
+            provider = AnthropicProvider(
+                api_key=p.api_key if p else None,
+                api_base=config.get_api_base(model),
+                default_model=model,
+                extra_headers=p.extra_headers if p else None,
+            )
+        else:
+            from nanobot.providers.openai_compat_provider import OpenAICompatProvider
+
+            if model.startswith(provider_name):
+                default_model = model[len(provider_name) + 1 :]
+            else:
+                default_model = model
+
+            provider = OpenAICompatProvider(
+                api_key=p.api_key if p else None,
+                api_base=config.get_api_base(model),
+                default_model=default_model,
+                extra_headers=p.extra_headers if p else None,
+                spec=spec,
+            )
+
+        defaults = config.agents.defaults
+        provider.generation = GenerationSettings(
+            temperature=defaults.temperature,
+            max_tokens=defaults.max_tokens,
+            reasoning_effort=defaults.reasoning_effort,
         )
-    elif backend == "anthropic":
-        from nanobot.providers.anthropic_provider import AnthropicProvider
+        return provider
 
-        provider = AnthropicProvider(
-            api_key=p.api_key if p else None,
-            api_base=config.get_api_base(model),
-            default_model=model,
-            extra_headers=p.extra_headers if p else None,
-        )
-    else:
-        from nanobot.providers.openai_compat_provider import OpenAICompatProvider
+    if not config.agents.modes.enabled:
+        return _create_provider(config.agents.defaults.model)
+    from nanobot.providers.providers_manager import ProvidersManager
 
-        provider = OpenAICompatProvider(
-            api_key=p.api_key if p else None,
-            api_base=config.get_api_base(model),
-            default_model=model,
-            extra_headers=p.extra_headers if p else None,
-            spec=spec,
-        )
-
-    defaults = config.agents.defaults
-    provider.generation = GenerationSettings(
-        temperature=defaults.temperature,
-        max_tokens=defaults.max_tokens,
-        reasoning_effort=defaults.reasoning_effort,
+    modes = {
+        k: {"provider": _create_provider(v.model), "describe": v.describe}
+        for k, v in config.agents.modes.models.items()
+    }
+    return ProvidersManager(
+        config,
+        modes,
+        default_mode=config.agents.modes.default_mode,
+        provider_creator=_create_provider,
     )
-    return provider
 
 
 def _load_runtime_config(config: str | None = None, workspace: str | None = None) -> Config:
@@ -477,7 +507,10 @@ def _warn_deprecated_config_keys(config_path: Path | None) -> None:
     except Exception:
         return
     if "memoryWindow" in raw.get("agents", {}).get("defaults", {}):
-        console.print("[dim]Hint: `memoryWindow` in your config is no longer used " "and can be safely removed.[/dim]")
+        console.print(
+            "[dim]Hint: `memoryWindow` in your config is no longer used "
+            "and can be safely removed.[/dim]"
+        )
 
 
 def _migrate_cron_store(config: "Config") -> None:
@@ -520,13 +553,14 @@ def gateway(
         logging.basicConfig(level=logging.DEBUG)
 
     config = _load_runtime_config(config, workspace)
+    load_dotenv(dotenv_path=config.workspace_path / ".env")
     port = port if port is not None else config.gateway.port
 
     console.print(f"{__logo__} Starting nanobot gateway version {__version__} on port {port}...")
     sync_workspace_templates(config.workspace_path)
-    bus = MessageBus()
+    bus = MessageBus(config.bus)
     provider = _make_provider(config)
-    session_manager = SessionManager(config.workspace_path)
+    session_manager = SessionManager(config.workspace_path, config.session)
 
     # Preserve existing single-workspace installs, but keep custom workspaces clean.
     if is_default_workspace(config.workspace_path):
@@ -660,7 +694,9 @@ def gateway(
         channel, chat_id = _pick_heartbeat_target()
         if channel == "cli":
             return  # No external channel available to deliver to
-        await bus.publish_outbound(OutboundMessage(channel=channel, chat_id=chat_id, content=response))
+        await bus.publish_outbound(
+            OutboundMessage(channel=channel, chat_id=chat_id, content=response)
+        )
 
     hb_cfg = config.gateway.heartbeat
     heartbeat = HeartbeatService(
@@ -682,8 +718,8 @@ def gateway(
     cron_status = cron.status()
     if cron_status["jobs"] > 0:
         console.print(f"[green]✓[/green] Cron: {cron_status['jobs']} scheduled jobs")
-
-    console.print(f"[green]✓[/green] Heartbeat: every {hb_cfg.interval_s}s")
+    if hb_cfg.enabled:
+        console.print(f"[green]✓[/green] Heartbeat: every {hb_cfg.interval_s}s")
 
     async def run():
         try:
@@ -721,8 +757,12 @@ def agent(
     session_id: str = typer.Option("cli:direct", "--session", "-s", help="Session ID"),
     workspace: str | None = typer.Option(None, "--workspace", "-w", help="Workspace directory"),
     config: str | None = typer.Option(None, "--config", "-c", help="Config file path"),
-    markdown: bool = typer.Option(True, "--markdown/--no-markdown", help="Render assistant output as Markdown"),
-    logs: bool = typer.Option(False, "--logs/--no-logs", help="Show nanobot runtime logs during chat"),
+    markdown: bool = typer.Option(
+        True, "--markdown/--no-markdown", help="Render assistant output as Markdown"
+    ),
+    logs: bool = typer.Option(
+        False, "--logs/--no-logs", help="Show nanobot runtime logs during chat"
+    ),
 ):
     """Interact with the agent directly."""
     from loguru import logger
@@ -732,9 +772,10 @@ def agent(
     from nanobot.cron.service import CronService
 
     config = _load_runtime_config(config, workspace)
+    load_dotenv(dotenv_path=config.workspace_path / ".env")
     sync_workspace_templates(config.workspace_path)
 
-    bus = MessageBus()
+    bus = MessageBus(config.bus)
     provider = _make_provider(config)
 
     # Preserve existing single-workspace installs, but keep custom workspaces clean.
@@ -804,7 +845,9 @@ def agent(
         from nanobot.bus.events import InboundMessage
 
         _init_prompt_session()
-        console.print(f"{__logo__} Interactive mode (type [bold]exit[/bold] or [bold]Ctrl+C[/bold] to quit)\n")
+        console.print(
+            f"{__logo__} Interactive mode (type [bold]exit[/bold] or [bold]Ctrl+C[/bold] to quit)\n"
+        )
 
         if ":" in session_id:
             cli_channel, cli_chat_id = session_id.split(":", 1)
@@ -1042,7 +1085,9 @@ def _get_bridge_dir() -> Path:
 @channels_app.command("login")
 def channels_login(
     channel_name: str = typer.Argument(..., help="Channel name (e.g. weixin, whatsapp)"),
-    force: bool = typer.Option(False, "--force", "-f", help="Force re-authentication even if already logged in"),
+    force: bool = typer.Option(
+        False, "--force", "-f", help="Force re-authentication even if already logged in"
+    ),
 ):
     """Authenticate with a channel via QR code or other interactive login."""
     from nanobot.channels.registry import discover_all
@@ -1127,8 +1172,12 @@ def status():
 
     console.print(f"{__logo__} nanobot Status\n")
 
-    console.print(f"Config: {config_path} {'[green]✓[/green]' if config_path.exists() else '[red]✗[/red]'}")
-    console.print(f"Workspace: {workspace} {'[green]✓[/green]' if workspace.exists() else '[red]✗[/red]'}")
+    console.print(
+        f"Config: {config_path} {'[green]✓[/green]' if config_path.exists() else '[red]✗[/red]'}"
+    )
+    console.print(
+        f"Workspace: {workspace} {'[green]✓[/green]' if workspace.exists() else '[red]✗[/red]'}"
+    )
 
     if config_path.exists():
         from nanobot.providers.registry import PROVIDERS
@@ -1150,7 +1199,9 @@ def status():
                     console.print(f"{spec.label}: [dim]not set[/dim]")
             else:
                 has_key = bool(p.api_key)
-                console.print(f"{spec.label}: {'[green]✓[/green]' if has_key else '[dim]not set[/dim]'}")
+                console.print(
+                    f"{spec.label}: {'[green]✓[/green]' if has_key else '[dim]not set[/dim]'}"
+                )
 
 
 # ============================================================================
@@ -1174,7 +1225,9 @@ def _register_login(name: str):
 
 @provider_app.command("login")
 def provider_login(
-    provider: str = typer.Argument(..., help="OAuth provider (e.g. 'openai-codex', 'github-copilot')"),
+    provider: str = typer.Argument(
+        ..., help="OAuth provider (e.g. 'openai-codex', 'github-copilot')"
+    ),
 ):
     """Authenticate with an OAuth provider."""
     from nanobot.providers.registry import PROVIDERS
@@ -1214,7 +1267,9 @@ def _login_openai_codex() -> None:
         if not (token and token.access):
             console.print("[red]✗ Authentication failed[/red]")
             raise typer.Exit(1)
-        console.print(f"[green]✓ Authenticated with OpenAI Codex[/green]  [dim]{token.account_id}[/dim]")
+        console.print(
+            f"[green]✓ Authenticated with OpenAI Codex[/green]  [dim]{token.account_id}[/dim]"
+        )
     except ImportError:
         console.print("[red]oauth_cli_kit not installed. Run: pip install oauth-cli-kit[/red]")
         raise typer.Exit(1)

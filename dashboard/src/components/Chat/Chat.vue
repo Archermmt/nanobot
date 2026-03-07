@@ -1,7 +1,10 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
 import MessageList from './MessageList.vue'
 import ChatInput from './ChatInput.vue'
+import { getAudioPlayer } from '../../js/audio/player.js'
+import { handleToolCallMessage } from '../../js/tools/tools.js'
+import WebsocketTools from '../../js/tools/websocket_tools.json'
 
 interface Message {
   role: 'user' | 'assistant' | 'system'
@@ -9,192 +12,401 @@ interface Message {
   timestamp: number
   imageUrl?: string
   audioUrl?: string
+  media?: Array<{
+    data: string
+    file_name: string
+  }>
+  metadata?: {
+    msg_type?: string
+    file_type?: string
+    _task_ref?: string
+    _hide_message?: boolean
+    _progress?: boolean
+    isPlayingOpus?: boolean
+  }
 }
 
-const emit = defineEmits(['send', 'new-chat', 'clear-chat', 'upload-image', 'upload-audio', 'upload-file', 'ws-status-change'])
+const props = defineProps<{
+  showProgressMessages?: boolean
+  isOnlineChatOn?: boolean
+  msgHandlers?: string[]
+}>()
 
+const emit = defineEmits(['status-update', 'chat-status-change'])
 const messages = ref<Message[]>([])
-const isLoading = ref(false)
+const chatStatus = ref<string>("")
 const sessionId = ref(`session_${Date.now()}`)
+const senderId = ref('web_user')  // Global sender ID
+const chatId = ref('default')  // Global chat ID
 const currentAudio = ref<HTMLAudioElement | null>(null)
 const currentTimeoutId = ref<number | null>(null)
+const chatInputRef = ref<InstanceType<typeof ChatInput> | null>(null)
+const pendingCommandsCount = ref(0)  // Track pending commands during connection
 
-// WebSocket connection related state
-const wsUrl = ref('ws://localhost:8765')
-const isConnected = ref(false)
-const isConnecting = ref(false)
-const connectionError = ref<string | null>(null)
+// Global audio playing state shared across components
+const playingAudioUrl = ref<string | null>(null)
 
+// WebSocket instance (managed by App.vue)
 let ws: WebSocket | null = null
+const isConnected = ref(false)
 
-// 计算 property: connection status text
-const connectionStatus = computed(() => {
-  if (isConnecting.value) return 'Connecting...'
-  if (isConnected.value) return 'Connected'
-  if (connectionError.value) return `Connection failed: ${connectionError.value}`
-  return 'Disconnected'
-})
+// Audio player instance
+const audioPlayer = getAudioPlayer()
+const ttsSentenceCount = ref(0)
 
-const connectWebSocket = () => {
-  if (isConnecting.value || isConnected.value) return
+// Method to set WebSocket instance from App.vue
+const setWebSocket = (websocket: WebSocket | null) => {
+  ws = websocket
+  isConnected.value = websocket !== null
+}
 
-  isConnecting.value = true
-  connectionError.value = null
+// Unified function to handle task_ref completion logic
+const handleTaskRefCompletion = (taskRef: string) => {
+  if (!taskRef) return
 
-  // 发出状态变化事件
-  emit('ws-status-change', {
-    isConnected: false,
-    isConnecting: true,
-    url: wsUrl.value
-  })
-
-  ws = new WebSocket(wsUrl.value)
-
-  ws.onopen = () => {
-    console.log('✅ WebSocket connected to WebSocketChannel')
-    isConnecting.value = false
-    isConnected.value = true
-    connectionError.value = null
-
-    // 发出状态变化事件
-    emit('ws-status-change', {
-      isConnected: true,
-      isConnecting: false,
-      url: wsUrl.value
-    })
-
-    // 发送认证信息（如果需要）
-    if (ws) {
-      const authMsg = {
-        type: 'auth',
-        token: 'your_auth_token_here'
-      }
-      ws.send(JSON.stringify(authMsg))
+  if (pendingCommandsCount.value > 0) {
+    pendingCommandsCount.value--
+    console.log('⏳ Pending commands:', pendingCommandsCount.value)
+    // Clear status when all commands are completed
+    if (pendingCommandsCount.value === 0) {
+      chatStatus.value = ""
+      console.log('✅ All initialization commands completed')
     }
   }
+}
 
-  ws.onmessage = (event) => {
-    try {
-      const data = JSON.parse(event.data)
-      console.log('📥 Received message:', data)
+// Handle WebSocket message parsing and routing
+const handleWebSocketMessage = (event: MessageEvent) => {
+  try {
+    // Check if this is binary data (opus audio frame)
+    if (event.data instanceof Blob || event.data instanceof ArrayBuffer) {
+      handleOpusAudioFrame(event.data)
+      return
+    }
 
-      // Clear timeout when receiving any message
-      if (currentTimeoutId.value) {
-        clearTimeout(currentTimeoutId.value)
-        currentTimeoutId.value = null
+    const data = JSON.parse(event.data)
+    console.log('📥 Received message:', data)
+
+    // Handle TTS messages for opus audio streaming
+    if (data.type === 'tts') {
+      handleTTSMessage(data)
+      return
+    }
+
+    // Handle MCP messages
+    if (data.type === 'tool_call') {
+      handleToolCallMessage(data, ws)
+      return
+    }
+
+    // Clear timeout when receiving any message
+    if (currentTimeoutId.value) {
+      clearTimeout(currentTimeoutId.value)
+      currentTimeoutId.value = null
+    }
+
+    if (data.type === 'message') {
+      // Handle task completion
+      handleTaskRefCompletion(data.metadata?._task_ref)
+
+      // Check if this is a status response
+      if (data.content && data.metadata?._task_ref === 'status') {
+        // This is a status update, emit it for StatusBar and App.vue
+        try {
+          const statusData = JSON.parse(data.content)
+          console.log('🔊 Status update:', statusData)
+          // Emit to parent component (App.vue) to update global state
+          emit('status-update', statusData)
+        } catch (e) {
+          console.log('Status message content:', data.content)
+        }
       }
 
-      if (data.type === 'message') {
-        messages.value.push({
+      // Check if this is a history response (JSON array)
+      if (data.content && data.metadata?._task_ref === 'history') {
+        try {
+          const historyData = JSON.parse(data.content)
+          if (Array.isArray(historyData)) {
+            console.log('📚 Loaded history:', historyData.length, 'messages')
+
+            // Extract user messages and emit to ChatInput
+            const userMessages = historyData
+              .filter((msg: any) => msg.role === 'user' && msg.content && msg.content.trim() && !msg.content.startsWith('/'))
+              .map((msg: any) => msg.content)
+
+            console.log('✅ Extracted', userMessages.length, 'user messages for history')
+            // Call ChatInput method directly via ref
+            if (chatInputRef.value) {
+              chatInputRef.value.handleUpdateUserHistory(userMessages)
+            }
+
+            // Count messages by role before displaying
+            const userMsgCount = historyData.filter((msg: any) => msg.role === 'user').length
+            const assistantMsgCount = historyData.filter((msg: any) => msg.role === 'assistant').length
+            const systemMsgCount = historyData.filter((msg: any) => msg.role === 'system').length
+
+            // Also display all history messages in the chat window
+            historyData.forEach((msg: any) => {
+              // Skip messages marked as hidden
+              if (msg.metadata?._hide_message) {
+                return
+              }
+
+              // Handle image messages from media
+              let imageUrl: string | undefined
+              if (msg.media && msg.media.length > 0) {
+                const msgType = msg.metadata?.msg_type
+                const fileType = msg.metadata?.file_type
+
+                // Check if this is an image message
+                if (msgType === 'image' || (fileType && fileType.startsWith('image/'))) {
+                  // Extract image from media data
+                  const mediaItem = msg.media[0]
+                  if (mediaItem && mediaItem.data) {
+                    imageUrl = mediaItem.data
+                  }
+                }
+              }
+
+              messages.value.push({
+                role: msg.role || 'assistant',
+                content: msg.content || 'Message received',
+                timestamp: msg.timestamp || Date.now(),
+                imageUrl: imageUrl,
+                media: msg.media,
+                metadata: msg.metadata
+              })
+            })
+
+            console.log('✅ Displayed', messages.value.length, 'messages in chat window')
+
+            // Show statistics message
+            messages.value.push({
+              role: 'assistant',
+              content: `📊 History loaded: ${userMsgCount} user messages, ${assistantMsgCount} assistant messages${systemMsgCount > 0 ? `, ${systemMsgCount} system messages` : ''}`,
+              timestamp: Date.now()
+            })
+          }
+        } catch (e) {
+          console.error('Failed to parse history:', e)
+        }
+        return  // Don't create duplicate message entry
+      }
+
+      // Handle image and audio messages from media
+      let imageUrl: string | undefined
+      let audioUrl: string | undefined
+
+      if (data.media && data.media.length > 0) {
+        const msgType = data.metadata?.msg_type
+        const fileType = data.metadata?.file_type
+
+        // Check if this is an image message
+        if (msgType === 'image' || (fileType && fileType.startsWith('image/'))) {
+          // Extract image from media data
+          const mediaItem = data.media[0]
+          if (mediaItem && typeof mediaItem === 'string') {
+            imageUrl = mediaItem
+          }
+        }
+
+        // Check if this is an audio message
+        if (msgType === 'audio' || (fileType && fileType.startsWith('audio/'))) {
+          // Extract audio from media data
+          const mediaItem = data.media[0]
+          if (mediaItem && typeof mediaItem === 'string') {
+            // Convert base64 to blob URL for playback
+            const base64Data = mediaItem
+            const byteCharacters = atob(base64Data)
+            const byteNumbers = new Array(byteCharacters.length)
+            for (let i = 0; i < byteCharacters.length; i++) {
+              byteNumbers[i] = byteCharacters.charCodeAt(i)
+            }
+            const byteArray = new Uint8Array(byteNumbers)
+            const blob = new Blob([byteArray], { type: 'audio/mpeg' })
+            audioUrl = URL.createObjectURL(blob)
+          }
+        }
+      }
+
+      // Don't display messages marked as hidden (like /history command)
+      if (!data.metadata?._hide_message) {
+        const newMessage: Message = {
           role: 'assistant',
           content: data.content || 'Message received',
-          timestamp: Date.now()
-        })
-        isLoading.value = false
-      } else if (data.type === 'heartbeat') {
-        // 回复心跳
-        if (ws) {
-          const heartbeatResponse = {
-            type: 'heartbeat_response',
-            timestamp: Date.now()
-          }
-          ws.send(JSON.stringify(heartbeatResponse))
+          timestamp: Date.now(),
+          imageUrl: imageUrl,
+          audioUrl: audioUrl,
+          media: data.media,
+          metadata: data.metadata
         }
-      } else if (data.type === 'error') {
-        messages.value.push({
-          role: 'system',
-          content: `Error: ${data.message || data.data}`,
-          timestamp: Date.now()
-        })
-        isLoading.value = false
+        messages.value.push(newMessage)
+
+        // Auto-play audio if it's an audio message and TTS is enabled
+        if (audioUrl) {
+          playAudio(audioUrl)
+        }
       }
-    } catch (e) {
-      console.error('Failed to parse message:', e)
+
+      // Check if message contains _mode_hint and is not a progress message
+      if (data.metadata?._mode_hint && !data.metadata?._progress) {
+        sendMessage('/inspect', true)
+      }
+
+      // Only set chatStatus based on _progress and _as_input
+      if (data.metadata?._progress) {
+        chatStatus.value = "Thinking"
+      } else if (!data.audioUrl) {
+        chatStatus.value = ""
+      }
+    } else if (data.type === 'heartbeat') {
+      // Reply to heartbeat
+      if (ws) {
+        const heartbeatResponse = {
+          type: 'heartbeat_response',
+          timestamp: Date.now()
+        }
+        ws.send(JSON.stringify(heartbeatResponse))
+      }
+    } else if (data.type === 'error') {
+      messages.value.push({
+        role: 'system',
+        content: `Error: ${data.message || data.data}`,
+        timestamp: Date.now()
+      })
+      chatStatus.value = ""
     }
-  }
-
-  ws.onclose = () => {
-    console.log('WebSocket disconnected')
-    isConnecting.value = false
-    isConnected.value = false
-
-    // 发出状态变化事件
-    emit('ws-status-change', {
-      isConnected: false,
-      isConnecting: false,
-      url: wsUrl.value
-    })
-
-    // 不再自动重连，让用户手动控制
-  }
-
-  ws.onerror = (error) => {
-    console.error('WebSocket error:', error)
-    isConnecting.value = false
-    isConnected.value = false
-    connectionError.value = 'Connection error'
-
-    // 发出状态变化事件
-    emit('ws-status-change', {
-      isConnected: false,
-      isConnecting: false,
-      url: wsUrl.value
-    })
+  } catch (e) {
+    console.error('Failed to parse message:', e)
   }
 }
 
-const disconnectWebSocket = () => {
-  if (ws) {
-    ws.close()
-    ws = null
+// Unified message sending function for all types of messages
+const sendMessage = async (
+  data: string | { text: string; images?: Array<{ data: string; type: string; name: string }>; files?: Array<{ data: string; type: string; name: string }>; audios?: Array<{ data: string; type: string; name: string }> },
+  isCommand: boolean = false,
+  extraMetadata?: Record<string, any>
+) => {
+  // Handle both old string format and new object format
+  let text = ''
+  let images: Array<{ data: string; type: string; name: string }> = []
+  let files: Array<{ data: string; type: string; name: string }> = []
+  let audios: Array<{ data: string; type: string; name: string }> = []
+
+  if (typeof data === 'string') {
+    text = data
+  } else {
+    text = data.text || ''
+    images = data.images || []
+    files = data.files || []
+    audios = data.audios || []
   }
-  isConnected.value = false
-  isConnecting.value = false
 
-  // 发出状态变化事件
-  emit('ws-status-change', {
-    isConnected: false,
-    isConnecting: false,
-    url: wsUrl.value
-  })
-}
-
-const sendMessage = async (text: string) => {
   const userMessage: Message = {
     role: 'user',
     content: text,
     timestamp: Date.now()
   }
 
-  messages.value.push(userMessage)
-  isLoading.value = true
+  // Add image preview if there's an image
+  if (images.length > 0) {
+    userMessage.imageUrl = images[0].data
+  }
+
+  // Only add message to UI if not hidden and has text content
+  // For audio-only messages, don't show empty user message, only show ASR result
+  if (!isCommand && (text.trim() || audios.length === 0)) {
+    messages.value.push(userMessage)
+  }
+
+  // Clear messages when sending /new or /clear commands
+  if (isCommand && (text === '/new' || text === '/clear')) {
+    messages.value = []
+    if (chatInputRef.value) {
+      chatInputRef.value.handleUpdateUserHistory([])
+    }
+  }
+
+  // Update input history with this message (if it's not a command)
+  if (text.trim() && !text.trim().startsWith('/')) {
+    if (chatInputRef.value) {
+      // Get current history and add new message
+      const currentHistory = (chatInputRef.value as any).userHistoryMessages || []
+      chatInputRef.value.handleUpdateUserHistory([...currentHistory, text.trim()])
+    }
+  }
 
   // Send message through WebSocketChannel
   if (ws && ws.readyState === WebSocket.OPEN) {
-    const messageData = {
-      type: 'message',
+    const mediaItems = [
+      ...images.map(img => ({ data: img.data, file_name: img.name })),
+      ...files.map(file => ({ data: file.data, file_name: file.name })),
+      ...audios.map(audio => ({ data: audio.data, file_name: audio.name }))
+    ]
+
+    const messageData: {
+      type: 'message' | 'mcp'
+      message_id: string
+      sender_id: string
+      chat_id: string
+      content: string
+      media: Array<{ data: string; file_name: string }>
+      metadata: {
+        source: string
+        timestamp: number
+        session_id: string
+        msg_type?: string
+        file_type?: string
+        features?: { need_tts: boolean }
+        reset?: boolean
+        payload?: any
+      } & Record<string, any>
+    } = {
+      type: "message",
       message_id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      sender_id: 'web_user',
-      chat_id: 'default_room',
+      sender_id: senderId.value,
+      chat_id: chatId.value,
       content: text,
-      media: [],
+      media: mediaItems,
       metadata: {
         source: 'web_dashboard',
         timestamp: Date.now(),
-        session_id: sessionId.value
+        session_id: sessionId.value,
+        ...extraMetadata
       }
+    }
+
+    // Set msg_type based on content
+    if (audios.length > 0) {
+      messageData.metadata.msg_type = 'audio'
+      messageData.metadata.file_type = audios[0].type
+    } else if (images.length > 0) {
+      messageData.metadata.msg_type = 'image'
+      messageData.metadata.file_type = images[0].type
+    } else if (files.length > 0) {
+      messageData.metadata.msg_type = 'file'
+      messageData.metadata.file_type = files[0].type
     }
 
     console.log('📤 Sending message:', messageData)
     ws.send(JSON.stringify(messageData))
+    if (!isCommand) {
+      chatStatus.value = "Thinking"
+    }
 
-    // Set timeout: if no response within 30 seconds, stop loading
+    // Set timeout: if no response within 60 seconds, stop loading
     const timeoutId = setTimeout(() => {
-      if (isLoading.value) {
-        isLoading.value = false
+      if (chatStatus.value === "Thinking") {
+        chatStatus.value = ""
         console.warn('No response received within 30 seconds')
       }
-    }, 30000)
+      // Also handle command timeout
+      if (isCommand && pendingCommandsCount.value > 0) {
+        pendingCommandsCount.value = 0
+        console.warn('⏰ Command timed out, remaining:', pendingCommandsCount.value)
+        chatStatus.value = ""
+      }
+    }, 60000)
 
     // Store timeout ID in a ref so we can clear it on message receive
     currentTimeoutId.value = timeoutId
@@ -206,121 +418,166 @@ const sendMessage = async (text: string) => {
       content: 'WebSocket not connected. Please connect first.',
       timestamp: Date.now()
     })
-    isLoading.value = false
+    chatStatus.value = ""
   }
 }
 
-const handleImageUpload = async (imageData: string) => {
-  // Add image to messages
-  messages.value.push({
-    role: 'user',
-    content: 'Uploaded an image',
-    timestamp: Date.now(),
-    imageUrl: imageData
-  })
+// Removed handleNewChat and handleClearChat - now directly using sendMessage in template
 
-  // Send to backend (would need backend support for image processing)
-  console.log('Image uploaded:', imageData.substring(0, 50) + '...')
-}
-
-const handleAudioUpload = async (audioData: { data: string; type: string; isRecording?: boolean }) => {
-  // Add audio to messages
-  messages.value.push({
-    role: 'user',
-    content: audioData.isRecording ? 'Recorded voice message' : 'Uploaded audio',
-    timestamp: Date.now(),
-    audioUrl: audioData.data
-  })
-
-  console.log('Audio uploaded:', audioData.type)
-}
-
-const handleFileUpload = async (fileData: { data: string; type: string; name: string }) => {
-  // Add file to messages
-  messages.value.push({
-    role: 'user',
-    content: `Uploaded file: ${fileData.name}`,
-    timestamp: Date.now()
-  })
-
-  console.log('File uploaded:', fileData.name)
-}
-
-const handleNewChat = () => {
-  const userMessage: Message = {
-    role: 'user',
-    content: '/new',
-    timestamp: Date.now()
-  }
-  messages.value.push(userMessage)
-
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    const newChatMsg = {
-      type: 'message',
-      message_id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      sender_id: 'web_user',
-      chat_id: 'default_room',
-      content: '/new',
-      media: [],
-      metadata: {
-        source: 'web_dashboard',
-        timestamp: Date.now(),
-        session_id: sessionId.value
-      }
-    }
-    console.log('📤 Sending /new command:', newChatMsg)
-    ws.send(JSON.stringify(newChatMsg))
-  } else {
+const handleConnected = () => {
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    console.log('⚠️ Cannot send /inspect: WebSocket not connected')
     messages.value.push({
       role: 'system',
       content: 'WebSocket not connected. Please connect first.',
       timestamp: Date.now()
     })
+    return
   }
+
+  // Set status to Loading at the beginning
+  chatStatus.value = "Loading"
+
+  // Clear messages on successful connection
+  messages.value = []
+
+  // Show connection success message
+  messages.value.push({
+    role: 'assistant',
+    content: '✅ WebSocket connected successfully!',
+    timestamp: Date.now()
+  })
+
+  // Send /inspect for initialization (hidden from chat)
+  sendMessage('/inspect', true)
+  pendingCommandsCount.value++
+
+  // Send /update_features with reset flag on connection
+  sendMessage('/update_features', true, { reset: true })
+  pendingCommandsCount.value++
+
+  // Send tools list to backend
+  sendMessage('/register_extern_tools', true, { tools: WebsocketTools })
+  pendingCommandsCount.value++
+
+  // Send /history after 500ms to load history for input cache
+  sendMessage('/history', true)
+  pendingCommandsCount.value++
 }
 
-const handleClearChat = () => {
-  const userMessage: Message = {
-    role: 'user',
-    content: '/clear',
-    timestamp: Date.now()
-  }
-  messages.value.push(userMessage)
-
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    const clearMsg = {
-      type: 'message',
-      message_id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      sender_id: 'web_user',
-      chat_id: 'default_room',
-      content: '/clear',
-      media: [],
-      metadata: {
-        source: 'web_dashboard',
-        timestamp: Date.now(),
-        session_id: sessionId.value
-      }
-    }
-    console.log('📤 Sending /clear command:', clearMsg)
-    ws.send(JSON.stringify(clearMsg))
-  } else {
-    messages.value.push({
-      role: 'system',
-      content: 'WebSocket not connected. Please connect first.',
-      timestamp: Date.now()
-    })
-  }
+const handleRecordingStart = () => {
+  chatStatus.value = "Recording"
 }
 
 const playAudio = (audioUrl: string) => {
+  if (currentAudio.value) {
+    if (currentAudio.value.src === audioUrl && !currentAudio.value.paused) {
+      currentAudio.value.pause()
+      playingAudioUrl.value = null
+      return
+    }
+    currentAudio.value.pause()
+  }
+
   currentAudio.value = new Audio(audioUrl)
   currentAudio.value.play()
+  playingAudioUrl.value = audioUrl
+
+  currentAudio.value.onended = () => {
+    playingAudioUrl.value = null
+  }
 }
 
 const stopAudio = () => {
+  // Stop normal audio playback first
   if (currentAudio.value) {
+    console.log('Stopping normal audio playback')
     currentAudio.value.pause()
+    playingAudioUrl.value = null
     currentAudio.value = null
+  }
+
+  // Stop remote speaking (opus playback)
+  if (chatStatus.value === "Speaking") {
+    console.log('Stopping remote speaking (opus playback)')
+    // Clear all audio buffers and stop playback
+    audioPlayer.clearAllAudio()
+    // Delay stop to let remaining audio play
+    ttsSentenceCount.value = 0
+    // Update the last message's playing state
+    if (messages.value.length > 0) {
+      const lastMsg = messages.value[messages.value.length - 1]
+      if (lastMsg.metadata?.isPlayingOpus !== undefined) {
+        lastMsg.metadata.isPlayingOpus = false
+      }
+    }
+  }
+  chatStatus.value = ""
+}
+
+// Watch for chatStatus changes and emit to parent
+watch(chatStatus, (newStatus) => {
+  emit('chat-status-change', newStatus)
+})
+
+// Watch for playingAudioUrl changes and update chatStatus
+watch(playingAudioUrl, (newUrl) => {
+  if (newUrl) {
+    chatStatus.value = "Speaking"
+  } else {
+    chatStatus.value = ""
+  }
+})
+
+// Handle TTS message - same as xiaozhi-esp32-server implementation
+const handleTTSMessage = async (data: any) => {
+  const state = data.state
+  if (state === 'start') {
+    console.log('语音段开始')
+    ttsSentenceCount.value = 0
+    chatStatus.value = "Speaking"
+  } else if (state === 'sentence_start') {
+    console.debug(`服务器发送语音段：${data.text}`)
+    ttsSentenceCount.value++
+    // Add message to chat immediately
+    if (data.text && !data.text.trim().startsWith('/')) {
+      messages.value.push({
+        role: 'assistant',
+        content: data.text,
+        timestamp: Date.now(),
+        metadata: {
+          isPlayingOpus: true
+        }
+      })
+    }
+  } else if (state === 'sentence_end') {
+    console.log(`语音段结束`)
+  } else if (state === 'stop') {
+    stopAudio()
+  }
+}
+
+// Handle opus audio frame - enqueue to player
+const handleOpusAudioFrame = async (data: Blob | ArrayBuffer) => {
+  if (chatStatus.value !== "Speaking") {
+    console.warn('⚠️ Received opus frame but not speaking')
+    return
+  }
+
+  try {
+    let opusData: Uint8Array
+    if (data instanceof Blob) {
+      const arrayBuffer = await data.arrayBuffer()
+      opusData = new Uint8Array(arrayBuffer)
+    } else {
+      opusData = new Uint8Array(data)
+    }
+    console.debug('📦 Received opus frame, size:', opusData.length, 'bytes')
+
+    // Enqueue to audio player for buffering and playback
+    audioPlayer.enqueueAudioData(opusData)
+  } catch (error) {
+    console.error('❌ Failed to process opus frame:', error)
   }
 }
 
@@ -334,89 +591,34 @@ onUnmounted(() => {
   if (currentTimeoutId.value) {
     clearTimeout(currentTimeoutId.value)
   }
-  ws?.close()
   stopAudio()
+
+  // Clear all audio when component unmounts
+  if (audioPlayer) {
+    audioPlayer.clearAllAudio()
+  }
 })
+
+// Expose reactive state and methods to parent component
+defineExpose({
+  chatStatus,
+  setWebSocket,
+  handleWebSocketMessage,
+  handleConnected,
+  sendMessage,
+})
+
 </script>
 
 <template>
-  <div class="flex flex-col h-full">
-    <!-- WebSocket Connection Control Panel -->
-    <div class="border-b-4 border-gray-700 bg-gray-800 p-3 pixel-font">
-      <div class="flex items-center space-x-3 flex-wrap gap-2">
-        <label class="text-xs font-bold text-gray-300 whitespace-nowrap">WebSocket url:</label>
-        <input
-          v-model="wsUrl"
-          type="text"
-          :disabled="isConnecting || isConnected"
-          class="nes-input flex-1 min-w-[200px] max-w-[400px] text-xs py-1 px-2 border-2 border-gray-600 bg-gray-900 text-gray-300 disabled:bg-gray-700 disabled:text-gray-500"
-          placeholder="ws://localhost:8765"
-        />
-
-        <button
-          v-if="!isConnected"
-          @click="connectWebSocket"
-          :disabled="isConnecting || !wsUrl.trim()"
-          class="nes-btn is-primary text-xs px-3 py-1"
-        >
-          {{ isConnecting ? 'Connecting...' : 'Connect' }}
-        </button>
-
-        <button
-          v-if="isConnected"
-          @click="disconnectWebSocket"
-          class="nes-btn is-danger text-xs px-3 py-1"
-        >
-          Disconnect
-        </button>
-
-        <div class="flex items-center space-x-1">
-          <div
-            class="w-2 h-2 rounded-sm"
-            :class="{
-              'bg-yellow-500': isConnecting,
-              'bg-green-500': isConnected,
-              'bg-red-500': connectionError,
-              'bg-gray-500': !isConnecting && !isConnected && !connectionError
-            }"
-          ></div>
-          <span
-            class="text-xs"
-            :class="{
-              'text-yellow-500': isConnecting,
-              'text-green-500': isConnected,
-              'text-red-500': connectionError,
-              'text-gray-400': !isConnecting && !isConnected && !connectionError
-            }"
-          >
-            {{ connectionStatus }}
-          </span>
-        </div>
-      </div>
-
-        <div v-if="connectionError" class="text-xs text-red-500">
-          Error: {{ connectionError }}
-        </div>
-    </div>
-
+  <div class="flex flex-col h-full chat-container">
     <!-- Messages -->
-    <MessageList
-      :messages="messages"
-      :isLoading="isLoading"
-      @play-audio="playAudio"
-      @stop-audio="stopAudio"
-    />
+    <MessageList :messages="messages" :chat-status="chatStatus" @play-audio="playAudio" @stop-audio="stopAudio"
+      :show-progress-messages="props.showProgressMessages" :playing-audio-url="playingAudioUrl" />
 
     <!-- Input -->
-    <ChatInput
-      :isLoading="isLoading"
-      :disabled="!isConnected"
-      @send="sendMessage"
-      @new-chat="handleNewChat"
-      @clear-chat="handleClearChat"
-      @upload-image="handleImageUpload"
-      @upload-audio="handleAudioUpload"
-      @upload-file="handleFileUpload"
-    />
+    <ChatInput ref="chatInputRef" :chat-status="chatStatus" :disabled="!isConnected"
+      :is-online-chat-on="props.isOnlineChatOn" :msg-handlers="props.msgHandlers" :messages="messages"
+      @send="sendMessage" @stop-audio="stopAudio" @recording-start="handleRecordingStart" />
   </div>
 </template>
