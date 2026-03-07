@@ -38,6 +38,8 @@ class MessageBus:
         if msg_type in self._handlers and self._handlers[msg_type].can_handle(msg):
             logger.info("Processing {} message with {}", msg_type, self._handlers[msg_type].__class__.__name__)
             msg = await self._handlers[msg_type].handle(msg)
+            out_msg = OutboundMessage(channel=msg.channel, chat_id=msg.chat_id, content=f"{msg_type}->{msg.content}")
+            self.publish_outbound(out_msg)
         await self.inbound.put(msg)
 
     async def consume_inbound(self) -> InboundMessage:

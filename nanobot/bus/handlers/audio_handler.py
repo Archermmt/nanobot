@@ -66,10 +66,7 @@ class BaseAudioHandler(BaseHandler):
 
             if transcribed_text:
                 logger.info(f"Recognized speech from audio: '{transcribed_text}'")
-
-                # Update message content with transcribed text
                 msg.content = transcribed_text
-                msg.metadata["_prefix_content"] = "[ASR]: " + str(transcribed_text)
             else:
                 logger.warning("No speech recognized, skipping message")
                 msg.content = "No speech recognized, skipping message"
@@ -166,7 +163,11 @@ class FunasrHandler(BaseAudioHandler):
             model = str(model_dir_expanded)
         logger.info(f"Loading FunASR model {model}")
         self._model = AutoModel(
-            model=model, vad_model="fsmn-vad", vad_kwargs={"max_single_segment_time": 30000}, hub="hf"
+            model=model,
+            vad_model="fsmn-vad",
+            vad_kwargs={"max_single_segment_time": 30000},
+            hub="hf",
+            disable_update=True,
         )
 
     async def _process_audio(self, media_data: str) -> str:
