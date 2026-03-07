@@ -486,6 +486,10 @@ class AgentLoop:
 
         if final_content is None:
             final_content = "I've completed processing but have no response to give."
+        if "_prefix_content" in msg.metadata:
+            final_content = msg.metadata.pop("_prefix_content") + "\n" + final_content
+        if "_suffix_content" in msg.metadata:
+            final_content = final_content + "\n" + msg.metadata.pop("_suffix_content")
 
         self._save_turn(session, all_msgs, 1 + len(history))
         self.sessions.save(session)

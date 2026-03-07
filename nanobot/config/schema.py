@@ -206,8 +206,8 @@ class AudioHandlerConfig(Base):
     """Configuration for audio handler."""
 
     enabled: bool = False
-    handler_type: str = "vosk"  # vosk or custom
-    model_path: str = "~/.nanobot/models/vosk-model-small-cn-0.22"
+    handler_type: str = "funasr"  # vosk or custom
+    model: str = "paraformer-zh"
     # For custom handlers, specify the module path
     custom_handler_path: str | None = None
 
