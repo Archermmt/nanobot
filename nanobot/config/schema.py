@@ -202,6 +202,26 @@ class WebSocketConfig(Base):
     as_server: bool = True  # If True, act as WebSocket server; if False, connect as client
 
 
+class AudioHandlerConfig(Base):
+    """Configuration for audio handler."""
+
+    enabled: bool = False
+    handler_type: str = "vosk"  # vosk or custom
+    model_path: str = "~/.nanobot/models/vosk-model-small-cn-0.22"
+    # For custom handlers, specify the module path
+    custom_handler_path: str | None = None
+
+
+class BusConfig(Base):
+    """Configuration for MessageBus."""
+
+    audio_handler: AudioHandlerConfig | None = None
+
+    def model_post_init(self, __context):
+        if self.audio_handler is None:
+            self.audio_handler = AudioHandlerConfig()
+
+
 class MatrixConfig(Base):
     """Matrix (Element) channel configuration."""
 
@@ -364,6 +384,7 @@ class Config(BaseSettings):
     providers: ProvidersConfig = Field(default_factory=ProvidersConfig)
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
     tools: ToolsConfig = Field(default_factory=ToolsConfig)
+    bus: BusConfig = Field(default_factory=BusConfig)
 
     @property
     def workspace_path(self) -> Path:

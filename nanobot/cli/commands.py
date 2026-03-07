@@ -272,7 +272,7 @@ def gateway(
 
     config = load_config()
     sync_workspace_templates(config.workspace_path)
-    bus = MessageBus()
+    bus = MessageBus(config.bus)
     provider = _make_provider(config)
     session_manager = SessionManager(config.workspace_path)
 
@@ -430,7 +430,7 @@ def agent(
     config = load_config()
     sync_workspace_templates(config.workspace_path)
 
-    bus = MessageBus()
+    bus = MessageBus(config.bus)
     provider = _make_provider(config)
 
     # Create cron service for tool usage (no callback needed for CLI unless running)
@@ -903,7 +903,7 @@ def cron_run(
 
     config = load_config()
     provider = _make_provider(config)
-    bus = MessageBus()
+    bus = MessageBus(config.bus)
     agent_loop = AgentLoop(
         bus=bus,
         provider=provider,

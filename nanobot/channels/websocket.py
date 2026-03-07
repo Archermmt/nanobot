@@ -4,8 +4,6 @@ import asyncio
 import json
 import threading
 from collections import OrderedDict
-from typing import Any
-
 from loguru import logger
 
 from nanobot.bus.events import OutboundMessage
@@ -317,8 +315,7 @@ class WebSocketChannel(BaseChannel):
             media_dir.mkdir(parents=True, exist_ok=True)
 
             for media_item in media:
-                media_data = media_item["data"]
-                filename = media_item.get("file_name", "")
+                media_data, filename = media_item["data"], media_item.get("file_name", "")
                 # Check if media is base64 data (data URL format: data:<mime>;base64,<data>)
                 if isinstance(media_data, str) and media_data.startswith("data:"):
                     try:
