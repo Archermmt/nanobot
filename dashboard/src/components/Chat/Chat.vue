@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import MessageList from './MessageList.vue'
 import ChatInput from './ChatInput.vue'
 
@@ -9,9 +9,17 @@ interface Message {
   timestamp: number
   imageUrl?: string
   audioUrl?: string
+  media?: Array<{
+    data: string
+    file_name: string
+  }>
+  metadata?: {
+    msg_type?: string
+    file_type?: string
+  }
 }
 
-const emit = defineEmits(['send', 'new-chat', 'clear-chat', 'upload-image', 'upload-audio', 'upload-file', 'ws-status-change'])
+const emit = defineEmits(['send', 'new-chat', 'clear-chat', 'upload-image', 'upload-audio', 'upload-file', 'ws-status-change', 'send-status', 'status-update'])
 
 const messages = ref<Message[]>([])
 const isLoading = ref(false)
@@ -19,151 +27,110 @@ const sessionId = ref(`session_${Date.now()}`)
 const currentAudio = ref<HTMLAudioElement | null>(null)
 const currentTimeoutId = ref<number | null>(null)
 
-// WebSocket connection related state
-const wsUrl = ref('ws://localhost:8765')
-const isConnected = ref(false)
-const isConnecting = ref(false)
-const connectionError = ref<string | null>(null)
-
+// WebSocket instance (managed by App.vue)
 let ws: WebSocket | null = null
+const isConnected = ref(false)
 
-// 计算 property: connection status text
-const connectionStatus = computed(() => {
-  if (isConnecting.value) return 'Connecting...'
-  if (isConnected.value) return 'Connected'
-  if (connectionError.value) return `Connection failed: ${connectionError.value}`
-  return 'Disconnected'
-})
+// Method to set WebSocket instance from App.vue
+const setWebSocket = (websocket: WebSocket | null) => {
+  ws = websocket
+  isConnected.value = websocket !== null
+}
 
-const connectWebSocket = () => {
-  if (isConnecting.value || isConnected.value) return
+// Method to handle WebSocket messages from App.vue
+const handleWebSocketMessage = (event: MessageEvent) => {
+  try {
+    const data = JSON.parse(event.data)
+    console.log('📥 Received message:', data)
 
-  isConnecting.value = true
-  connectionError.value = null
-
-  // 发出状态变化事件
-  emit('ws-status-change', {
-    isConnected: false,
-    isConnecting: true,
-    url: wsUrl.value
-  })
-
-  ws = new WebSocket(wsUrl.value)
-
-  ws.onopen = () => {
-    console.log('✅ WebSocket connected to WebSocketChannel')
-    isConnecting.value = false
-    isConnected.value = true
-    connectionError.value = null
-
-    // 发出状态变化事件
-    emit('ws-status-change', {
-      isConnected: true,
-      isConnecting: false,
-      url: wsUrl.value
-    })
-
-    // 发送认证信息（如果需要）
-    if (ws) {
-      const authMsg = {
-        type: 'auth',
-        token: 'your_auth_token_here'
-      }
-      ws.send(JSON.stringify(authMsg))
+    // Clear timeout when receiving any message
+    if (currentTimeoutId.value) {
+      clearTimeout(currentTimeoutId.value)
+      currentTimeoutId.value = null
     }
-  }
 
-  ws.onmessage = (event) => {
-    try {
-      const data = JSON.parse(event.data)
-      console.log('📥 Received message:', data)
-
-      // Clear timeout when receiving any message
-      if (currentTimeoutId.value) {
-        clearTimeout(currentTimeoutId.value)
-        currentTimeoutId.value = null
-      }
-
-      if (data.type === 'message') {
-        messages.value.push({
-          role: 'assistant',
-          content: data.content || 'Message received',
-          timestamp: Date.now()
-        })
-        isLoading.value = false
-      } else if (data.type === 'heartbeat') {
-        // 回复心跳
-        if (ws) {
-          const heartbeatResponse = {
-            type: 'heartbeat_response',
-            timestamp: Date.now()
-          }
-          ws.send(JSON.stringify(heartbeatResponse))
+    if (data.type === 'message') {
+      // Check if this is a status response
+      if (data.content && data.content.includes('mode') && data.content.includes('price')) {
+        // This looks like a status update, emit it for StatusBar
+        try {
+          const statusData = JSON.parse(data.content)
+          emit('status-update', statusData)
+        } catch (e) {
+          console.log('Status message content:', data.content)
         }
-      } else if (data.type === 'error') {
-        messages.value.push({
-          role: 'system',
-          content: `Error: ${data.message || data.data}`,
-          timestamp: Date.now()
-        })
-        isLoading.value = false
       }
-    } catch (e) {
-      console.error('Failed to parse message:', e)
+
+      // Handle image messages from media
+      let imageUrl: string | undefined
+      if (data.media && data.media.length > 0) {
+        const msgType = data.metadata?.msg_type
+        const fileType = data.metadata?.file_type
+
+        // Check if this is an image message
+        if (msgType === 'image' || (fileType && fileType.startsWith('image/'))) {
+          // Extract image from media data
+          const mediaItem = data.media[0]
+          if (mediaItem && mediaItem.data) {
+            imageUrl = mediaItem.data
+          }
+        }
+      }
+
+      messages.value.push({
+        role: 'assistant',
+        content: data.content || 'Message received',
+        timestamp: Date.now(),
+        imageUrl: imageUrl,
+        media: data.media,
+        metadata: data.metadata
+      })
+      isLoading.value = false
+    } else if (data.type === 'heartbeat') {
+      // Reply to heartbeat
+      if (ws) {
+        const heartbeatResponse = {
+          type: 'heartbeat_response',
+          timestamp: Date.now()
+        }
+        ws.send(JSON.stringify(heartbeatResponse))
+      }
+    } else if (data.type === 'error') {
+      messages.value.push({
+        role: 'system',
+        content: `Error: ${data.message || data.data}`,
+        timestamp: Date.now()
+      })
+      isLoading.value = false
     }
-  }
-
-  ws.onclose = () => {
-    console.log('WebSocket disconnected')
-    isConnecting.value = false
-    isConnected.value = false
-
-    // 发出状态变化事件
-    emit('ws-status-change', {
-      isConnected: false,
-      isConnecting: false,
-      url: wsUrl.value
-    })
-
-    // 不再自动重连，让用户手动控制
-  }
-
-  ws.onerror = (error) => {
-    console.error('WebSocket error:', error)
-    isConnecting.value = false
-    isConnected.value = false
-    connectionError.value = 'Connection error'
-
-    // 发出状态变化事件
-    emit('ws-status-change', {
-      isConnected: false,
-      isConnecting: false,
-      url: wsUrl.value
-    })
+  } catch (e) {
+    console.error('Failed to parse message:', e)
   }
 }
 
-const disconnectWebSocket = () => {
-  if (ws) {
-    ws.close()
-    ws = null
+const sendMessage = async (data: string | { text: string; images: Array<{ data: string; type: string; name: string }>; files: Array<{ data: string; type: string; name: string }> }) => {
+  // Handle both old string format and new object format
+  let text = ''
+  let images: Array<{ data: string; type: string; name: string }> = []
+  let files: Array<{ data: string; type: string; name: string }> = []
+
+  if (typeof data === 'string') {
+    text = data
+  } else {
+    text = data.text || ''
+    images = data.images || []
+    files = data.files || []
   }
-  isConnected.value = false
-  isConnecting.value = false
 
-  // 发出状态变化事件
-  emit('ws-status-change', {
-    isConnected: false,
-    isConnecting: false,
-    url: wsUrl.value
-  })
-}
-
-const sendMessage = async (text: string) => {
   const userMessage: Message = {
     role: 'user',
     content: text,
     timestamp: Date.now()
+  }
+
+  // Add image preview if there's an image
+  if (images.length > 0) {
+    userMessage.imageUrl = images[0].data
   }
 
   messages.value.push(userMessage)
@@ -171,18 +138,32 @@ const sendMessage = async (text: string) => {
 
   // Send message through WebSocketChannel
   if (ws && ws.readyState === WebSocket.OPEN) {
+    const mediaItems = [
+      ...images.map(img => ({ data: img.data, file_name: img.name })),
+      ...files.map(file => ({ data: file.data, file_name: file.name }))
+    ]
+
     const messageData = {
       type: 'message',
       message_id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       sender_id: 'web_user',
       chat_id: 'default_room',
       content: text,
-      media: [],
+      media: mediaItems,
       metadata: {
         source: 'web_dashboard',
         timestamp: Date.now(),
         session_id: sessionId.value
       }
+    }
+
+    // Set msg_type based on content
+    if (images.length > 0) {
+      messageData.metadata.msg_type = 'image'
+      messageData.metadata.file_type = images[0].type
+    } else if (files.length > 0) {
+      messageData.metadata.msg_type = 'file'
+      messageData.metadata.file_type = files[0].type
     }
 
     console.log('📤 Sending message:', messageData)
@@ -210,17 +191,14 @@ const sendMessage = async (text: string) => {
   }
 }
 
-const handleImageUpload = async (imageData: string) => {
-  // Add image to messages
-  messages.value.push({
-    role: 'user',
-    content: 'Uploaded an image',
-    timestamp: Date.now(),
-    imageUrl: imageData
-  })
+const handleImageUpload = async (imageData: { data: string; type: string; name: string }) => {
+  // This is now handled by ChatInput - images are queued and sent with text
+  console.log('Image queued for upload:', imageData.name)
+}
 
-  // Send to backend (would need backend support for image processing)
-  console.log('Image uploaded:', imageData.substring(0, 50) + '...')
+const handleFileUpload = async (fileData: { data: string; type: string; name: string }) => {
+  // This is now handled by ChatInput - files are queued and sent with text
+  console.log('File queued for upload:', fileData.name)
 }
 
 const handleAudioUpload = async (audioData: { data: string; type: string; isRecording?: boolean }) => {
@@ -232,18 +210,86 @@ const handleAudioUpload = async (audioData: { data: string; type: string; isReco
     audioUrl: audioData.data
   })
 
-  console.log('Audio uploaded:', audioData.type)
+  // Send audio to backend with msg_type
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    const messageData = {
+      type: 'message',
+      message_id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      sender_id: 'web_user',
+      chat_id: 'default_room',
+      content: '',  // Empty content for audio-only messages
+      media: [{
+        data: audioData.data,
+        file_name: `audio_${Date.now()}.${audioData.type.split('/').pop()}`
+      }],  // Send base64 data as media with filename
+      metadata: {
+        source: 'web_dashboard',
+        timestamp: Date.now(),
+        session_id: sessionId.value,
+        msg_type: 'audio',  // Indicate this is an audio message
+        file_type: audioData.type,
+        is_recording: audioData.isRecording
+      }
+    }
+
+    console.log('📤 Sending audio message:', messageData)
+    isLoading.value = true
+    ws.send(JSON.stringify(messageData))
+
+    // Set timeout: if no response within 30 seconds, stop loading
+    const timeoutId = setTimeout(() => {
+      if (isLoading.value) {
+        isLoading.value = false
+        console.warn('No response received within 30 seconds')
+      }
+    }, 30000)
+
+    // Store timeout ID in a ref so we can clear it on message receive
+    currentTimeoutId.value = timeoutId
+  } else {
+    messages.value.push({
+      role: 'system',
+      content: 'WebSocket not connected. Please connect first.',
+      timestamp: Date.now()
+    })
+  }
 }
 
-const handleFileUpload = async (fileData: { data: string; type: string; name: string }) => {
-  // Add file to messages
-  messages.value.push({
-    role: 'user',
-    content: `Uploaded file: ${fileData.name}`,
-    timestamp: Date.now()
-  })
 
-  console.log('File uploaded:', fileData.name)
+
+const handleSendStatus = () => {
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    console.log('⚠️ Cannot send /status: WebSocket not connected')
+    messages.value.push({
+      role: 'system',
+      content: 'WebSocket not connected. Please connect first.',
+      timestamp: Date.now()
+    })
+    return
+  }
+
+  const userMessage: Message = {
+    role: 'user',
+    content: '/status',
+    timestamp: Date.now()
+  }
+  messages.value.push(userMessage)
+
+  const statusMsg = {
+    type: 'message',
+    message_id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    sender_id: 'web_user',
+    chat_id: 'default_room',
+    content: '/status',
+    media: [],
+    metadata: {
+      source: 'web_dashboard',
+      timestamp: Date.now(),
+      session_id: sessionId.value
+    }
+  }
+  console.log('📤 Sending /status command:', statusMsg)
+  ws.send(JSON.stringify(statusMsg))
 }
 
 const handleNewChat = () => {
@@ -334,89 +380,25 @@ onUnmounted(() => {
   if (currentTimeoutId.value) {
     clearTimeout(currentTimeoutId.value)
   }
-  ws?.close()
   stopAudio()
+})
+
+// Expose methods to App.vue
+defineExpose({
+  setWebSocket,
+  handleWebSocketMessage,
+  handleSendStatus
 })
 </script>
 
 <template>
-  <div class="flex flex-col h-full">
-    <!-- WebSocket Connection Control Panel -->
-    <div class="border-b-4 border-gray-700 bg-gray-800 p-3 pixel-font">
-      <div class="flex items-center space-x-3 flex-wrap gap-2">
-        <label class="text-xs font-bold text-gray-300 whitespace-nowrap">WebSocket url:</label>
-        <input
-          v-model="wsUrl"
-          type="text"
-          :disabled="isConnecting || isConnected"
-          class="nes-input flex-1 min-w-[200px] max-w-[400px] text-xs py-1 px-2 border-2 border-gray-600 bg-gray-900 text-gray-300 disabled:bg-gray-700 disabled:text-gray-500"
-          placeholder="ws://localhost:8765"
-        />
-
-        <button
-          v-if="!isConnected"
-          @click="connectWebSocket"
-          :disabled="isConnecting || !wsUrl.trim()"
-          class="nes-btn is-primary text-xs px-3 py-1"
-        >
-          {{ isConnecting ? 'Connecting...' : 'Connect' }}
-        </button>
-
-        <button
-          v-if="isConnected"
-          @click="disconnectWebSocket"
-          class="nes-btn is-danger text-xs px-3 py-1"
-        >
-          Disconnect
-        </button>
-
-        <div class="flex items-center space-x-1">
-          <div
-            class="w-2 h-2 rounded-sm"
-            :class="{
-              'bg-yellow-500': isConnecting,
-              'bg-green-500': isConnected,
-              'bg-red-500': connectionError,
-              'bg-gray-500': !isConnecting && !isConnected && !connectionError
-            }"
-          ></div>
-          <span
-            class="text-xs"
-            :class="{
-              'text-yellow-500': isConnecting,
-              'text-green-500': isConnected,
-              'text-red-500': connectionError,
-              'text-gray-400': !isConnecting && !isConnected && !connectionError
-            }"
-          >
-            {{ connectionStatus }}
-          </span>
-        </div>
-      </div>
-
-        <div v-if="connectionError" class="text-xs text-red-500">
-          Error: {{ connectionError }}
-        </div>
-    </div>
-
+  <div class="flex flex-col h-full chat-container">
     <!-- Messages -->
-    <MessageList
-      :messages="messages"
-      :isLoading="isLoading"
-      @play-audio="playAudio"
-      @stop-audio="stopAudio"
-    />
+    <MessageList :messages="messages" :isLoading="isLoading" @play-audio="playAudio" @stop-audio="stopAudio" />
 
     <!-- Input -->
-    <ChatInput
-      :isLoading="isLoading"
-      :disabled="!isConnected"
-      @send="sendMessage"
-      @new-chat="handleNewChat"
-      @clear-chat="handleClearChat"
-      @upload-image="handleImageUpload"
-      @upload-audio="handleAudioUpload"
-      @upload-file="handleFileUpload"
-    />
+    <ChatInput :isLoading="isLoading" :disabled="!isConnected" @send="sendMessage" @new-chat="handleNewChat"
+      @clear-chat="handleClearChat" @upload-image="handleImageUpload" @upload-audio="handleAudioUpload"
+      @upload-file="handleFileUpload" @send-status="handleSendStatus" />
   </div>
 </template>

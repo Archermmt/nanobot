@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 
+interface Props {
+  disabled?: boolean
+}
+
+const props = defineProps<Props>()
 const emit = defineEmits(['upload-image', 'upload-audio', 'upload-file'])
 
 const imageInput = ref<HTMLInputElement | null>(null)
@@ -11,14 +16,17 @@ const mediaRecorder = ref<MediaRecorder | null>(null)
 const audioChunks = ref<Blob[]>([])
 
 const triggerImageUpload = () => {
+  if (props.disabled) return
   imageInput.value?.click()
 }
 
 const triggerFileUpload = () => {
+  if (props.disabled) return
   fileInput.value?.click()
 }
 
 const triggerAudioUpload = () => {
+  if (props.disabled) return
   audioInput.value?.click()
 }
 
@@ -28,7 +36,11 @@ const handleImageUpload = (event: Event) => {
   if (file) {
     const reader = new FileReader()
     reader.onload = (e) => {
-      emit('upload-image', e.target?.result as string)
+      emit('upload-image', {
+        data: e.target?.result as string,
+        type: file.type,
+        name: file.name
+      })
     }
     reader.readAsDataURL(file)
   }
@@ -40,9 +52,11 @@ const handleAudioUpload = (event: Event) => {
   if (file) {
     const reader = new FileReader()
     reader.onload = (e) => {
+      // Emit audio data in the same format as image upload
       emit('upload-audio', {
         data: e.target?.result as string,
-        type: file.type
+        type: file.type,
+        name: file.name
       })
     }
     reader.readAsDataURL(file)
@@ -66,28 +80,39 @@ const handleFileUpload = (event: Event) => {
 }
 
 const startRecording = async () => {
+  if (props.disabled) return
+
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        sampleRate: 16000,
+        channelCount: 1
+      }
+    })
     mediaRecorder.value = new MediaRecorder(stream)
     audioChunks.value = []
-    
+
     mediaRecorder.value.ondataavailable = (event) => {
       audioChunks.value.push(event.data)
     }
-    
+
     mediaRecorder.value.onstop = () => {
       const audioBlob = new Blob(audioChunks.value, { type: 'audio/webm' })
       const reader = new FileReader()
       reader.onload = (e) => {
+        // Emit audio data in the same format as image upload
         emit('upload-audio', {
           data: e.target?.result as string,
           type: 'audio/webm',
+          name: `recording_${Date.now()}.webm`,
           isRecording: true
         })
       }
       reader.readAsDataURL(audioBlob)
     }
-    
+
     mediaRecorder.value.start()
     isRecording.value = true
   } catch (error) {
@@ -99,7 +124,7 @@ const stopRecording = () => {
   if (mediaRecorder.value && isRecording.value) {
     mediaRecorder.value.stop()
     isRecording.value = false
-    
+
     // Stop all tracks
     mediaRecorder.value.stream.getTracks().forEach(track => track.stop())
   }
@@ -109,59 +134,25 @@ const stopRecording = () => {
 <template>
   <div class="flex items-center space-x-2">
     <!-- Image Upload -->
-    <input
-      ref="imageInput"
-      type="file"
-      accept="image/*"
-      class="hidden"
-      @change="handleImageUpload"
-    />
-    <button
-      @click="triggerImageUpload"
-      class="nes-btn is-primary p-2 rounded transition-colors"
-      title="Upload Image"
-    >
+    <input ref="imageInput" type="file" accept="image/*" class="hidden" @change="handleImageUpload" />
+    <button @click="triggerImageUpload" :disabled="props.disabled"
+      class="nes-btn is-primary p-2 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+      title="Upload Image">
       📷
     </button>
 
-    <!-- Audio Upload -->
-    <input
-      ref="audioInput"
-      type="file"
-      accept="audio/*"
-      class="hidden"
-      @change="handleAudioUpload"
-    />
-    <button
-      @click="triggerAudioUpload"
-      class="nes-btn is-primary p-2 rounded transition-colors"
-      title="Upload Audio"
-    >
-      🎤
-    </button>
-
     <!-- File Upload -->
-    <input
-      ref="fileInput"
-      type="file"
-      class="hidden"
-      @change="handleFileUpload"
-    />
-    <button
-      @click="triggerFileUpload"
-      class="nes-btn is-primary p-2 rounded transition-colors"
-      title="Upload File"
-    >
+    <input ref="fileInput" type="file" class="hidden" @change="handleFileUpload" />
+    <button @click="triggerFileUpload" :disabled="props.disabled"
+      class="nes-btn is-primary p-2 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+      title="Upload File">
       📎
     </button>
 
     <!-- Voice Recording -->
-    <button
-      @click="isRecording ? stopRecording() : startRecording()"
-      class="nes-btn"
-      :class="isRecording ? 'is-danger' : 'is-primary'"
-      :title="isRecording ? 'Stop Recording' : 'Start Recording'"
-    >
+    <button @click="isRecording ? stopRecording() : startRecording()" :disabled="props.disabled"
+      class="nes-btn disabled:opacity-50 disabled:cursor-not-allowed" :class="isRecording ? 'is-danger' : 'is-primary'"
+      :title="isRecording ? 'Stop Recording' : 'Start Recording'">
       {{ isRecording ? '⏹️' : '🎙️' }}
     </button>
   </div>

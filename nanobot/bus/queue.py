@@ -1,8 +1,13 @@
 """Async message queue for decoupled channel-agent communication."""
 
 import asyncio
+from typing import Dict
+from loguru import logger
 
 from nanobot.bus.events import InboundMessage, OutboundMessage
+from nanobot.bus.handlers.base_handler import BaseHandler
+from nanobot.bus.handlers.audio_handler import load_audio_handler
+from nanobot.config.schema import BusConfig
 
 
 class MessageBus:
@@ -13,12 +18,26 @@ class MessageBus:
     them and pushes responses to the outbound queue.
     """
 
-    def __init__(self):
+    def __init__(self, config: BusConfig | None = None):
+        self.config = config or BusConfig()
         self.inbound: asyncio.Queue[InboundMessage] = asyncio.Queue()
         self.outbound: asyncio.Queue[OutboundMessage] = asyncio.Queue()
+        self._handlers: Dict[str, BaseHandler] = {}
+        if self.config.audio_handler and self.config.audio_handler.enabled:
+            self._handlers["audio"] = load_audio_handler(self.config.audio_handler)
 
     async def publish_inbound(self, msg: InboundMessage) -> None:
-        """Publish a message from a channel to the agent."""
+        """
+        Publish a message from a channel to the agent.
+
+        If the message contains audio media, it will be automatically
+        transcribed to text before being published.
+        """
+        # Process audio messages automatically
+        msg_type = msg.metadata.get("msg_type", "text")
+        if msg_type in self._handlers and self._handlers[msg_type].can_handle(msg):
+            logger.info("Processing {} message with {}", msg_type, self._handlers[msg_type].__class__.__name__)
+            msg = await self._handlers[msg_type].handle(msg)
         await self.inbound.put(msg)
 
     async def consume_inbound(self) -> InboundMessage:

@@ -213,13 +213,13 @@ def _make_provider(config: Config):
     from nanobot.providers.openai_codex_provider import OpenAICodexProvider
     from nanobot.providers.azure_openai_provider import AzureOpenAIProvider
 
-    model = config.agents.defaults.model
-    provider_name = config.get_provider_name(model)
-    p = config.get_provider(model)
+    def _create_provider(model):
+        provider_name = config.get_provider_name(model)
+        p = config.get_provider(model)
 
-    # OpenAI Codex (OAuth)
-    if provider_name == "openai_codex" or model.startswith("openai-codex/"):
-        return OpenAICodexProvider(default_model=model)
+        # OpenAI Codex (OAuth)
+        if provider_name == "openai_codex" or model.startswith("openai-codex/"):
+            return OpenAICodexProvider(default_model=model)
 
     # Custom: direct OpenAI-compatible endpoint, bypasses LiteLLM
     from nanobot.providers.custom_provider import CustomProvider
@@ -229,6 +229,8 @@ def _make_provider(config: Config):
             api_key=p.api_key if p else "no-key",
             api_base=config.get_api_base(model) or "http://localhost:8000/v1",
             default_model=model,
+            extra_headers=p.extra_headers if p else None,
+            provider_name=provider_name,
         )
 
     # Azure OpenAI: direct Azure OpenAI endpoint with deployment name
@@ -297,7 +299,7 @@ def gateway(
 
     console.print(f"{__logo__} Starting nanobot gateway on port {port}...")
     sync_workspace_templates(config.workspace_path)
-    bus = MessageBus()
+    bus = MessageBus(config.bus)
     provider = _make_provider(config)
     session_manager = SessionManager(config.workspace_path)
 
@@ -478,7 +480,7 @@ def agent(
     config = load_config()
     sync_workspace_templates(config.workspace_path)
 
-    bus = MessageBus()
+    bus = MessageBus(config.bus)
     provider = _make_provider(config)
 
     # Create cron service for tool usage (no callback needed for CLI unless running)

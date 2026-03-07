@@ -10,6 +10,7 @@ from contextlib import AsyncExitStack
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
+from dotenv import load_dotenv
 from loguru import logger
 
 from nanobot.agent.context import ContextBuilder
@@ -23,6 +24,7 @@ from nanobot.agent.tools.shell import ExecTool
 from nanobot.agent.tools.spawn import SpawnTool
 from nanobot.agent.tools.web import WebFetchTool, WebSearchTool
 from nanobot.agent.tools.agent import AgentModeTool
+from nanobot.agent.tools.image import ImageTool
 from nanobot.bus.events import InboundMessage, OutboundMessage
 from nanobot.bus.queue import MessageBus
 from nanobot.providers.base import LLMProvider
@@ -113,6 +115,7 @@ class AgentLoop:
         self._active_tasks: dict[str, list[asyncio.Task]] = {}  # session_key -> tasks
         self._processing_lock = asyncio.Lock()
         self._register_default_tools()
+        load_dotenv(dotenv_path=self.workspace / ".env")
 
     def _register_default_tools(self) -> None:
         """Register the default set of tools."""
@@ -133,7 +136,8 @@ class AgentLoop:
         self.tools.register(SpawnTool(manager=self.subagents))
         if self.cron_service:
             self.tools.register(CronTool(self.cron_service))
-        self.tools.register(AgentModeTool(self.workspace, self.provider))
+        self.tools.register(AgentModeTool(self.provider))
+        self.tools.register(ImageTool(self.provider, send_callback=self.bus.publish_outbound))
 
     async def _connect_mcp(self) -> None:
         """Connect to configured MCP servers (one-time, lazy)."""
@@ -160,7 +164,7 @@ class AgentLoop:
 
     def _set_tool_context(self, channel: str, chat_id: str, message_id: str | None = None) -> None:
         """Update context for all tools that need routing info."""
-        for name in ("message", "spawn", "cron"):
+        for name in ("message", "spawn", "cron", "image"):
             if tool := self.tools.get(name):
                 if hasattr(tool, "set_context"):
                     tool.set_context(channel, chat_id, *([message_id] if name == "message" else []))
@@ -437,15 +441,15 @@ class AgentLoop:
             self.sessions.invalidate(session.key)
             return OutboundMessage(channel=msg.channel, chat_id=msg.chat_id, content="Session cleared.")
         if cmd == "/status":
-            agent_file, info = self.workspace / "AGENT.json", {}
-            if agent_file.exists():
-                with open(agent_file, "r", encoding="utf-8") as f:
-                    info = json.load(f)
-            modes_info = info.get("modes", {})
+            mode = self.provider.get_default_mode()
+            if mode == "auto":
+                modes = [f"{m['model']}({m['name']})" for m in self.provider.list_models()]
+            else:
+                modes = [f"{m['model']}({m['name']})" for m in self.provider.list_models() if m["name"] == mode]
             status = {
-                "mode": modes_info.get("current_mode", "unknown"),
-                "price": modes_info.get("current_price", "unknown"),
-                "model": self.provider.get_default_model(),
+                "mode": self.provider.get_default_mode(),
+                "price": "free",
+                "model": "\n".join(modes),
                 "history": len(session.messages),
                 "skills": len(self.context.skills.list_skills()),
                 "tools": len(self.tools),
@@ -504,6 +508,10 @@ class AgentLoop:
 
         if final_content is None:
             final_content = "I've completed processing but have no response to give."
+        if "_prefix_content" in msg.metadata:
+            final_content = msg.metadata.pop("_prefix_content") + "\n" + final_content
+        if "_suffix_content" in msg.metadata:
+            final_content = final_content + "\n" + msg.metadata.pop("_suffix_content")
 
         self._save_turn(session, all_msgs, 1 + len(history))
         self.sessions.save(session)

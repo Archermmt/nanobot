@@ -1,6 +1,7 @@
 """Configuration schema using Pydantic."""
 
 from pathlib import Path
+from pydoc import describe
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -203,6 +204,26 @@ class WebSocketConfig(Base):
     as_server: bool = True  # If True, act as WebSocket server; if False, connect as client
 
 
+class AudioHandlerConfig(Base):
+    """Configuration for audio handler."""
+
+    enabled: bool = False
+    handler_type: str = "funasr"  # vosk or custom
+    model: str = "paraformer-zh"
+    # For custom handlers, specify the module path
+    custom_handler_path: str | None = None
+
+
+class BusConfig(Base):
+    """Configuration for MessageBus."""
+
+    audio_handler: AudioHandlerConfig | None = None
+
+    def model_post_init(self, __context):
+        if self.audio_handler is None:
+            self.audio_handler = AudioHandlerConfig()
+
+
 class MatrixConfig(Base):
     """Matrix (Element) channel configuration."""
 
@@ -238,6 +259,21 @@ class ChannelsConfig(Base):
     websocket: WebSocketConfig = Field(default_factory=WebSocketConfig)
 
 
+class ModeConfig(Base):
+    """Configuration for agent mode."""
+
+    model: str = "anthropic/claude-opus-4-5"
+    describe: str = "This is a description of the mode."
+
+
+class AgentModes(Base):
+    """Configuration for agent modes."""
+
+    enabled: bool = False
+    default_mode: str = "auto"
+    models: dict[str, ModeConfig] = Field(default_factory=dict)
+
+
 class AgentDefaults(Base):
     """Default agent configuration."""
 
@@ -255,6 +291,7 @@ class AgentsConfig(Base):
     """Agent configuration."""
 
     defaults: AgentDefaults = Field(default_factory=AgentDefaults)
+    modes: AgentModes = Field(default_factory=AgentModes)
 
 
 class ProviderConfig(Base):
@@ -353,6 +390,7 @@ class Config(BaseSettings):
     providers: ProvidersConfig = Field(default_factory=ProvidersConfig)
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
     tools: ToolsConfig = Field(default_factory=ToolsConfig)
+    bus: BusConfig = Field(default_factory=BusConfig)
 
     @property
     def workspace_path(self) -> Path:

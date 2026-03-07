@@ -4,9 +4,9 @@ import asyncio
 import json
 import threading
 from collections import OrderedDict
-from typing import Any
-
 from loguru import logger
+import subprocess
+import tempfile
 
 from nanobot.bus.events import OutboundMessage
 from nanobot.bus.queue import MessageBus
@@ -48,9 +48,7 @@ class WebSocketChannel(BaseChannel):
         self.config: WebSocketConfig = config
         self._ws = None
         self._ws_thread: threading.Thread | None = None
-        self._processed_message_ids: OrderedDict[str, None] = (
-            OrderedDict()
-        )  # Ordered dedup cache
+        self._processed_message_ids: OrderedDict[str, None] = OrderedDict()  # Ordered dedup cache
         self._loop: asyncio.AbstractEventLoop | None = None
         self._heartbeat_task: asyncio.Task | None = None
         self._reconnect_task: asyncio.Task | None = None
@@ -67,9 +65,7 @@ class WebSocketChannel(BaseChannel):
             await self._start_server()
         else:
             # Act as WebSocket client (connect to external server)
-            logger.info(
-                "Starting WebSocket client connecting to {}", self.config.server_url
-            )
+            logger.info("Starting WebSocket client connecting to {}", self.config.server_url)
             await self._connect_with_retry()
 
             # Keep running until stopped
@@ -128,9 +124,7 @@ class WebSocketChannel(BaseChannel):
 
         async def handler(websocket, *args):
             """Handle individual WebSocket connections."""
-            logger.info(
-                "New WebSocket client connected from {}", websocket.remote_address
-            )
+            logger.info("New WebSocket client connected from {}", websocket.remote_address)
             self._ws = websocket
             self._connected = True
 
@@ -138,14 +132,9 @@ class WebSocketChannel(BaseChannel):
                 # Handle authentication if token is required
                 if self.config.auth_token:
                     try:
-                        auth_msg = await asyncio.wait_for(
-                            websocket.recv(), timeout=10.0
-                        )
+                        auth_msg = await asyncio.wait_for(websocket.recv(), timeout=10.0)
                         auth_data = json.loads(auth_msg)
-                        if (
-                            auth_data.get("type") == "auth"
-                            and auth_data.get("token") == self.config.auth_token
-                        ):
+                        if auth_data.get("type") == "auth" and auth_data.get("token") == self.config.auth_token:
                             logger.debug("Client authenticated successfully")
                         else:
                             logger.warning("Authentication failed")
@@ -162,9 +151,7 @@ class WebSocketChannel(BaseChannel):
 
                 # Start heartbeat for this connection
                 if self.config.heartbeat_interval > 0:
-                    self._heartbeat_task = asyncio.create_task(
-                        self._server_heartbeat_loop(websocket)
-                    )
+                    self._heartbeat_task = asyncio.create_task(self._server_heartbeat_loop(websocket))
 
                 # Process messages from this client
                 await self._handle_client_messages(websocket)
@@ -182,7 +169,8 @@ class WebSocketChannel(BaseChannel):
 
         # Start server
         try:
-            async with websockets.serve(handler, host, port):
+            # Set max_size to 20MB to support large file uploads
+            async with websockets.serve(handler, host, port, max_size=20 * 1024 * 1024):
                 logger.info("WebSocket server started and listening")
                 # Keep server running
                 while self._running:
@@ -225,9 +213,7 @@ class WebSocketChannel(BaseChannel):
             try:
                 import websockets
 
-                logger.info(
-                    "Connecting to WebSocket server at {}", self.config.server_url
-                )
+                logger.info("Connecting to WebSocket server at {}", self.config.server_url)
 
                 self._ws = await websockets.connect(self.config.server_url)
                 self._connected = True
@@ -300,6 +286,7 @@ class WebSocketChannel(BaseChannel):
         content = msg_data.get("content", "")
         media = msg_data.get("media", [])
         metadata = msg_data.get("metadata", {})
+        msg_type = metadata.get("msg_type", "text")
 
         # Deduplication check
         if message_id in self._processed_message_ids:
@@ -310,16 +297,91 @@ class WebSocketChannel(BaseChannel):
         while len(self._processed_message_ids) > 1000:
             self._processed_message_ids.popitem(last=False)
 
-        # Skip empty messages
-        if not content and not media:
+        # Skip empty messages (unless it's a media message)
+        if not content and not media and not metadata:
             return
 
+        # Handle base64-encoded media (images, audio, files)
+        # Convert base64 data to temporary files
+        content_parts = []
+        media_paths = []
+        if content:
+            content_parts.append(content)
+        elif media:
+            content_parts.append("Just save the following files, do nothing else: ")
+        if media:
+            import base64
+            from pathlib import Path
+
+            media_dir = Path.home() / ".nanobot" / "media"
+            media_dir.mkdir(parents=True, exist_ok=True)
+
+            for media_item in media:
+                media_data, filename = media_item["data"], media_item.get("file_name", "")
+                # Check if media is base64 data (data URL format: data:<mime>;base64,<data>)
+                if isinstance(media_data, str) and media_data.startswith("data:"):
+                    try:
+                        # Parse data URL
+                        header, b64_data = media_data.split(",", 1)
+                        mime_type = header.split(";")[0].replace("data:", "")
+
+                        # Decode base64
+                        file_data = base64.b64decode(b64_data)
+                        if not filename:
+                            # Determine file extension from mime type
+                            ext_map = {
+                                "image/jpeg": ".jpg",
+                                "image/png": ".png",
+                                "image/gif": ".gif",
+                                "image/webp": ".webp",
+                                "audio/webm": ".webm",
+                                "audio/mp3": ".mp3",
+                                "audio/aac": ".aac",
+                                "audio/ogg": ".ogg",
+                                "audio/wav": ".wav",
+                                "video/mp4": ".mp4",
+                            }
+                            ext = ext_map.get(mime_type, ".bin")
+
+                            # Save to temporary file
+                            filename = f"ws_{message_id[:8]}_{i}{ext}"
+                        file_path = media_dir / filename
+                        # Read converted WAV file
+                        if filename.endswith(".webm"):
+                            # Change file extension from .webm to .wav
+                            file_path = str(file_path).replace(".webm", ".wav")
+                            with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as tmp_in:
+                                tmp_in.write(file_data)
+                                tmp_in_path = tmp_in.name
+
+                            result = subprocess.run(
+                                ["ffmpeg", "-i", tmp_in_path, "-ar", "16000", "-ac", "1", "-f", "wav", "-y", file_path],
+                                capture_output=True,
+                                check=True,
+                            )
+                            # Check if conversion was successful
+                            if result.returncode != 0:
+                                logger.error(f"FFmpeg conversion failed: {result.stderr.decode()}")
+                                raise RuntimeError(f"FFmpeg conversion failed with code {result.returncode}")
+                            logger.info("Successfully converted audio to WAV format")
+                        else:
+                            file_path.write_bytes(file_data)
+                        media_paths.append(str(file_path))
+                        content_parts.append(f"{filename}({msg_type}) saved to {file_path}")
+                        logger.debug("Saved base64 media to {}", file_path)
+                    except Exception as e:
+                        logger.error("Failed to process base64 media: {}", e)
+                else:
+                    # Already a file path
+                    media_paths.append(media_item)
+
+        content = "\n".join(content_parts) if content_parts else ""
         # Forward to message bus
         await self._handle_message(
             sender_id=sender_id,
             chat_id=chat_id,
             content=content,
-            media=media,
+            media=media_paths,
             metadata=metadata,
         )
 
