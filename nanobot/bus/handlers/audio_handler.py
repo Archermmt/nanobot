@@ -166,7 +166,11 @@ class FunasrHandler(BaseAudioHandler):
             model = str(model_dir_expanded)
         logger.info(f"Loading FunASR model {model}")
         self._model = AutoModel(
-            model=model, vad_model="fsmn-vad", vad_kwargs={"max_single_segment_time": 30000}, hub="hf"
+            model=model,
+            vad_model="fsmn-vad",
+            vad_kwargs={"max_single_segment_time": 30000},
+            hub="hf",
+            disable_update=True,
         )
 
     async def _process_audio(self, media_data: str) -> str:
