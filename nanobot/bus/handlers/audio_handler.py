@@ -1,9 +1,12 @@
 """Audio handlers for speech recognition."""
 
+import os
 import base64
 import io
 import json
 import wave
+import subprocess
+import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 from loguru import logger
@@ -44,7 +47,7 @@ class VoskAudioHandler(BaseAudioHandler):
         Recognize speech from audio data using Vosk (offline CPU-based ASR).
 
         Args:
-            media_data: Base64 encoded audio data (WAV format)
+            media_data: Base64 encoded audio data (WAV or WebM format)
 
         Returns:
             Recognized text string
@@ -56,8 +59,73 @@ class VoskAudioHandler(BaseAudioHandler):
             # Decode base64 audio data
             audio_bytes = base64.b64decode(media_data.split(",", 1)[1] if "," in media_data else media_data)
 
-            # Read WAV file and extract PCM data
+            # Detect audio format and convert to WAV if needed
             wav_io = io.BytesIO(audio_bytes)
+
+            # Check if it's a WAV file by reading the first 4 bytes
+            wav_io.seek(0)
+            header = wav_io.read(4)
+            wav_io.seek(0)
+
+            if header != b"RIFF":
+                # Not a WAV file, likely WebM or other format, need to convert
+                logger.info("Detected non-WAV format, converting to WAV...")
+
+                try:
+                    # Create temporary input file
+                    with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as tmp_in:
+                        tmp_in.write(audio_bytes)
+                        tmp_in_path = tmp_in.name
+
+                    # Create temporary output file for WAV
+                    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_out:
+                        tmp_out_path = tmp_out.name
+
+                    try:
+                        # Use ffmpeg to convert to WAV
+                        result = subprocess.run(
+                            [
+                                "ffmpeg",
+                                "-i",
+                                tmp_in_path,
+                                "-ar",
+                                "16000",  # Sample rate 16kHz for Vosk
+                                "-ac",
+                                "1",  # Mono
+                                "-f",
+                                "wav",  # WAV format
+                                "-y",  # Overwrite output
+                                tmp_out_path,
+                            ],
+                            capture_output=True,
+                            check=True,
+                        )
+
+                        # Read converted WAV file
+                        with open(tmp_out_path, "rb") as f:
+                            audio_bytes = f.read()
+                            wav_io = io.BytesIO(audio_bytes)
+
+                        logger.info("Successfully converted audio to WAV format")
+
+                    finally:
+                        # Cleanup temporary files
+                        if os.path.exists(tmp_in_path):
+                            os.unlink(tmp_in_path)
+                        if os.path.exists(tmp_out_path):
+                            os.unlink(tmp_out_path)
+
+                except subprocess.CalledProcessError as e:
+                    logger.error(f"FFmpeg conversion failed: {e.stderr.decode() if e.stderr else e}")
+                    return ""
+                except FileNotFoundError:
+                    logger.error("FFmpeg not found. Please install ffmpeg to convert non-WAV audio.")
+                    return ""
+                except Exception as e:
+                    logger.error(f"Audio conversion error: {e}")
+                    return ""
+
+            # Read WAV file and extract PCM data
             with wave.open(wav_io, "rb") as wf:
                 sample_rate = wf.getframerate()
 
