@@ -452,7 +452,9 @@ class ImageTool(Tool):
 
             if len(saved_paths) == 1:
                 logger.info(f"Image generated successfully: {saved_paths[0]} ({width}x{height})")
-                return await self._execute_display(f"Generated image({saved_paths[0]})", saved_paths[0])
+                return await self._execute_display(
+                    f"Generated image:\n{os.path.basename(saved_paths[0])}", saved_paths[0]
+                )
             return (
                 f"Generated {len(saved_paths)} images successfully:\n"
                 + "\n".join(f"- {path}" for path in saved_paths)

@@ -126,22 +126,21 @@ watch(() => props.isLoading, scrollToBottom)
   <div ref="messageContainer" class="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-900">
     <div v-for="(msg, index) in messages" :key="index" class="flex"
       :class="msg.role === 'user' ? 'justify-end' : 'justify-start'">
-      <div class="max-w-[80%] border-2 rounded shadow-[4px_4px_0_rgba(0,0,0,0.5)] px-4 py-3" :class="{
-        'bg-gradient-to-br from-blue-500 to-blue-600 border-blue-700 text-white': msg.role === 'user',
-        'bg-gradient-to-br from-gray-100 to-gray-200 border-gray-300 text-gray-800': msg.role === 'assistant',
-        'bg-gradient-to-br from-red-100 to-red-200 border-red-300 text-red-800': msg.role === 'system'
+      <div class="border-2 rounded shadow-[4px_4px_0_rgba(0,0,0,0.5)] px-4 py-3 flex flex-col" :class="{
+        'bg-gradient-to-br from-blue-500 to-blue-600 border-blue-700 text-white max-w-[80%]': msg.role === 'user',
+        'bg-gradient-to-br from-gray-100 to-gray-200 border-gray-300 text-gray-800 max-w-[80%]': msg.role === 'assistant',
+        'bg-gradient-to-br from-red-100 to-red-200 border-red-300 text-red-800 max-w-[80%]': msg.role === 'system'
       }">
         <!-- Image Display -->
-        <div v-if="getImageUrlFromMessage(msg)" class="mb-3">
+        <div v-if="getImageUrlFromMessage(msg)" class="mb-3 w-full">
           <!-- Collapsed state: display at actual size with max-width constraint -->
-          <div v-if="!expandedImages.includes(getImageUrlFromMessage(msg)!)" 
-            class="relative inline-block max-w-full">
+          <div v-if="!expandedImages.includes(getImageUrlFromMessage(msg)!)" class="relative inline-block max-w-full">
             <img :src="getImageUrlFromMessage(msg)!" alt="Image"
               class="rounded border-2 cursor-pointer hover:opacity-90 transition-opacity max-w-full h-auto"
-              style="max-width: 400px;"
-              @click="toggleImageExpand(getImageUrlFromMessage(msg)!)" />
+              style="max-width: 400px;" @click="toggleImageExpand(getImageUrlFromMessage(msg)!)" />
             <!-- Zoom hint -->
-            <div class="absolute top-1 right-1 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded opacity-0 hover:opacity-100 transition-opacity pointer-events-none">
+            <div
+              class="absolute top-1 right-1 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded opacity-0 hover:opacity-100 transition-opacity pointer-events-none">
               点击查看原图
             </div>
           </div>
