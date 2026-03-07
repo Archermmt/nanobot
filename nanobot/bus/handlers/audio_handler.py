@@ -1,5 +1,6 @@
 """Audio handlers for speech recognition."""
 
+from ntpath import isfile
 import os
 import base64
 import io
@@ -55,10 +56,13 @@ class VoskAudioHandler(BaseAudioHandler):
 
         from vosk import KaldiRecognizer
 
-        try:
-            # Decode base64 audio data
+        # Read base64 audio data
+        if os.path.isfile(media_data):
+            with open(media_data, "rb") as f:
+                audio_bytes = f.read()
+        else:
             audio_bytes = base64.b64decode(media_data.split(",", 1)[1] if "," in media_data else media_data)
-
+        try:
             # Detect audio format and convert to WAV if needed
             wav_io = io.BytesIO(audio_bytes)
 
@@ -84,19 +88,7 @@ class VoskAudioHandler(BaseAudioHandler):
                     try:
                         # Use ffmpeg to convert to WAV
                         result = subprocess.run(
-                            [
-                                "ffmpeg",
-                                "-i",
-                                tmp_in_path,
-                                "-ar",
-                                "16000",  # Sample rate 16kHz for Vosk
-                                "-ac",
-                                "1",  # Mono
-                                "-f",
-                                "wav",  # WAV format
-                                "-y",  # Overwrite output
-                                tmp_out_path,
-                            ],
+                            ["ffmpeg", "-i", tmp_in_path, "-ar", "16000", "-ac", "1", "-f", "wav", "-y", tmp_out_path],
                             capture_output=True,
                             check=True,
                         )

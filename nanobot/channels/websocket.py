@@ -5,6 +5,8 @@ import json
 import threading
 from collections import OrderedDict
 from loguru import logger
+import subprocess
+import tempfile
 
 from nanobot.bus.events import OutboundMessage
 from nanobot.bus.queue import MessageBus
@@ -344,7 +346,26 @@ class WebSocketChannel(BaseChannel):
                             # Save to temporary file
                             filename = f"ws_{message_id[:8]}_{i}{ext}"
                         file_path = media_dir / filename
-                        file_path.write_bytes(file_data)
+                        # Read converted WAV file
+                        if filename.endswith(".webm"):
+                            # Change file extension from .webm to .wav
+                            file_path = str(file_path).replace(".webm", ".wav")
+                            with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as tmp_in:
+                                tmp_in.write(file_data)
+                                tmp_in_path = tmp_in.name
+
+                            result = subprocess.run(
+                                ["ffmpeg", "-i", tmp_in_path, "-ar", "16000", "-ac", "1", "-f", "wav", "-y", file_path],
+                                capture_output=True,
+                                check=True,
+                            )
+                            # Check if conversion was successful
+                            if result.returncode != 0:
+                                logger.error(f"FFmpeg conversion failed: {result.stderr.decode()}")
+                                raise RuntimeError(f"FFmpeg conversion failed with code {result.returncode}")
+                            logger.info("Successfully converted audio to WAV format")
+                        else:
+                            file_path.write_bytes(file_data)
                         media_paths.append(str(file_path))
                         content_parts.append(f"{filename}({msg_type}) saved to {file_path}")
                         logger.debug("Saved base64 media to {}", file_path)
