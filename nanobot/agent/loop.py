@@ -27,6 +27,7 @@ from nanobot.agent.tools.agent import AgentModeTool
 from nanobot.agent.tools.image import ImageTool
 from nanobot.bus.events import InboundMessage, OutboundMessage
 from nanobot.bus.queue import MessageBus
+from nanobot.config.loader import load_config
 from nanobot.providers.base import LLMProvider
 from nanobot.session.manager import Session, SessionManager
 
@@ -119,6 +120,7 @@ class AgentLoop:
 
     def _register_default_tools(self) -> None:
         """Register the default set of tools."""
+        tools_config = load_config().tools
         allowed_dir = self.workspace if self.restrict_to_workspace else None
         for cls in (ReadFileTool, WriteFileTool, EditFileTool, ListDirTool):
             self.tools.register(cls(workspace=self.workspace, allowed_dir=allowed_dir))
@@ -130,7 +132,9 @@ class AgentLoop:
                 path_append=self.exec_config.path_append,
             )
         )
-        self.tools.register(WebSearchTool(api_key=self.brave_api_key, proxy=self.web_proxy))
+        self.tools.register(
+            WebSearchTool(api_key=self.brave_api_key, proxy=self.web_proxy, provider=tools_config.web.search.provider)
+        )
         self.tools.register(WebFetchTool(proxy=self.web_proxy))
         self.tools.register(MessageTool(send_callback=self.bus.publish_outbound))
         self.tools.register(SpawnTool(manager=self.subagents))
