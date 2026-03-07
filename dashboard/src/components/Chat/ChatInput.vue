@@ -10,7 +10,16 @@ interface Props {
 const props = defineProps<Props>()
 const emit = defineEmits(['send', 'new-chat', 'clear-chat', 'upload-image', 'upload-audio', 'upload-file'])
 
+interface PendingMedia {
+  data: string
+  type: string
+  name: string
+  preview?: string
+}
+
 const input = ref('')
+const pendingImages = ref<PendingMedia[]>([])
+const pendingFiles = ref<PendingMedia[]>([])
 
 const hasChineseCharacters = computed(() => {
   return /[\u4e00-\u9fa5]/.test(input.value);
@@ -41,9 +50,20 @@ const handleKeydown = (event: KeyboardEvent) => {
 }
 
 const sendMessage = () => {
-  if (!input.value.trim() || props.isLoading || props.disabled) return
-  emit('send', input.value)
+  if ((!input.value.trim() && pendingImages.value.length === 0 && pendingFiles.value.length === 0) || props.isLoading || props.disabled) return
+
+  // Send text, images and files together
+  emit('send', {
+    text: input.value,
+    images: pendingImages.value,
+    files: pendingFiles.value
+  })
+
+  // Clear inputs
   input.value = ''
+  pendingImages.value = []
+  pendingFiles.value = []
+
   // Reset height after sending
   resetTextareaHeight()
 }
@@ -51,17 +71,25 @@ const sendMessage = () => {
 const handleNewChat = () => {
   emit('new-chat')
   input.value = ''
+  pendingImages.value = []
+  pendingFiles.value = []
   resetTextareaHeight()
 }
 
 const handleClearChat = () => {
   emit('clear-chat')
   input.value = ''
+  pendingImages.value = []
+  pendingFiles.value = []
   resetTextareaHeight()
 }
 
-const handleImageUpload = (imageData: string) => {
-  emit('upload-image', imageData)
+const handleImageUpload = (imageData: { data: string; type: string; name: string }) => {
+  // Add to pending images instead of sending immediately
+  pendingImages.value.push({
+    ...imageData,
+    preview: imageData.data // For base64 images, use as preview
+  })
 }
 
 const handleAudioUpload = (audioData: { data: string; type: string; isRecording?: boolean }) => {
@@ -69,7 +97,16 @@ const handleAudioUpload = (audioData: { data: string; type: string; isRecording?
 }
 
 const handleFileUpload = (fileData: { data: string; type: string; name: string }) => {
-  emit('upload-file', fileData)
+  // Add to pending files instead of sending immediately
+  pendingFiles.value.push(fileData)
+}
+
+const removePendingImage = (index: number) => {
+  pendingImages.value.splice(index, 1)
+}
+
+const removePendingFile = (index: number) => {
+  pendingFiles.value.splice(index, 1)
 }
 </script>
 
@@ -81,9 +118,35 @@ const handleFileUpload = (fileData: { data: string; type: string; name: string }
         @upload-file="handleFileUpload" />
 
       <!-- Text Input -->
-      <form id="message-form" @submit.prevent="sendMessage" class="flex-1 flex space-x-2">
+      <form id="message-form" @submit.prevent="sendMessage" class="flex-1 flex flex-col space-y-2">
+        <!-- Pending Images Display -->
+        <div v-if="pendingImages.length > 0" class="flex flex-wrap gap-2">
+          <div v-for="(img, index) in pendingImages" :key="index" class="relative group">
+            <img :src="img.preview" :alt="img.name" class="h-20 w-auto rounded border-2 border-gray-600" />
+            <button type="button" @click="removePendingImage(index)"
+              class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs hover:bg-red-600"
+              title="Remove image">
+              ×
+            </button>
+          </div>
+        </div>
+
+        <!-- Pending Files Display -->
+        <div v-if="pendingFiles.length > 0" class="flex flex-wrap gap-2">
+          <div v-for="(file, index) in pendingFiles" :key="index"
+            class="flex items-center gap-2 bg-gray-700 px-3 py-2 rounded border-2 border-gray-600">
+            <span class="text-xs text-gray-300 truncate max-w-[150px]">{{ file.name }}</span>
+            <button type="button" @click="removePendingFile(index)"
+              class="bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs hover:bg-red-600"
+              title="Remove file">
+              ×
+            </button>
+          </div>
+        </div>
+
+        <!-- Textarea -->
         <textarea ref="textareaRef" v-model="input"
-          :placeholder="props.disabled ? 'Please connect WebSocket first' : 'Type a message...'"
+          :placeholder="props.disabled ? 'Please connect WebSocket first' : 'Type a message... (or attach images/files above)'"
           class="flex-1 border-2 border-gray-600 rounded shadow-[inset_2px_2px_4px_rgba(0,0,0,0.3)] px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-700 disabled:text-gray-500 resize-none min-h-[48px] max-h-[200px] overflow-y-auto nes-input text-xs pixel-font chat-input-textarea"
           :class="{ 'zh': hasChineseCharacters }" :disabled="isLoading || props.disabled" rows="1" @input="autoResize"
           @keydown="handleKeydown" />
@@ -93,7 +156,7 @@ const handleFileUpload = (fileData: { data: string; type: string; name: string }
       <div class="flex items-center space-x-2">
         <button type="submit" form="message-form"
           class="nes-btn is-primary px-4 py-2 rounded text-xs font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed uppercase"
-          :disabled="isLoading || !input.trim() || props.disabled">
+          :disabled="isLoading || (!input.trim() && pendingImages.length === 0 && pendingFiles.length === 0) || props.disabled">
           SEND
         </button>
         <button @click="handleNewChat"

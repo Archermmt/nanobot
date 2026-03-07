@@ -108,11 +108,29 @@ const handleWebSocketMessage = (event: MessageEvent) => {
   }
 }
 
-const sendMessage = async (text: string) => {
+const sendMessage = async (data: string | { text: string; images: Array<{ data: string; type: string; name: string }>; files: Array<{ data: string; type: string; name: string }> }) => {
+  // Handle both old string format and new object format
+  let text = ''
+  let images: Array<{ data: string; type: string; name: string }> = []
+  let files: Array<{ data: string; type: string; name: string }> = []
+
+  if (typeof data === 'string') {
+    text = data
+  } else {
+    text = data.text || ''
+    images = data.images || []
+    files = data.files || []
+  }
+
   const userMessage: Message = {
     role: 'user',
     content: text,
     timestamp: Date.now()
+  }
+
+  // Add image preview if there's an image
+  if (images.length > 0) {
+    userMessage.imageUrl = images[0].data
   }
 
   messages.value.push(userMessage)
@@ -120,18 +138,32 @@ const sendMessage = async (text: string) => {
 
   // Send message through WebSocketChannel
   if (ws && ws.readyState === WebSocket.OPEN) {
+    const mediaItems = [
+      ...images.map(img => ({ data: img.data, file_name: img.name })),
+      ...files.map(file => ({ data: file.data, file_name: file.name }))
+    ]
+
     const messageData = {
       type: 'message',
       message_id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       sender_id: 'web_user',
       chat_id: 'default_room',
       content: text,
-      media: [],
+      media: mediaItems,
       metadata: {
         source: 'web_dashboard',
         timestamp: Date.now(),
         session_id: sessionId.value
       }
+    }
+
+    // Set msg_type based on content
+    if (images.length > 0) {
+      messageData.metadata.msg_type = 'image'
+      messageData.metadata.file_type = images[0].type
+    } else if (files.length > 0) {
+      messageData.metadata.msg_type = 'file'
+      messageData.metadata.file_type = files[0].type
     }
 
     console.log('📤 Sending message:', messageData)
@@ -160,79 +192,13 @@ const sendMessage = async (text: string) => {
 }
 
 const handleImageUpload = async (imageData: { data: string; type: string; name: string }) => {
-  // Check file size (limit to 20MB)
-  const fileSizeInBytes = Math.round((imageData.data.length * 3) / 4) // Approximate size from base64
-  const maxSize = 20 * 1024 * 1024 // 20MB
+  // This is now handled by ChatInput - images are queued and sent with text
+  console.log('Image queued for upload:', imageData.name)
+}
 
-  if (fileSizeInBytes > maxSize) {
-    messages.value.push({
-      role: 'system',
-      content: `Image file is too large. Maximum size is 20MB. Your image is approximately ${(fileSizeInBytes / (1024 * 1024)).toFixed(2)}MB.`,
-      timestamp: Date.now()
-    })
-    return
-  }
-
-  // Add image to messages
-  messages.value.push({
-    role: 'user',
-    content: 'Uploaded an image',
-    timestamp: Date.now(),
-    imageUrl: imageData.data
-  })
-
-  // Send image to backend with msg_type
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    const messageData = {
-      type: 'message',
-      message_id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      sender_id: 'web_user',
-      chat_id: 'default_room',
-      content: '',  // Empty content for image-only messages
-      media: [{
-        data: imageData.data,
-        file_name: imageData.name
-      }],  // Send base64 data as media with filename
-      metadata: {
-        source: 'web_dashboard',
-        timestamp: Date.now(),
-        session_id: sessionId.value,
-        msg_type: 'image',  // Indicate this is an image message
-        file_type: imageData.type
-      }
-    }
-
-    console.log('📤 Sending image message:', messageData)
-    isLoading.value = true
-    try {
-      ws.send(JSON.stringify(messageData))
-
-      // Set timeout: if no response within 30 seconds, stop loading
-      const timeoutId = setTimeout(() => {
-        if (isLoading.value) {
-          isLoading.value = false
-          console.warn('No response received within 30 seconds')
-        }
-      }, 30000)
-
-      // Store timeout ID in a ref so we can clear it on message receive
-      currentTimeoutId.value = timeoutId
-    } catch (error) {
-      console.error('Failed to send image:', error)
-      messages.value.push({
-        role: 'system',
-        content: 'Failed to send image. Please try again.',
-        timestamp: Date.now()
-      })
-      isLoading.value = false
-    }
-  } else {
-    messages.value.push({
-      role: 'system',
-      content: 'WebSocket not connected. Please connect first.',
-      timestamp: Date.now()
-    })
-  }
+const handleFileUpload = async (fileData: { data: string; type: string; name: string }) => {
+  // This is now handled by ChatInput - files are queued and sent with text
+  console.log('File queued for upload:', fileData.name)
 }
 
 const handleAudioUpload = async (audioData: { data: string; type: string; isRecording?: boolean }) => {
@@ -289,57 +255,7 @@ const handleAudioUpload = async (audioData: { data: string; type: string; isReco
   }
 }
 
-const handleFileUpload = async (fileData: { data: string; type: string; name: string }) => {
-  // Add file to messages
-  messages.value.push({
-    role: 'user',
-    content: `Uploaded file: ${fileData.name}`,
-    timestamp: Date.now()
-  })
 
-  // Send file to backend with msg_type
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    const messageData = {
-      type: 'message',
-      message_id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      sender_id: 'web_user',
-      chat_id: 'default_room',
-      content: '',  // Empty content for file-only messages
-      media: [{
-        data: fileData.data,
-        file_name: fileData.name
-      }],
-      metadata: {
-        source: 'web_dashboard',
-        timestamp: Date.now(),
-        session_id: sessionId.value,
-        msg_type: 'file',  // Indicate this is a file message
-        file_type: fileData.type
-      }
-    }
-
-    console.log('📤 Sending file message:', messageData)
-    isLoading.value = true
-    ws.send(JSON.stringify(messageData))
-
-    // Set timeout: if no response within 30 seconds, stop loading
-    const timeoutId = setTimeout(() => {
-      if (isLoading.value) {
-        isLoading.value = false
-        console.warn('No response received within 30 seconds')
-      }
-    }, 30000)
-
-    // Store timeout ID in a ref so we can clear it on message receive
-    currentTimeoutId.value = timeoutId
-  } else {
-    messages.value.push({
-      role: 'system',
-      content: 'WebSocket not connected. Please connect first.',
-      timestamp: Date.now()
-    })
-  }
-}
 
 const handleSendStatus = () => {
   if (!ws || ws.readyState !== WebSocket.OPEN) {
