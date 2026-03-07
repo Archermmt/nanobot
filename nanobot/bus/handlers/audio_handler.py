@@ -66,10 +66,7 @@ class BaseAudioHandler(BaseHandler):
 
             if transcribed_text:
                 logger.info(f"Recognized speech from audio: '{transcribed_text}'")
-
-                # Update message content with transcribed text
                 msg.content = transcribed_text
-                msg.metadata["_prefix_content"] = "[ASR]: " + str(transcribed_text)
             else:
                 logger.warning("No speech recognized, skipping message")
                 msg.content = "No speech recognized, skipping message"

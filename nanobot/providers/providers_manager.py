@@ -54,6 +54,7 @@ class ProvidersManager:
         model: str | None = None,
         max_tokens: int = 4096,
         temperature: float = 0.7,
+        reasoning_effort: str | None = None,
         mode: str = "",
     ) -> LLMResponse:
         """
@@ -119,6 +120,7 @@ class ProvidersManager:
             model=model or provider.get_default_model(),
             max_tokens=max_tokens,
             temperature=temperature,
+            reasoning_effort=reasoning_effort,
         )
 
     def add_mode(self, mode: str, model_id: str, describe: str) -> None:
