@@ -16,19 +16,20 @@ from loguru import logger
 from nanobot.agent.context import ContextBuilder
 from nanobot.agent.memory import MemoryStore
 from nanobot.agent.subagent import SubagentManager
+from nanobot.agent.tools.agent import AgentModeTool
 from nanobot.agent.tools.cron import CronTool
 from nanobot.agent.tools.filesystem import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
+from nanobot.agent.tools.image import ImageTool
 from nanobot.agent.tools.message import MessageTool
 from nanobot.agent.tools.registry import ToolRegistry
 from nanobot.agent.tools.shell import ExecTool
 from nanobot.agent.tools.spawn import SpawnTool
 from nanobot.agent.tools.web import WebFetchTool, WebSearchTool
-from nanobot.agent.tools.agent import AgentModeTool
-from nanobot.agent.tools.image import ImageTool
 from nanobot.bus.events import InboundMessage, OutboundMessage
 from nanobot.bus.queue import MessageBus
 from nanobot.config.loader import load_config
 from nanobot.providers.base import LLMProvider
+from nanobot.providers.providers_manager import ProvidersManager
 from nanobot.session.manager import Session, SessionManager
 
 if TYPE_CHECKING:
@@ -140,7 +141,8 @@ class AgentLoop:
         self.tools.register(SpawnTool(manager=self.subagents))
         if self.cron_service:
             self.tools.register(CronTool(self.cron_service))
-        self.tools.register(AgentModeTool(self.provider))
+        if isinstance(self.provider, ProvidersManager):
+            self.tools.register(AgentModeTool(self.provider))
         self.tools.register(ImageTool(self.provider, send_callback=self.bus.publish_outbound))
 
     async def _connect_mcp(self) -> None:
