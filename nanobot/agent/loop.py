@@ -495,9 +495,11 @@ class AgentLoop:
         )
 
         if "_hint_content" in msg.metadata:
-            hint_content = msg.metadata.pop("_hint_content")
+            meta = dict(msg.metadata)
+            hint_content = meta.pop("_hint_content")
+            meta["_progress"] = True
             await self.bus.publish_outbound(
-                OutboundMessage(channel=msg.channel, chat_id=msg.chat_id, content=hint_content, metadata=msg.metadata)
+                OutboundMessage(channel=msg.channel, chat_id=msg.chat_id, content=hint_content, metadata=meta)
             )
 
         async def _bus_progress(content: str, *, tool_hint: bool = False) -> None:
