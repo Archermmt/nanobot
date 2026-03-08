@@ -1,16 +1,17 @@
 """Audio handlers for speech recognition."""
 
-from ntpath import isdir, isfile
-import os
+import asyncio
 import base64
 import io
 import json
-import wave
+import os
 import subprocess
 import tempfile
-import asyncio
+import wave
+from ntpath import isdir, isfile
 from pathlib import Path
 from typing import TYPE_CHECKING
+
 from loguru import logger
 
 from nanobot.bus.events import InboundMessage
@@ -67,6 +68,7 @@ class BaseAudioHandler(BaseHandler):
             if transcribed_text:
                 logger.info(f"Recognized speech from audio: '{transcribed_text}'")
                 msg.content = transcribed_text
+                msg.metadata = {"_hint_content": transcribed_text}
             else:
                 logger.warning("No speech recognized, skipping message")
                 msg.content = "No speech recognized, skipping message"

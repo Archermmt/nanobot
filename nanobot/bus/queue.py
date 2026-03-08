@@ -2,11 +2,12 @@
 
 import asyncio
 from typing import Dict
+
 from loguru import logger
 
 from nanobot.bus.events import InboundMessage, OutboundMessage
-from nanobot.bus.handlers.base_handler import BaseHandler
 from nanobot.bus.handlers.audio_handler import load_audio_handler
+from nanobot.bus.handlers.base_handler import BaseHandler
 from nanobot.config.schema import BusConfig
 
 
@@ -30,16 +31,14 @@ class MessageBus:
         """
         Publish a message from a channel to the agent.
 
-        If the message contains audio media, it will be automatically
+        If the message contains media, it will be automatically
         transcribed to text before being published.
         """
-        # Process audio messages automatically
+        # Process media messages automatically
         msg_type = msg.metadata.get("msg_type", "text")
         if msg_type in self._handlers and self._handlers[msg_type].can_handle(msg):
             logger.info("Processing {} message with {}", msg_type, self._handlers[msg_type].__class__.__name__)
             msg = await self._handlers[msg_type].handle(msg)
-            out_msg = OutboundMessage(channel=msg.channel, chat_id=msg.chat_id, content=f"{msg_type}->{msg.content}")
-            self.publish_outbound(out_msg)
         await self.inbound.put(msg)
 
     async def consume_inbound(self) -> InboundMessage:

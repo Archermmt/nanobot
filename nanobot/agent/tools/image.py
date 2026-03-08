@@ -3,6 +3,7 @@
 import base64
 from pathlib import Path
 from typing import Any, Awaitable, Callable
+
 from loguru import logger
 
 from nanobot.agent.tools.base import Tool
@@ -346,9 +347,10 @@ class ImageTool(Tool):
         Returns:
             Status message with generation result or error details.
         """
-        import httpx
-        import os
         import json
+        import os
+
+        import httpx
 
         if not text:
             return "Error: Text prompt is required for image generation."
@@ -360,7 +362,7 @@ class ImageTool(Tool):
         api_key = os.getenv("DASHSCOPE_API_KEY")
         if not api_key:
             return (
-                "Error: DASHSCOPE_API_KEY not found. Please set it in environment variables. "
+                "Error: DASHSCOPE_API_KEY not found. Please set it in environment variables at ~/.nanobot/workspace/.env. "
                 "Get your API key from https://dashscope.console.aliyun.com/"
             )
 

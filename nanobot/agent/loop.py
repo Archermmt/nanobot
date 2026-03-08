@@ -143,7 +143,7 @@ class AgentLoop:
             self.tools.register(CronTool(self.cron_service))
         if isinstance(self.provider, ProvidersManager):
             self.tools.register(AgentModeTool(self.provider))
-        self.tools.register(ImageTool(self.provider, send_callback=self.bus.publish_outbound))
+            self.tools.register(ImageTool(self.provider, send_callback=self.bus.publish_outbound))
 
     async def _connect_mcp(self) -> None:
         """Connect to configured MCP servers (one-time, lazy)."""
@@ -507,6 +507,7 @@ class AgentLoop:
                 )
             )
 
+        print("[TMINFO] processing msg " + str(msg))
         final_content, _, all_msgs = await self._run_agent_loop(
             initial_messages,
             on_progress=on_progress or _bus_progress,
