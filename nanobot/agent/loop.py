@@ -494,6 +494,12 @@ class AgentLoop:
             chat_id=msg.chat_id,
         )
 
+        if "_hint_content" in msg.metadata:
+            hint_content = msg.metadata.pop("_hint_content")
+            await self.bus.publish_outbound(
+                OutboundMessage(channel=msg.channel, chat_id=msg.chat_id, content=hint_content, metadata=msg.metadata)
+            )
+
         async def _bus_progress(content: str, *, tool_hint: bool = False) -> None:
             meta = dict(msg.metadata or {})
             meta["_progress"] = True
@@ -507,7 +513,6 @@ class AgentLoop:
                 )
             )
 
-        print("[TMINFO] processing msg " + str(msg))
         final_content, _, all_msgs = await self._run_agent_loop(
             initial_messages,
             on_progress=on_progress or _bus_progress,

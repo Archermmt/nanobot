@@ -68,7 +68,9 @@ class BaseAudioHandler(BaseHandler):
             if transcribed_text:
                 logger.info(f"Recognized speech from audio: '{transcribed_text}'")
                 msg.content = transcribed_text
-                msg.metadata = {"_hint_content": transcribed_text}
+                msg.media = []
+                keep_meta = {k: v for k, v in msg.metadata.items() if k in ("source", "timestamp", "session_id")}
+                msg.metadata = {**keep_meta, "_hint_content": "[audio]: " + transcribed_text}
             else:
                 logger.warning("No speech recognized, skipping message")
                 msg.content = "No speech recognized, skipping message"
