@@ -83,9 +83,16 @@ const handleWebSocketMessage = (event: MessageEvent) => {
         timestamp: Date.now(),
         imageUrl: imageUrl,
         media: data.media,
-        metadata: data.metadata
+        metadata: {
+          ...data.metadata,
+          _progress: data.metadata?._progress
+        }
       })
-      isLoading.value = false
+
+      // Only set isLoading to false if _progress is not true
+      if (!data.metadata?._progress) {
+        isLoading.value = false
+      }
     } else if (data.type === 'heartbeat') {
       // Reply to heartbeat
       if (ws) {

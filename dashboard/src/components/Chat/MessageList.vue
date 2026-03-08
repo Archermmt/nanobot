@@ -23,6 +23,7 @@ interface Message {
   metadata?: {
     msg_type?: string
     file_type?: string
+    _progress?: boolean
   }
 }
 
@@ -37,8 +38,14 @@ const emit = defineEmits(['play-audio', 'stop-audio'])
 const messageContainer = ref<HTMLElement | null>(null)
 
 const showThinking = computed(() => {
-  // Show thinking only if loading and there are messages
-  return props.isLoading && props.messages.length > 0
+  // Show thinking if isLoading is true and there are messages
+  // OR if the last message has _progress: true in metadata
+  if (props.messages.length === 0) return false
+
+  const lastMessage = props.messages[props.messages.length - 1]
+  const hasProgressFlag = lastMessage.metadata?._progress === true
+
+  return (props.isLoading && props.messages.length > 0) || hasProgressFlag
 })
 
 const currentAudio = ref<HTMLAudioElement | null>(null)
