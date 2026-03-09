@@ -80,12 +80,6 @@ const handleWebSocketMessage = (event: MessageEvent) => {
             })
 
             console.log('✅ Added', messages.value.filter(m => m.role === 'user').length, 'user messages to history')
-
-            // Clear messages after updating input history (for initialization)
-            setTimeout(() => {
-              messages.value = []
-              console.log('🧹 Cleared chat messages after history loaded')
-            }, 100)
           }
         } catch (e) {
           console.error('Failed to parse history:', e)
@@ -297,41 +291,39 @@ const handleAudioUpload = async (audioData: { data: string; type: string; isReco
   }
 }
 
-
-
 const handleSendStatus = () => {
-  if (!ws || ws.readyState !== WebSocket.OPEN) {
-    console.log('⚠️ Cannot send /status: WebSocket not connected')
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    const userMessage: Message = {
+      role: 'user',
+      content: '/status',
+      timestamp: Date.now()
+    }
+    messages.value.push(userMessage)
+
+    const statusMsg = {
+      type: 'message',
+      message_id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      sender_id: 'web_user',
+      chat_id: 'default_room',
+      content: '/status',
+      media: [],
+      metadata: {
+        source: 'web_dashboard',
+        timestamp: Date.now(),
+        session_id: sessionId.value
+      }
+    }
+    console.log('📤 Sending /status command:', statusMsg)
+    ws.send(JSON.stringify(statusMsg))
+  } else {
     messages.value.push({
       role: 'system',
       content: 'WebSocket not connected. Please connect first.',
       timestamp: Date.now()
     })
-    return
   }
 
-  const userMessage: Message = {
-    role: 'user',
-    content: '/status',
-    timestamp: Date.now()
-  }
-  messages.value.push(userMessage)
 
-  const statusMsg = {
-    type: 'message',
-    message_id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-    sender_id: 'web_user',
-    chat_id: 'default_room',
-    content: '/status',
-    media: [],
-    metadata: {
-      source: 'web_dashboard',
-      timestamp: Date.now(),
-      session_id: sessionId.value
-    }
-  }
-  console.log('📤 Sending /status command:', statusMsg)
-  ws.send(JSON.stringify(statusMsg))
 }
 
 const handleConnected = () => {
@@ -344,6 +336,16 @@ const handleConnected = () => {
     })
     return
   }
+
+  // Clear messages on successful connection
+  messages.value = []
+
+  // Show connection success message
+  messages.value.push({
+    role: 'assistant',
+    content: '✅ WebSocket connected successfully!',
+    timestamp: Date.now()
+  })
 
   // Send /status for initialization (hidden from chat)
   const statusMsg = {
