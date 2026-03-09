@@ -1,9 +1,14 @@
 """Image tools for analyzing and displaying images."""
 
 import base64
+import json
+import os
+import time
+from io import BytesIO
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
+import requests
 from loguru import logger
 
 from nanobot.agent.tools.base import Tool
@@ -152,7 +157,8 @@ class ImageTool(Tool):
         valid_extensions = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
         if path.suffix.lower() not in valid_extensions:
             raise ValueError(
-                f"Unsupported image format: {path.suffix}. " f"Supported formats: {', '.join(valid_extensions)}"
+                f"Unsupported image format: {path.suffix}. "
+                f"Supported formats: {', '.join(valid_extensions)}"
             )
 
         # Read and encode image
@@ -253,7 +259,12 @@ class ImageTool(Tool):
 
             # Add image to content in OpenAI format
             # Reference: https://platform.moonshot.cn/docs/guide/use-kimi-vision-model
-            content.append({"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{encoded_image}"}})
+            content.append(
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:{mime_type};base64,{encoded_image}"},
+                }
+            )
         except FileNotFoundError as e:
             return f"Error: {str(e)}"
         except ValueError as e:
@@ -262,7 +273,10 @@ class ImageTool(Tool):
             return f"Error encoding image '{image_path}': {str(e)}"
 
         # Build messages for chat completion
-        messages = [{"role": "system", "content": "Your are a multimodal model"}, {"role": "user", "content": content}]
+        messages = [
+            {"role": "system", "content": "Your are a multimodal model"},
+            {"role": "user", "content": content},
+        ]
         try:
             response = await self.provider.chat(messages=messages, mode="multimodal")
             if response.content:
@@ -347,10 +361,6 @@ class ImageTool(Tool):
         Returns:
             Status message with generation result or error details.
         """
-        import json
-        import os
-
-        import httpx
 
         if not text:
             return "Error: Text prompt is required for image generation."
@@ -358,13 +368,71 @@ class ImageTool(Tool):
         if not image_path:
             return "Error: Image save path is required."
 
+        provider = os.getenv("IMAGE_GEN_PROVIDER", "dashscope")
+        image_paths, error = [], ""
+        if provider == "dashscope":
+            image_paths, error = await self._dashscope_generate(
+                text=text,
+                image_path=image_path,
+                size=size,
+                negative_prompt=negative_prompt,
+                n=n,
+                prompt_extend=prompt_extend,
+                watermark=watermark,
+                **kwargs,
+            )
+        elif provider == "modelscope":
+            image_paths, error = await self._modelscope_generate(
+                text=text,
+                image_path=image_path,
+                size=size,
+                negative_prompt=negative_prompt,
+                n=n,
+                prompt_extend=prompt_extend,
+                watermark=watermark,
+                **kwargs,
+            )
+        else:
+            raise ValueError(f"Invalid IMAGE_GEN_PROVIDER: {provider}")
+        if error:
+            return "Failed generate image: " + str(error)
+        for img_path in image_paths:
+            await self._execute_display(f"Generated image:\n{os.path.basename(img_path)}", img_path)
+        return f"Generated {len(image_paths)} images by {provider} successfully."
+
+    async def _dashscope_generate(
+        self,
+        text: str,
+        image_path: str,
+        size: str = "1024*1024",
+        negative_prompt: str = "",
+        n: int = 1,
+        prompt_extend: bool = True,
+        watermark: bool = False,
+        **kwargs: Any,
+    ) -> str:
+        """
+        Execute image generation using Alibaba Cloud Qwen-Image API.
+
+        Args:
+            text: Text prompt describing the desired image content, style, and composition.
+            image_path: File name where the generated image will be saved.
+            size: Output image resolution in format 'width*height'.
+            negative_prompt: Negative prompt for undesired content.
+            n: Number of images to generate (1-6 for qwen-image-2.0 series, fixed 1 for max/plus).
+            prompt_extend: Enable AI-powered prompt enhancement.
+            watermark: Add 'Qwen-Image' watermark.
+
+        Returns:
+            Status message with generation result or error details.
+        """
+        import httpx
+
         # Get API key from environment
         api_key = os.getenv("DASHSCOPE_API_KEY")
         if not api_key:
-            return (
-                "Error: DASHSCOPE_API_KEY not found. Please set it in environment variables at ~/.nanobot/workspace/.env. "
-                "Get your API key from https://dashscope.console.aliyun.com/"
-            )
+            error = "Error: DASHSCOPE_API_KEY not found. Please set it in environment variables at ~/.nanobot/workspace/.env. "
+            return [], error
 
         # Determine endpoint based on region
         # You can set DASHSCOPE_REGION to 'beijing' or 'singapore', default is beijing
@@ -374,17 +442,13 @@ class ImageTool(Tool):
         elif region == "singapore":
             endpoint = "https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
         else:
-            return f"Error: Invalid region '{region}'. Must be 'beijing' or 'singapore'."
+            return [], f"Error: Invalid region '{region}'. Must be 'beijing' or 'singapore'."
 
         # Build request payload
         payload = {
-            "model": os.getenv("DASHSCOPE_IMAGE_GEN_MODEL", "qwen-imag-max"),
+            "model": os.getenv("DASHSCOPE_IMAGE_GEN_MODEL", "qwen-image-max"),
             "input": {"messages": [{"role": "user", "content": [{"text": text}]}]},
-            "parameters": {
-                "size": size,
-                "prompt_extend": prompt_extend,
-                "watermark": watermark,
-            },
+            "parameters": {"size": size, "prompt_extend": prompt_extend, "watermark": watermark},
         }
 
         # Add optional parameters
@@ -395,11 +459,7 @@ class ImageTool(Tool):
         if n > 1:
             payload["parameters"]["n"] = min(n, 6)  # Cap at 6 for 2.0 series
 
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {api_key}",
-        }
-
+        headers = {"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"}
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
                 response = await client.post(endpoint, headers=headers, json=payload)
@@ -411,7 +471,10 @@ class ImageTool(Tool):
             choices = output.get("choices", [])
 
             if not choices:
-                return f"Error: No image generated. Response: {json.dumps(result, ensure_ascii=False)}"
+                error = (
+                    f"Error: No image generated. Response: {json.dumps(result, ensure_ascii=False)}"
+                )
+                return [], error
 
             # Get image URLs
             image_urls = []
@@ -423,7 +486,8 @@ class ImageTool(Tool):
                         image_urls.append(item["image"])
 
             if not image_urls:
-                return f"Error: No image URL in response. Response: {json.dumps(result, ensure_ascii=False)}"
+                error = f"Error: No image URL in response. Response: {json.dumps(result, ensure_ascii=False)}"
+                return [], error
 
             # Download and save the first image (or all images if n > 1)
             saved_paths = []
@@ -454,14 +518,13 @@ class ImageTool(Tool):
 
             if len(saved_paths) == 1:
                 logger.info(f"Image generated successfully: {saved_paths[0]} ({width}x{height})")
-                return await self._execute_display(
-                    f"Generated image:\n{os.path.basename(saved_paths[0])}", saved_paths[0]
-                )
-            return (
+                return saved_paths, ""
+            msg = (
                 f"Generated {len(saved_paths)} images successfully:\n"
                 + "\n".join(f"- {path}" for path in saved_paths)
                 + f"\nResolution: {width}x{height}"
             )
+            return [], msg
 
         except httpx.HTTPStatusError as e:
             error_detail = e.response.text if e.response else str(e)
@@ -470,10 +533,63 @@ class ImageTool(Tool):
                 error_msg = error_json.get("message", error_json.get("error", error_detail))
             except Exception:
                 error_msg = error_detail
-            return f"Error: HTTP {e.response.status_code} - {error_msg}"
+            return [], f"Error: HTTP {e.response.status_code} - {error_msg}"
         except httpx.TimeoutException:
-            return "Error: Request timed out. The generation may take 10-30 seconds, please try again."
+            return [], (
+                "Error: Request timed out. The generation may take 10-30 seconds, please try again."
+            )
         except httpx.RequestError as e:
-            return f"Error: Network request failed - {str(e)}"
+            return [], f"Error: Network request failed - {str(e)}"
         except Exception as e:
-            return f"Error: Generation failed - {str(e)}"
+            return [], f"Error: Generation failed - {str(e)}"
+
+    async def _modelscope_generate(
+        self,
+        text: str,
+        image_path: str,
+        size: str = "1024*1024",
+        negative_prompt: str = "",
+        n: int = 1,
+        prompt_extend: bool = True,
+        watermark: bool = False,
+        **kwargs: Any,
+    ) -> str:
+
+        from PIL import Image
+
+        base_url = "https://api-inference.modelscope.cn/"
+        api_key = os.getenv("MODELSCOPE_API_KEY")
+        if not api_key:
+            error = "Error: MODELSCOPE_API_KEY not found. Please set it in environment variables at ~/.nanobot/workspace/.env"
+            return [], error
+        common_headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+        response = requests.post(
+            f"{base_url}v1/images/generations",
+            headers={**common_headers, "X-ModelScope-Async-Mode": "true"},
+            data=json.dumps(
+                {
+                    "model": os.getenv(
+                        "MODELSCOPE_IMAGE_GEN_MODEL", "Qwen/Qwen-Image-2512"
+                    ),  # ModelScope Model-Id, required
+                    "prompt": text,
+                },
+                ensure_ascii=False,
+            ).encode("utf-8"),
+        )
+
+        response.raise_for_status()
+        task_id = response.json()["task_id"]
+        while True:
+            result = requests.get(
+                f"{base_url}v1/tasks/{task_id}",
+                headers={**common_headers, "X-ModelScope-Task-Type": "image_generation"},
+            )
+            result.raise_for_status()
+            data = result.json()
+            if data["task_status"] == "SUCCEED":
+                image = Image.open(BytesIO(requests.get(data["output_images"][0]).content))
+                image.save(image_path)
+                return [image_path], ""
+            if data["task_status"] == "FAILED":
+                return [], "Image Generation Failed."
+            time.sleep(5)
