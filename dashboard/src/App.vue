@@ -66,9 +66,9 @@ const connectWebSocket = () => {
       chatComponentRef.value.setWebSocket(ws)
     }
 
-    // Automatically send /status command after successful connection
-    if (chatComponentRef.value && chatComponentRef.value.handleSendStatus) {
-      chatComponentRef.value.handleSendStatus()
+    // Initialize connection: send /status and /history commands (hidden from chat)
+    if (chatComponentRef.value && chatComponentRef.value.handleConnected) {
+      chatComponentRef.value.handleConnected()
     }
   }
 

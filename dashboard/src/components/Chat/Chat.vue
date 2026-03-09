@@ -61,6 +61,38 @@ const handleWebSocketMessage = (event: MessageEvent) => {
         }
       }
 
+      // Check if this is a history response (JSON array)
+      if (data.content && data.content.startsWith('[')) {
+        try {
+          const historyData = JSON.parse(data.content)
+          if (Array.isArray(historyData)) {
+            console.log('📚 Loaded history:', historyData.length, 'messages')
+
+            // Add history messages to messages array for ChatInput to use
+            historyData.forEach((msg: any) => {
+              if (msg.role === 'user' && msg.content && msg.content.trim() && !msg.content.startsWith('/')) {
+                messages.value.push({
+                  role: 'user',
+                  content: msg.content,
+                  timestamp: Date.now()
+                })
+              }
+            })
+
+            console.log('✅ Added', messages.value.filter(m => m.role === 'user').length, 'user messages to history')
+
+            // Clear messages after updating input history (for initialization)
+            setTimeout(() => {
+              messages.value = []
+              console.log('🧹 Cleared chat messages after history loaded')
+            }, 100)
+          }
+        } catch (e) {
+          console.error('Failed to parse history:', e)
+        }
+        return  // Don't display history response in chat
+      }
+
       // Handle image messages from media
       let imageUrl: string | undefined
       if (data.media && data.media.length > 0) {
@@ -77,17 +109,20 @@ const handleWebSocketMessage = (event: MessageEvent) => {
         }
       }
 
-      messages.value.push({
-        role: 'assistant',
-        content: data.content || 'Message received',
-        timestamp: Date.now(),
-        imageUrl: imageUrl,
-        media: data.media,
-        metadata: {
-          ...data.metadata,
-          _progress: data.metadata?._progress
-        }
-      })
+      // Don't display messages marked as hidden (like /history command)
+      if (!data.metadata?._hide_from_ui) {
+        messages.value.push({
+          role: 'assistant',
+          content: data.content || 'Message received',
+          timestamp: Date.now(),
+          imageUrl: imageUrl,
+          media: data.media,
+          metadata: {
+            ...data.metadata,
+            _progress: data.metadata?._progress
+          }
+        })
+      }
 
       // Only set isLoading to false if _progress is not true
       if (!data.metadata?._progress) {
@@ -299,6 +334,58 @@ const handleSendStatus = () => {
   ws.send(JSON.stringify(statusMsg))
 }
 
+const handleConnected = () => {
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    console.log('⚠️ Cannot send /status: WebSocket not connected')
+    messages.value.push({
+      role: 'system',
+      content: 'WebSocket not connected. Please connect first.',
+      timestamp: Date.now()
+    })
+    return
+  }
+
+  // Send /status for initialization (hidden from chat)
+  const statusMsg = {
+    type: 'message',
+    message_id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    sender_id: 'web_user',
+    chat_id: 'default_room',
+    content: '/status',
+    media: [],
+    metadata: {
+      source: 'web_dashboard',
+      timestamp: Date.now(),
+      session_id: sessionId.value,
+      _hide_from_ui: true
+    }
+  }
+  console.log('📤 Sending /status for initialization:', statusMsg)
+  ws.send(JSON.stringify(statusMsg))
+
+  // Send /history after 500ms to load history for input cache
+  setTimeout(() => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      const historyMsg = {
+        type: 'message',
+        message_id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        sender_id: 'web_user',
+        chat_id: 'default_room',
+        content: '/history',
+        media: [],
+        metadata: {
+          source: 'web_dashboard',
+          timestamp: Date.now(),
+          session_id: sessionId.value,
+          _hide_from_ui: true
+        }
+      }
+      console.log('📤 Sending /history for initialization:', historyMsg)
+      ws.send(JSON.stringify(historyMsg))
+    }
+  }, 500)
+}
+
 const handleNewChat = () => {
   const userMessage: Message = {
     role: 'user',
@@ -394,7 +481,8 @@ onUnmounted(() => {
 defineExpose({
   setWebSocket,
   handleWebSocketMessage,
-  handleSendStatus
+  handleSendStatus,
+  handleConnected
 })
 </script>
 
@@ -404,8 +492,8 @@ defineExpose({
     <MessageList :messages="messages" :isLoading="isLoading" @play-audio="playAudio" @stop-audio="stopAudio" />
 
     <!-- Input -->
-    <ChatInput :isLoading="isLoading" :disabled="!isConnected" :messages="messages" @send="sendMessage" @new-chat="handleNewChat"
-      @clear-chat="handleClearChat" @upload-image="handleImageUpload" @upload-audio="handleAudioUpload"
-      @upload-file="handleFileUpload" @send-status="handleSendStatus" />
+    <ChatInput :isLoading="isLoading" :disabled="!isConnected" :messages="messages" @send="sendMessage"
+      @new-chat="handleNewChat" @clear-chat="handleClearChat" @upload-image="handleImageUpload"
+      @upload-audio="handleAudioUpload" @upload-file="handleFileUpload" @send-status="handleSendStatus" />
   </div>
 </template>
