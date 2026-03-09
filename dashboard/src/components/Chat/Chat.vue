@@ -404,7 +404,7 @@ defineExpose({
     <MessageList :messages="messages" :isLoading="isLoading" @play-audio="playAudio" @stop-audio="stopAudio" />
 
     <!-- Input -->
-    <ChatInput :isLoading="isLoading" :disabled="!isConnected" @send="sendMessage" @new-chat="handleNewChat"
+    <ChatInput :isLoading="isLoading" :disabled="!isConnected" :messages="messages" @send="sendMessage" @new-chat="handleNewChat"
       @clear-chat="handleClearChat" @upload-image="handleImageUpload" @upload-audio="handleAudioUpload"
       @upload-file="handleFileUpload" @send-status="handleSendStatus" />
   </div>

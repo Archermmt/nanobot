@@ -5,9 +5,13 @@ import MediaUploader from '../Media/MediaUploader.vue'
 interface Props {
   isLoading: boolean
   disabled?: boolean
+  messages?: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+  messages: () => []
+})
+
 const emit = defineEmits(['send', 'new-chat', 'clear-chat', 'upload-image', 'upload-audio', 'upload-file'])
 
 interface PendingMedia {
@@ -18,11 +22,21 @@ interface PendingMedia {
 }
 
 const input = ref('')
+const historyIndex = ref(-1)
+const originalInput = ref('')
 const pendingImages = ref<PendingMedia[]>([])
 const pendingFiles = ref<PendingMedia[]>([])
 
 const hasChineseCharacters = computed(() => {
   return /[\u4e00-\u9fa5]/.test(input.value);
+})
+
+// Filter user messages for history navigation (most recent first)
+const userHistory = computed(() => {
+  return props.messages
+    .filter(msg => msg.role === 'user' && msg.content.trim())
+    .reverse()
+    .map(msg => msg.content)
 })
 
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
@@ -42,6 +56,41 @@ const resetTextareaHeight = async () => {
 }
 
 const handleKeydown = (event: KeyboardEvent) => {
+  // Handle Up Arrow - show previous message in history
+  if (event.key === 'ArrowUp' && !event.ctrlKey && !event.metaKey) {
+    event.preventDefault()
+    
+    // Save current input before navigating
+    if (historyIndex.value === -1 && input.value.trim()) {
+      originalInput.value = input.value
+    }
+    
+    if (userHistory.value.length > 0) {
+      const newIndex = historyIndex.value + 1
+      if (newIndex < userHistory.value.length) {
+        historyIndex.value = newIndex
+        input.value = userHistory.value[historyIndex.value]
+      }
+    }
+    return
+  }
+  
+  // Handle Down Arrow - show next message in history
+  if (event.key === 'ArrowDown' && !event.ctrlKey && !event.metaKey) {
+    event.preventDefault()
+    
+    if (historyIndex.value > 0) {
+      historyIndex.value--
+      input.value = userHistory.value[historyIndex.value]
+    } else if (historyIndex.value === 0) {
+      // Reset to original input or empty
+      historyIndex.value = -1
+      input.value = originalInput.value || ''
+      originalInput.value = ''
+    }
+    return
+  }
+  
   // Send on Enter, but only if Shift is NOT pressed and user is not composing text (e.g., Chinese input method)
   if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
     event.preventDefault()
@@ -63,6 +112,10 @@ const sendMessage = () => {
   input.value = ''
   pendingImages.value = []
   pendingFiles.value = []
+  
+  // Reset history navigation
+  historyIndex.value = -1
+  originalInput.value = ''
 
   // Reset height after sending
   resetTextareaHeight()
@@ -73,6 +126,8 @@ const handleNewChat = () => {
   input.value = ''
   pendingImages.value = []
   pendingFiles.value = []
+  historyIndex.value = -1
+  originalInput.value = ''
   resetTextareaHeight()
 }
 
@@ -81,6 +136,8 @@ const handleClearChat = () => {
   input.value = ''
   pendingImages.value = []
   pendingFiles.value = []
+  historyIndex.value = -1
+  originalInput.value = ''
   resetTextareaHeight()
 }
 
