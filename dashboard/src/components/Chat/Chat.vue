@@ -16,6 +16,9 @@ interface Message {
   metadata?: {
     msg_type?: string
     file_type?: string
+    _response_for?: string
+    _hide_from_ui?: boolean
+    _progress?: boolean
   }
 }
 
@@ -51,8 +54,8 @@ const handleWebSocketMessage = (event: MessageEvent) => {
 
     if (data.type === 'message') {
       // Check if this is a status response
-      if (data.content && data.content.includes('mode') && data.content.includes('price')) {
-        // This looks like a status update, emit it for StatusBar
+      if (data.content && data.metadata?._response_for === 'status') {
+        // This is a status update, emit it for StatusBar
         try {
           const statusData = JSON.parse(data.content)
           emit('status-update', statusData)
@@ -62,7 +65,7 @@ const handleWebSocketMessage = (event: MessageEvent) => {
       }
 
       // Check if this is a history response (JSON array)
-      if (data.content && data.content.startsWith('[')) {
+      if (data.content && data.metadata?._response_for === 'history') {
         try {
           const historyData = JSON.parse(data.content)
           if (Array.isArray(historyData)) {

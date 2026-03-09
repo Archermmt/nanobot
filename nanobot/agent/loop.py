@@ -468,7 +468,7 @@ class AgentLoop:
         if cmd.startswith("/history"):
             count = int(cmd.split(":")[1]) if ":" in cmd else self.memory_window
             history = session.get_history(max_messages=count)
-            metadata = {"_response_for": "status"}
+            metadata = {"_response_for": "history"}
             if msg.metadata.get("_hide_from_ui", False):
                 metadata.update({"_hide_from_ui": True})
             return OutboundMessage(
