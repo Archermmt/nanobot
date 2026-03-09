@@ -468,7 +468,9 @@ class AgentLoop:
         if cmd.startswith("/history"):
             count = int(cmd.split(":")[1]) if ":" in cmd else self.memory_window
             history = session.get_history(max_messages=count)
-            metadata = {"_hide_from_ui": True} if msg.metadata.get("_hide_from_ui", False) else {}
+            metadata = {"_response_for": "status"}
+            if msg.metadata.get("_hide_from_ui", False):
+                metadata.update({"_hide_from_ui": True})
             return OutboundMessage(
                 channel=msg.channel,
                 chat_id=msg.chat_id,
@@ -493,7 +495,9 @@ class AgentLoop:
                 "skills": len(self.context.skills.list_skills()),
                 "tools": len(self.tools),
             }
-            metadata = {"_hide_from_ui": True} if msg.metadata.get("_hide_from_ui", False) else {}
+            metadata = {"_response_for": "status"}
+            if msg.metadata.get("_hide_from_ui", False):
+                metadata.update({"_hide_from_ui": True})
             return OutboundMessage(
                 channel=msg.channel,
                 chat_id=msg.chat_id,
