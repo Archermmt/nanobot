@@ -26,17 +26,15 @@ const historyIndex = ref(-1)
 const originalInput = ref('')
 const pendingImages = ref<PendingMedia[]>([])
 const pendingFiles = ref<PendingMedia[]>([])
+const userHistoryMessages = ref<string[]>([])
 
 const hasChineseCharacters = computed(() => {
   return /[\u4e00-\u9fa5]/.test(input.value);
 })
 
-// Filter user messages for history navigation (most recent first)
+// Use userHistoryMessages ref directly instead of computed from props
 const userHistory = computed(() => {
-  return props.messages
-    .filter(msg => msg.role === 'user' && msg.content.trim())
-    .reverse()
-    .map(msg => msg.content)
+  return userHistoryMessages.value.slice().reverse()
 })
 
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
@@ -55,16 +53,20 @@ const resetTextareaHeight = async () => {
   }
 }
 
+const handleUpdateUserHistory = (messages: string[]) => {
+  userHistoryMessages.value = messages
+}
+
 const handleKeydown = (event: KeyboardEvent) => {
   // Handle Up Arrow - show previous message in history
   if (event.key === 'ArrowUp' && !event.ctrlKey && !event.metaKey) {
     event.preventDefault()
-    
+
     // Save current input before navigating
     if (historyIndex.value === -1 && input.value.trim()) {
       originalInput.value = input.value
     }
-    
+
     if (userHistory.value.length > 0) {
       const newIndex = historyIndex.value + 1
       if (newIndex < userHistory.value.length) {
@@ -74,11 +76,11 @@ const handleKeydown = (event: KeyboardEvent) => {
     }
     return
   }
-  
+
   // Handle Down Arrow - show next message in history
   if (event.key === 'ArrowDown' && !event.ctrlKey && !event.metaKey) {
     event.preventDefault()
-    
+
     if (historyIndex.value > 0) {
       historyIndex.value--
       input.value = userHistory.value[historyIndex.value]
@@ -90,7 +92,7 @@ const handleKeydown = (event: KeyboardEvent) => {
     }
     return
   }
-  
+
   // Send on Enter, but only if Shift is NOT pressed and user is not composing text (e.g., Chinese input method)
   if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
     event.preventDefault()
@@ -112,7 +114,7 @@ const sendMessage = () => {
   input.value = ''
   pendingImages.value = []
   pendingFiles.value = []
-  
+
   // Reset history navigation
   historyIndex.value = -1
   originalInput.value = ''
@@ -165,6 +167,11 @@ const removePendingImage = (index: number) => {
 const removePendingFile = (index: number) => {
   pendingFiles.value.splice(index, 1)
 }
+
+// Expose method for updating user history
+defineExpose({
+  handleUpdateUserHistory
+})
 </script>
 
 <template>

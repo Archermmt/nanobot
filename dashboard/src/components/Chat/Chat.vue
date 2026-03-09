@@ -29,6 +29,7 @@ const isLoading = ref(false)
 const sessionId = ref(`session_${Date.now()}`)
 const currentAudio = ref<HTMLAudioElement | null>(null)
 const currentTimeoutId = ref<number | null>(null)
+const chatInputRef = ref<InstanceType<typeof ChatInput> | null>(null)
 
 // WebSocket instance (managed by App.vue)
 let ws: WebSocket | null = null
@@ -71,18 +72,16 @@ const handleWebSocketMessage = (event: MessageEvent) => {
           if (Array.isArray(historyData)) {
             console.log('📚 Loaded history:', historyData.length, 'messages')
 
-            // Add history messages to messages array for ChatInput to use
-            historyData.forEach((msg: any) => {
-              if (msg.role === 'user' && msg.content && msg.content.trim() && !msg.content.startsWith('/')) {
-                messages.value.push({
-                  role: 'user',
-                  content: msg.content,
-                  timestamp: Date.now()
-                })
-              }
-            })
+            // Extract user messages and emit to ChatInput
+            const userMessages = historyData
+              .filter((msg: any) => msg.role === 'user' && msg.content && msg.content.trim() && !msg.content.startsWith('/'))
+              .map((msg: any) => msg.content)
 
-            console.log('✅ Added', messages.value.filter(m => m.role === 'user').length, 'user messages to history')
+            console.log('✅ Extracted', userMessages.length, 'user messages for history')
+            // Call ChatInput method directly via ref
+            if (chatInputRef.value) {
+              chatInputRef.value.handleUpdateUserHistory(userMessages)
+            }
           }
         } catch (e) {
           console.error('Failed to parse history:', e)
@@ -497,8 +496,8 @@ defineExpose({
     <MessageList :messages="messages" :isLoading="isLoading" @play-audio="playAudio" @stop-audio="stopAudio" />
 
     <!-- Input -->
-    <ChatInput :isLoading="isLoading" :disabled="!isConnected" :messages="messages" @send="sendMessage"
-      @new-chat="handleNewChat" @clear-chat="handleClearChat" @upload-image="handleImageUpload"
+    <ChatInput ref="chatInputRef" :isLoading="isLoading" :disabled="!isConnected" :messages="messages"
+      @send="sendMessage" @new-chat="handleNewChat" @clear-chat="handleClearChat" @upload-image="handleImageUpload"
       @upload-audio="handleAudioUpload" @upload-file="handleFileUpload" @send-status="handleSendStatus" />
   </div>
 </template>
