@@ -113,7 +113,9 @@ class AgentLoop:
         self._mcp_connecting = False
         self._consolidating: set[str] = set()  # Session keys with consolidation in progress
         self._consolidation_tasks: set[asyncio.Task] = set()  # Strong refs to in-flight tasks
-        self._consolidation_locks: weakref.WeakValueDictionary[str, asyncio.Lock] = weakref.WeakValueDictionary()
+        self._consolidation_locks: weakref.WeakValueDictionary[str, asyncio.Lock] = (
+            weakref.WeakValueDictionary()
+        )
         self._active_tasks: dict[str, list[asyncio.Task]] = {}  # session_key -> tasks
         self._processing_lock = asyncio.Lock()
         self._register_default_tools()
@@ -134,7 +136,11 @@ class AgentLoop:
             )
         )
         self.tools.register(
-            WebSearchTool(api_key=self.brave_api_key, proxy=self.web_proxy, provider=tools_config.web.search.provider)
+            WebSearchTool(
+                api_key=self.brave_api_key,
+                proxy=self.web_proxy,
+                provider=tools_config.web.search.provider,
+            )
         )
         self.tools.register(WebFetchTool(proxy=self.web_proxy))
         self.tools.register(MessageTool(send_callback=self.bus.publish_outbound))
@@ -238,7 +244,10 @@ class AgentLoop:
                     {
                         "id": tc.id,
                         "type": "function",
-                        "function": {"name": tc.name, "arguments": json.dumps(tc.arguments, ensure_ascii=False)},
+                        "function": {
+                            "name": tc.name,
+                            "arguments": json.dumps(tc.arguments, ensure_ascii=False),
+                        },
                     }
                     for tc in response.tool_calls
                 ]
@@ -255,7 +264,9 @@ class AgentLoop:
                     args_str = json.dumps(tool_call.arguments, ensure_ascii=False)
                     logger.info("Tool call: {}({})", tool_call.name, args_str[:200])
                     result = await self.tools.execute(tool_call.name, tool_call.arguments)
-                    messages = self.context.add_tool_result(messages, tool_call.id, tool_call.name, result)
+                    messages = self.context.add_tool_result(
+                        messages, tool_call.id, tool_call.name, result
+                    )
             else:
                 clean = self._strip_think(response.content)
                 # Don't persist error responses to session history — they can
@@ -379,7 +390,9 @@ class AgentLoop:
         """Process a single inbound message and return the response."""
         # System messages: parse origin from chat_id ("channel:chat_id")
         if msg.channel == "system":
-            channel, chat_id = msg.chat_id.split(":", 1) if ":" in msg.chat_id else ("cli", msg.chat_id)
+            channel, chat_id = (
+                msg.chat_id.split(":", 1) if ":" in msg.chat_id else ("cli", msg.chat_id)
+            )
             logger.info("Processing system message from {}", msg.sender_id)
             key = f"{channel}:{chat_id}"
             session = self.sessions.get_or_create(key)
@@ -395,7 +408,9 @@ class AgentLoop:
             self._save_turn(session, all_msgs, 1 + len(history))
             self.sessions.save(session)
             return OutboundMessage(
-                channel=channel, chat_id=chat_id, content=final_content or "Background task completed."
+                channel=channel,
+                chat_id=chat_id,
+                content=final_content or "Background task completed.",
             )
 
         preview = msg.content[:80] + "..." if len(msg.content) > 80 else msg.content
@@ -434,7 +449,9 @@ class AgentLoop:
             session.clear()
             self.sessions.save(session)
             self.sessions.invalidate(session.key)
-            return OutboundMessage(channel=msg.channel, chat_id=msg.chat_id, content="New session started.")
+            return OutboundMessage(
+                channel=msg.channel, chat_id=msg.chat_id, content="New session started."
+            )
         if cmd == "/help":
             return OutboundMessage(
                 channel=msg.channel,
@@ -445,13 +462,25 @@ class AgentLoop:
             session.clear()
             self.sessions.save(session)
             self.sessions.invalidate(session.key)
-            return OutboundMessage(channel=msg.channel, chat_id=msg.chat_id, content="Session cleared.")
+            return OutboundMessage(
+                channel=msg.channel, chat_id=msg.chat_id, content="Session cleared."
+            )
+        if cmd.startswith("/history"):
+            count = int(cmd.split(":")[1]) if ":" in cmd else self.memory_window
+            history = session.get_history(max_messages=count)
+            return OutboundMessage(
+                channel=msg.channel, chat_id=msg.chat_id, content=json.dumps(history)
+            )
         if cmd == "/status":
             mode = self.provider.get_default_mode()
             if mode == "auto":
                 modes = [f"{m['model']}({m['name']})" for m in self.provider.list_models()]
             else:
-                modes = [f"{m['model']}({m['name']})" for m in self.provider.list_models() if m["name"] == mode]
+                modes = [
+                    f"{m['model']}({m['name']})"
+                    for m in self.provider.list_models()
+                    if m["name"] == mode
+                ]
             status = {
                 "mode": self.provider.get_default_mode(),
                 "price": "free",
@@ -460,7 +489,9 @@ class AgentLoop:
                 "skills": len(self.context.skills.list_skills()),
                 "tools": len(self.tools),
             }
-            return OutboundMessage(channel=msg.channel, chat_id=msg.chat_id, content=json.dumps(status))
+            return OutboundMessage(
+                channel=msg.channel, chat_id=msg.chat_id, content=json.dumps(status)
+            )
 
         unconsolidated = len(session.messages) - session.last_consolidated
         if unconsolidated >= self.memory_window and session.key not in self._consolidating:
@@ -499,7 +530,9 @@ class AgentLoop:
             hint_content = meta.pop("_hint_content")
             meta["_progress"] = True
             await self.bus.publish_outbound(
-                OutboundMessage(channel=msg.channel, chat_id=msg.chat_id, content=hint_content, metadata=meta)
+                OutboundMessage(
+                    channel=msg.channel, chat_id=msg.chat_id, content=hint_content, metadata=meta
+                )
             )
 
         async def _bus_progress(content: str, *, tool_hint: bool = False) -> None:
@@ -547,10 +580,16 @@ class AgentLoop:
             role, content = entry.get("role"), entry.get("content")
             if role == "assistant" and not content and not entry.get("tool_calls"):
                 continue  # skip empty assistant messages — they poison session context
-            if role == "tool" and isinstance(content, str) and len(content) > self._TOOL_RESULT_MAX_CHARS:
+            if (
+                role == "tool"
+                and isinstance(content, str)
+                and len(content) > self._TOOL_RESULT_MAX_CHARS
+            ):
                 entry["content"] = content[: self._TOOL_RESULT_MAX_CHARS] + "\n... (truncated)"
             elif role == "user":
-                if isinstance(content, str) and content.startswith(ContextBuilder._RUNTIME_CONTEXT_TAG):
+                if isinstance(content, str) and content.startswith(
+                    ContextBuilder._RUNTIME_CONTEXT_TAG
+                ):
                     # Strip the runtime-context prefix, keep only the user text.
                     parts = content.split("\n\n", 1)
                     if len(parts) > 1 and parts[1].strip():
@@ -566,9 +605,9 @@ class AgentLoop:
                             and c["text"].startswith(ContextBuilder._RUNTIME_CONTEXT_TAG)
                         ):
                             continue  # Strip runtime context from multimodal messages
-                        if c.get("type") == "image_url" and c.get("image_url", {}).get("url", "").startswith(
-                            "data:image/"
-                        ):
+                        if c.get("type") == "image_url" and c.get("image_url", {}).get(
+                            "url", ""
+                        ).startswith("data:image/"):
                             filtered.append({"type": "text", "text": "[image]"})
                         else:
                             filtered.append(c)
@@ -600,5 +639,7 @@ class AgentLoop:
         """Process a message directly (for CLI or cron usage)."""
         await self._connect_mcp()
         msg = InboundMessage(channel=channel, sender_id="user", chat_id=chat_id, content=content)
-        response = await self._process_message(msg, session_key=session_key, on_progress=on_progress)
+        response = await self._process_message(
+            msg, session_key=session_key, on_progress=on_progress
+        )
         return response.content if response else ""
