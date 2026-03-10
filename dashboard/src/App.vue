@@ -192,7 +192,7 @@ const handleWsStatusChange = (data: any) => {
           </button>
 
           <div class="flex items-center space-x-2 ml-4">
-            <label class="text-xs font-bold text-gray-300 whitespace-nowrap">Show Progress:</label>
+            <label class="text-xs font-bold text-gray-300 whitespace-nowrap">Peek:</label>
             <label class="nes-switch">
               <input type="checkbox" v-model="showProgressMessages" />
               <span class="nes-switch-slider"></span>
