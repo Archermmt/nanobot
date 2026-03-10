@@ -68,9 +68,9 @@ class BaseAudioHandler(BaseHandler):
             if transcribed_text:
                 logger.info(f"Recognized speech from audio: '{transcribed_text}'")
                 msg.content = transcribed_text
-                msg.media = []
-                keep_meta = {k: v for k, v in msg.metadata.items() if k in ("source", "timestamp", "session_id")}
-                msg.metadata = {**keep_meta, "_hint_content": "audio: " + transcribed_text}
+                msg.media, keep_keys = [], ("source", "timestamp", "session_id")
+                keep_meta = {k: v for k, v in msg.metadata.items() if k in keep_keys}
+                msg.metadata = {**keep_meta, "_hint_content": "ASR: " + transcribed_text}
             else:
                 logger.warning("No speech recognized, skipping message")
                 msg.content = "No speech recognized, skipping message"
@@ -156,7 +156,9 @@ class FunasrHandler(BaseAudioHandler):
         min_mem_bytes = 2 * 1024 * 1024 * 1024
         total_mem = psutil.virtual_memory().total
         if total_mem < min_mem_bytes:
-            logger.error(f"可用内存不足 2G，当前仅有 {total_mem / (1024*1024):.2f} MB，可能无法启动 FunASR")
+            logger.error(
+                f"可用内存不足 2G，当前仅有 {total_mem / (1024 * 1024):.2f} MB，可能无法启动 FunASR"
+            )
 
         if os.path.isdir(model):
             model_dir_expanded = Path(model).expanduser()
@@ -189,7 +191,9 @@ class FunasrHandler(BaseAudioHandler):
             with open(media_data, "rb") as f:
                 audio_bytes = f.read()
         else:
-            audio_bytes = base64.b64decode(media_data.split(",", 1)[1] if "," in media_data else media_data)
+            audio_bytes = base64.b64decode(
+                media_data.split(",", 1)[1] if "," in media_data else media_data
+            )
 
         try:
             # Detect audio format and convert to WAV if needed
@@ -273,7 +277,9 @@ class VoskAudioHandler(BaseAudioHandler):
             with open(media_data, "rb") as f:
                 audio_bytes = f.read()
         else:
-            audio_bytes = base64.b64decode(media_data.split(",", 1)[1] if "," in media_data else media_data)
+            audio_bytes = base64.b64decode(
+                media_data.split(",", 1)[1] if "," in media_data else media_data
+            )
 
         try:
             # Detect audio format and convert to WAV if needed
