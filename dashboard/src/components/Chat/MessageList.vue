@@ -31,6 +31,7 @@ interface Message {
 interface Props {
   messages: Message[]
   isLoading: boolean
+  showProgressMessages?: boolean
 }
 
 const props = defineProps<Props>()
@@ -46,7 +47,15 @@ const showThinking = computed(() => {
   const lastMessage = props.messages[props.messages.length - 1]
   const hasProgressFlag = lastMessage.metadata?._progress === true
 
-  return (props.isLoading && props.messages.length > 0) || hasProgressFlag
+  // Always show thinking when loading
+  if (props.isLoading && props.messages.length > 0) return true
+
+  // When not loading, only show progress messages if showProgressMessages is enabled
+  if (hasProgressFlag) {
+    return props.showProgressMessages !== false
+  }
+
+  return false
 })
 
 const currentAudio = ref<HTMLAudioElement | null>(null)
@@ -116,6 +125,18 @@ const renderMarkdown = (content: string) => {
   return marked.parse(content)
 }
 
+// Filter messages based on showProgressMessages prop
+const visibleMessages = computed(() => {
+  // Filter messages based on showProgressMessages prop
+  if (props.showProgressMessages !== false) {
+    // Show all messages including_progress messages
+    return props.messages
+  } else {
+    // Hide messages with _progress: true in metadata
+    return props.messages.filter(msg => !msg.metadata?._progress)
+  }
+})
+
 // Auto scroll to bottom when messages change
 const scrollToBottom = () => {
   nextTick(() => {
@@ -128,11 +149,12 @@ const scrollToBottom = () => {
 // Watch for messages changes and scroll to bottom
 watch(() => props.messages, scrollToBottom, { deep: true })
 watch(() => props.isLoading, scrollToBottom)
+watch(() => props.showProgressMessages, scrollToBottom)
 </script>
 
 <template>
   <div ref="messageContainer" class="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-900">
-    <div v-for="(msg, index) in messages" :key="index" class="flex"
+    <div v-for="(msg, index) in visibleMessages" :key="index" class="flex"
       :class="msg.role === 'user' ? 'justify-end' : 'justify-start'">
       <div class="border-2 rounded shadow-[4px_4px_0_rgba(0,0,0,0.5)] px-4 py-3 flex flex-col" :class="{
         'bg-gradient-to-br from-blue-500 to-blue-600 border-blue-700 text-white max-w-[80%]': msg.role === 'user',

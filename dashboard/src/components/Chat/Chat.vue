@@ -22,6 +22,10 @@ interface Message {
   }
 }
 
+const props = defineProps<{
+  showProgressMessages?: boolean
+}>()
+
 const emit = defineEmits(['send', 'new-chat', 'clear-chat', 'upload-image', 'upload-audio', 'upload-file', 'ws-status-change', 'send-status', 'status-update'])
 
 const messages = ref<Message[]>([])
@@ -493,7 +497,8 @@ defineExpose({
 <template>
   <div class="flex flex-col h-full chat-container">
     <!-- Messages -->
-    <MessageList :messages="messages" :isLoading="isLoading" @play-audio="playAudio" @stop-audio="stopAudio" />
+    <MessageList :messages="messages" :isLoading="isLoading" @play-audio="playAudio" @stop-audio="stopAudio"
+      :show-progress-messages="props.showProgressMessages" />
 
     <!-- Input -->
     <ChatInput ref="chatInputRef" :isLoading="isLoading" :disabled="!isConnected" :messages="messages"

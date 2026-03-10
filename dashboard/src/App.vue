@@ -22,6 +22,7 @@ const sidebarExpanded = ref(true)
 const currentSection = ref('chat')
 const chatComponentRef = ref<any>(null)
 const statusBarComponentRef = ref<any>(null)
+const showProgressMessages = ref(true)
 
 // WebSocket connection methods
 const connectWebSocket = () => {
@@ -189,6 +190,17 @@ const handleWsStatusChange = (data: any) => {
           <button v-if="isConnected" @click="disconnectWebSocket" class="nes-btn is-danger text-xs px-3 py-1">
             Disconnect
           </button>
+
+          <div class="flex items-center space-x-2 ml-4">
+            <label class="text-xs font-bold text-gray-300 whitespace-nowrap">Show Progress:</label>
+            <label class="nes-switch">
+              <input type="checkbox" v-model="showProgressMessages" />
+              <span class="nes-switch-slider"></span>
+            </label>
+            <span class="text-xs font-bold" :class="showProgressMessages ? 'text-green-400' : 'text-gray-500'">
+              {{ showProgressMessages ? 'ON' : 'OFF' }}
+            </span>
+          </div>
         </div>
 
         <div v-if="connectionError" class="text-xs text-red-500">
@@ -199,7 +211,7 @@ const handleWsStatusChange = (data: any) => {
       <!-- Content Area -->
       <main class="flex-1 overflow-hidden bg-gray-900">
         <Chat ref="chatComponentRef" v-show="currentSection === 'chat'" @status-update="handleStatusUpdate"
-          @ws-status-change="handleWsStatusChange" />
+          @ws-status-change="handleWsStatusChange" :show-progress-messages="showProgressMessages" />
         <div v-show="currentSection !== 'chat'" class="p-6 text-gray-500 text-center">
           <p class="text-lg">Section under construction</p>
           <p class="text-sm mt-2">{{ currentSection }} view coming soon...</p>
@@ -231,5 +243,53 @@ body {
 /* Keep input textarea at normal size */
 .chat-input-textarea {
   font-size: 18px !important;
+}
+
+/* Toggle Switch Styles */
+.nes-switch {
+  position: relative;
+  display: inline-block;
+  width: 50px;
+  height: 24px;
+}
+
+.nes-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.nes-switch-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #4b5563;
+  transition: .3s;
+  border: 2px solid #1f2937;
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.5);
+}
+
+.nes-switch-slider:before {
+  position: absolute;
+  content: "";
+  height: 16px;
+  width: 16px;
+  left: 2px;
+  bottom: 2px;
+  background-color: white;
+  transition: .3s;
+  box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.3);
+}
+
+.nes-switch input:checked+.nes-switch-slider {
+  background-color: #10b981;
+}
+
+.nes-switch input:checked+.nes-switch-slider:before {
+  transform: translateX(26px);
+  background-color: #f0fdf4;
 }
 </style>
