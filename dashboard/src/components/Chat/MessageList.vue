@@ -177,7 +177,7 @@ watch(() => props.isLoading, scrollToBottom)
         </div>
 
         <!-- Message Content -->
-        <div class="prose prose-xs pixel-font markdown-content" :class="{ 'zh': isChineseContent(msg.content) }"
+        <div class="prose prose-xs markdown-content" :class="isChineseContent(msg.content) ? 'zh' : 'pixel-font'"
           v-html="renderMarkdown(msg.content)"></div>
 
         <!-- Timestamp -->

@@ -1,6 +1,6 @@
 /* NES.css import - must be first */
 @import url('https://unpkg.com/nes.css/css/nes.min.css');
-@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=ZCOOL+KuaiLe&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=ZCOOL+KuaiLe&family=Noto+Sans+SC:wght@400;500;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -31,14 +31,18 @@ input, textarea, button, div, span, p, label {
   text-rendering: optimizeSpeed;
 }
 
-/* Enhanced pixel effect for Chinese text */
-[lang="zh"], [lang="zh-CN"], [lang="zh-TW"] {
-  font-family: 'ZCOOL KuaiLe', 'Press Start 2P', monospace;
-  text-shadow: 0 0 0 currentColor;
-  font-size: 16px; /* Larger font size for Chinese text */
+/* Chinese text - use clear font for better readability */
+[lang="zh"], [lang="zh-CN"], [lang="zh-TW"], .zh-content {
+  font-family: 'Noto Sans SC', 'ZCOOL KuaiLe', 'Press Start 2P', sans-serif !important;
+  text-shadow: none;
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-smooth: always;
 }
 
-/* Pixel font class for all elements */
+/* Pixel font class for all elements (English content) */
 .pixel-font {
   font-family: 'Press Start 2P', 'ZCOOL KuaiLe', 'Courier New', monospace !important;
   -webkit-font-smoothing: none;
@@ -47,9 +51,27 @@ input, textarea, button, div, span, p, label {
   text-rendering: optimizeSpeed;
 }
 
-/* Ensure all text content uses pixel font */
+/* Ensure all text content uses pixel font (English) */
 .prose, .prose *, .nes-input, .nes-btn {
   font-family: 'Press Start 2P', 'ZCOOL KuaiLe', 'Courier New', monospace;
+}
+
+/* Chinese content in messages - use clear font */
+.prose.zh, .prose.zh *, .markdown-content.zh, .markdown-content.zh * {
+  font-family: 'Noto Sans SC', 'ZCOOL KuaiLe', 'Press Start 2P', sans-serif !important;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-smooth: always;
+}
+
+/* Clear font for UI labels with Chinese context */
+.clear-font {
+  font-family: 'Noto Sans SC', 'ZCOOL KuaiLe', 'Press Start 2P', sans-serif !important;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-smooth: always;
 }
 
 /* Increase font size for Chinese content in messages */

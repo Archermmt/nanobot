@@ -467,7 +467,19 @@ class AgentLoop:
             )
         if cmd.startswith("/history"):
             count = int(cmd.split(":")[1]) if ":" in cmd else self.memory_window
-            history = session.get_history(max_messages=count)
+
+            def _check_msg(msg):
+                if msg["role"] != "user" or not msg.get("content"):
+                    return False
+                if not isinstance(msg.get("content"), str):
+                    return False
+                return True
+
+            history = [
+                {"role": m["role"], "content": m.get("content", "")}
+                for m in session.messages
+                if _check_msg(m)
+            ][:count]
             metadata = {"_response_for": "history"}
             if msg.metadata.get("_hide_from_ui", False):
                 metadata.update({"_hide_from_ui": True})

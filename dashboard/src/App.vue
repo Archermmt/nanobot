@@ -217,7 +217,7 @@ const handleWsStatusChange = (data: any) => {
 /* Global styles */
 body {
   margin: 0;
-  font-family: 'Press Start 2P', 'Courier New', monospace;
+  font-family: 'Noto Sans SC', 'Press Start 2P', 'Courier New', monospace;
   font-size: 10px;
   /* Reduced from default */
 }
