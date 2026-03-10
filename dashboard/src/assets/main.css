@@ -79,8 +79,13 @@ input, textarea, button, div, span, p, label {
   font-size: 16px;
 }
 
-/* Larger font size for Chinese text in input areas */
-.nes-input.zh, textarea.zh {
+/* Chinese content in input areas - use clear font like messages */
+.nes-input.zh, textarea.zh, .chat-input-textarea.zh {
+  font-family: 'Noto Sans SC', 'ZCOOL KuaiLe', 'Press Start 2P', sans-serif !important;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-smooth: always;
   font-size: 16px;
 }
 
