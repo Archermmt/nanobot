@@ -168,9 +168,10 @@ const removePendingFile = (index: number) => {
   pendingFiles.value.splice(index, 1)
 }
 
-// Expose method for updating user history
+// Expose method for updating user history and the history messages themselves
 defineExpose({
-  handleUpdateUserHistory
+  handleUpdateUserHistory,
+  userHistoryMessages
 })
 </script>
 

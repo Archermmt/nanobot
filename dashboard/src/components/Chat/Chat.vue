@@ -176,6 +176,16 @@ const sendMessage = async (data: string | { text: string; images: Array<{ data: 
   }
 
   messages.value.push(userMessage)
+
+  // Update input history with this message (if it's not a command)
+  if (text.trim() && !text.trim().startsWith('/')) {
+    if (chatInputRef.value) {
+      // Get current history and add new message
+      const currentHistory = (chatInputRef.value as any).userHistoryMessages || []
+      chatInputRef.value.handleUpdateUserHistory([...currentHistory, text.trim()])
+    }
+  }
+
   isLoading.value = true
 
   // Send message through WebSocketChannel
