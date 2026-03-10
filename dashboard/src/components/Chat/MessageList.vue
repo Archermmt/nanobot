@@ -24,6 +24,7 @@ interface Message {
     msg_type?: string
     file_type?: string
     _progress?: boolean
+    _response_for?: string
   }
 }
 
@@ -135,8 +136,10 @@ watch(() => props.isLoading, scrollToBottom)
       :class="msg.role === 'user' ? 'justify-end' : 'justify-start'">
       <div class="border-2 rounded shadow-[4px_4px_0_rgba(0,0,0,0.5)] px-4 py-3 flex flex-col" :class="{
         'bg-gradient-to-br from-blue-500 to-blue-600 border-blue-700 text-white max-w-[80%]': msg.role === 'user',
-        'bg-gradient-to-br from-gray-100 to-gray-200 border-gray-300 text-gray-800 max-w-[80%]': msg.role === 'assistant',
-        'bg-gradient-to-br from-red-100 to-red-200 border-red-300 text-red-800 max-w-[80%]': msg.role === 'system'
+        'bg-gradient-to-br from-gray-100 to-gray-200 border-gray-300 text-gray-800 max-w-[80%]': msg.role === 'assistant' && !msg.metadata?._progress && msg.metadata?._response_for !== 'status',
+        'bg-gradient-to-br from-green-100 to-green-200 border-green-300 text-gray-700 max-w-[80%]': msg.role === 'assistant' && msg.metadata?._progress,
+        'bg-gradient-to-br from-red-100 to-red-200 border-red-300 text-red-800 max-w-[80%]': msg.role === 'system',
+        'bg-gradient-to-br from-yellow-100 to-yellow-200 border-yellow-300 text-gray-700 max-w-[80%]': msg.metadata?._response_for === 'status'
       }">
         <!-- Image Display -->
         <div v-if="getImageUrlFromMessage(msg)" class="mb-3 w-full">
