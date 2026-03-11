@@ -469,11 +469,13 @@ class AgentLoop:
             count = int(cmd.split(":")[1]) if ":" in cmd else self.memory_window
 
             def _check_msg(msg):
-                if msg["role"] != "user" or not msg.get("content"):
+                if not msg.get("content") or not isinstance(msg.get("content"), str):
                     return False
-                if not isinstance(msg.get("content"), str):
-                    return False
-                return True
+                if msg["role"] == "user":
+                    return True
+                if msg["role"] == "assistant" and "tool_calls" not in msg:
+                    return True
+                return False
 
             history = [
                 {"role": m["role"], "content": m.get("content", "")}
@@ -481,8 +483,6 @@ class AgentLoop:
                 if _check_msg(m)
             ][:count]
             metadata = {"_response_for": "history"}
-            if msg.metadata.get("_hide_from_ui", False):
-                metadata.update({"_hide_from_ui": True})
             return OutboundMessage(
                 channel=msg.channel,
                 chat_id=msg.chat_id,
