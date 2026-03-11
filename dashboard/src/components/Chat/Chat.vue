@@ -87,6 +87,11 @@ const handleWebSocketMessage = (event: MessageEvent) => {
               chatInputRef.value.handleUpdateUserHistory(userMessages)
             }
 
+            // Count messages by role before displaying
+            const userMsgCount = historyData.filter((msg: any) => msg.role === 'user').length
+            const assistantMsgCount = historyData.filter((msg: any) => msg.role === 'assistant').length
+            const systemMsgCount = historyData.filter((msg: any) => msg.role === 'system').length
+
             // Also display all history messages in the chat window
             historyData.forEach((msg: any) => {
               // Skip messages marked as hidden
@@ -121,6 +126,13 @@ const handleWebSocketMessage = (event: MessageEvent) => {
             })
 
             console.log('✅ Displayed', messages.value.length, 'messages in chat window')
+
+            // Show statistics message
+            messages.value.push({
+              role: 'assistant',
+              content: `📊 History loaded: ${userMsgCount} user messages, ${assistantMsgCount} assistant messages${systemMsgCount > 0 ? `, ${systemMsgCount} system messages` : ''}`,
+              timestamp: Date.now()
+            })
           }
         } catch (e) {
           console.error('Failed to parse history:', e)
@@ -463,6 +475,12 @@ const handleNewChat = () => {
     }
     console.log('📤 Sending /new command:', newChatMsg)
     ws.send(JSON.stringify(newChatMsg))
+
+    // Clear messages and input history
+    messages.value = []
+    if (chatInputRef.value) {
+      chatInputRef.value.handleUpdateUserHistory([])
+    }
   } else {
     messages.value.push({
       role: 'system',
@@ -496,6 +514,12 @@ const handleClearChat = () => {
     }
     console.log('📤 Sending /clear command:', clearMsg)
     ws.send(JSON.stringify(clearMsg))
+
+    // Clear messages and input history
+    messages.value = []
+    if (chatInputRef.value) {
+      chatInputRef.value.handleUpdateUserHistory([])
+    }
   } else {
     messages.value.push({
       role: 'system',
