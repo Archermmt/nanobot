@@ -86,11 +86,46 @@ const handleWebSocketMessage = (event: MessageEvent) => {
             if (chatInputRef.value) {
               chatInputRef.value.handleUpdateUserHistory(userMessages)
             }
+
+            // Also display all history messages in the chat window
+            historyData.forEach((msg: any) => {
+              // Skip messages marked as hidden
+              if (msg.metadata?._hide_from_ui) {
+                return
+              }
+
+              // Handle image messages from media
+              let imageUrl: string | undefined
+              if (msg.media && msg.media.length > 0) {
+                const msgType = msg.metadata?.msg_type
+                const fileType = msg.metadata?.file_type
+
+                // Check if this is an image message
+                if (msgType === 'image' || (fileType && fileType.startsWith('image/'))) {
+                  // Extract image from media data
+                  const mediaItem = msg.media[0]
+                  if (mediaItem && mediaItem.data) {
+                    imageUrl = mediaItem.data
+                  }
+                }
+              }
+
+              messages.value.push({
+                role: msg.role || 'assistant',
+                content: msg.content || 'Message received',
+                timestamp: msg.timestamp || Date.now(),
+                imageUrl: imageUrl,
+                media: msg.media,
+                metadata: msg.metadata
+              })
+            })
+
+            console.log('✅ Displayed', messages.value.length, 'messages in chat window')
           }
         } catch (e) {
           console.error('Failed to parse history:', e)
         }
-        return  // Don't display history response in chat
+        return  // Don't create duplicate message entry
       }
 
       // Handle image messages from media
