@@ -2,9 +2,14 @@
 
 import asyncio
 import json
+from collections import OrderedDict
 import websockets
 from loguru import logger
 from urllib.parse import parse_qs, urlparse
+import subprocess
+import tempfile
+import base64
+from pathlib import Path
 
 from nanobot.bus.events import InboundMessage, OutboundMessage
 from nanobot.bus.queue import MessageBus
@@ -68,6 +73,9 @@ class XiaoZhiChannel(BaseChannel):
         self._auth_enabled = False
         self._allowed_devices: set = set()
         self._auth_key = ""
+        self._processed_message_ids: OrderedDict[str, None] = (
+            OrderedDict()
+        )  # Ordered dedup cache
 
     async def start(self) -> None:
         """Start the WebSocket server and begin listening for connections."""
@@ -269,7 +277,7 @@ class XiaoZhiChannel(BaseChannel):
             try:
                 # Parse message
                 msg_data = json.loads(message)
-                await self._process_incoming_message(websocket, msg_data, client_info)
+                await self._process_incoming_message(msg_data)
             except json.JSONDecodeError as e:
                 logger.warning(
                     "Invalid JSON message from {}: {}", client_info["device_id"], e
@@ -282,66 +290,170 @@ class XiaoZhiChannel(BaseChannel):
                     "Error processing message from {}: {}", client_info["device_id"], e
                 )
 
-    async def _process_incoming_message(
-        self, websocket: any, msg_data: dict, client_info: dict
-    ) -> None:
-        """
-        Process an incoming message and forward to message bus.
-
-        Args:
-            websocket: The WebSocket connection.
-            msg_data: The message data.
-            client_info: Client information.
-        """
+    async def _process_incoming_message(self, msg_data: dict) -> None:
+        """Process an incoming message from WebSocket."""
         msg_type = msg_data.get("type", "message")
 
         # Handle special message types
         if msg_type == "heartbeat":
-            await websocket.send(
-                json.dumps(
-                    {
-                        "type": "heartbeat_response",
-                        "timestamp": asyncio.get_event_loop().time(),
-                    }
-                )
-            )
+            await self._send_heartbeat_response()
             return
         elif msg_type == "ping":
-            await websocket.send(json.dumps({"type": "pong"}))
+            await self._send_pong_response()
             return
-
-        # Only process message type
-        if msg_type != "message":
-            logger.debug("Ignoring unknown message type: {}", msg_type)
+        elif msg_type != "message":
+            # Ignore unknown message types
             return
 
         # Extract message fields
+        message_id = msg_data.get("message_id") or str(hash(str(msg_data)))
+        sender_id = msg_data.get("sender_id", "unknown")
+        chat_id = msg_data.get("chat_id", "default")
         content = msg_data.get("content", "")
-        sender_id = client_info["device_id"]
-        chat_id = msg_data.get("chat_id", client_info["client_id"])
+        media = msg_data.get("media", [])
         metadata = msg_data.get("metadata", {})
 
-        # Skip empty messages
-        if not content and not metadata:
+        # Deduplication check
+        if message_id in self._processed_message_ids:
             return
+        self._processed_message_ids[message_id] = None
 
-        # Create inbound message
-        msg = InboundMessage(
-            channel=self.name,
+        # Trim cache
+        while len(self._processed_message_ids) > 1000:
+            self._processed_message_ids.popitem(last=False)
+
+        # Skip empty messages (unless it's a media message)
+        if not content and not media and not metadata:
+            return
+        # Handle base64-encoded media (images, audio, files)
+        # Convert base64 data to temporary files
+        content_parts = []
+        media_paths = []
+        if content:
+            content_parts.append(content)
+        elif media:
+            content_parts.append("Just save the following files, do nothing else: ")
+        if media:
+            media_dir = Path.home() / ".nanobot" / "media"
+            media_dir.mkdir(parents=True, exist_ok=True)
+
+            for media_item in media:
+                media_data, filename = media_item["data"], media_item.get(
+                    "file_name", ""
+                )
+                # Check if media is base64 data (data URL format: data:<mime>;base64,<data>)
+                if isinstance(media_data, str) and media_data.startswith("data:"):
+                    try:
+                        # Parse data URL
+                        header, b64_data = media_data.split(",", 1)
+                        mime_type = header.split(";")[0].replace("data:", "")
+
+                        # Decode base64
+                        file_data = base64.b64decode(b64_data)
+                        if not filename:
+                            # Determine file extension from mime type
+                            ext_map = {
+                                "image/jpeg": ".jpg",
+                                "image/png": ".png",
+                                "image/gif": ".gif",
+                                "image/webp": ".webp",
+                                "audio/webm": ".webm",
+                                "audio/mp3": ".mp3",
+                                "audio/aac": ".aac",
+                                "audio/ogg": ".ogg",
+                                "audio/wav": ".wav",
+                                "video/mp4": ".mp4",
+                            }
+                            ext = ext_map.get(mime_type, ".bin")
+
+                            # Save to temporary file
+                            filename = f"ws_{message_id[:8]}_{i}{ext}"
+                        file_path = media_dir / filename
+                        # Read converted WAV file
+                        if filename.endswith(".webm"):
+                            # Change file extension from .webm to .wav
+                            file_path = str(file_path).replace(".webm", ".wav")
+                            with tempfile.NamedTemporaryFile(
+                                suffix=".webm", delete=False
+                            ) as tmp_in:
+                                tmp_in.write(file_data)
+                                tmp_in_path = tmp_in.name
+
+                            result = subprocess.run(
+                                [
+                                    "ffmpeg",
+                                    "-i",
+                                    tmp_in_path,
+                                    "-ar",
+                                    "16000",
+                                    "-ac",
+                                    "1",
+                                    "-f",
+                                    "wav",
+                                    "-y",
+                                    file_path,
+                                ],
+                                capture_output=True,
+                                check=True,
+                            )
+                            # Check if conversion was successful
+                            if result.returncode != 0:
+                                logger.error(
+                                    f"FFmpeg conversion failed: {result.stderr.decode()}"
+                                )
+                                raise RuntimeError(
+                                    f"FFmpeg conversion failed with code {result.returncode}"
+                                )
+                            logger.info("Successfully converted audio to WAV format")
+                        else:
+                            file_path.write_bytes(file_data)
+                        media_paths.append(str(file_path))
+                        content_parts.append(
+                            f"{filename}({msg_type}) saved to {file_path}"
+                        )
+                        logger.debug("Saved base64 media to {}", file_path)
+                    except Exception as e:
+                        logger.error("Failed to process base64 media: {}", e)
+                else:
+                    # Already a file path
+                    media_paths.append(media_item)
+
+        content = "\n".join(content_parts) if content_parts else ""
+        # Forward to message bus
+        await self._handle_message(
             sender_id=sender_id,
             chat_id=chat_id,
             content=content,
-            media=msg_data.get("media", []),
+            media=media_paths,
             metadata=metadata,
         )
 
-        # Publish to message bus
-        await self.bus.publish_inbound(msg)
-        logger.debug(
-            "Forwarded message from device {} to bus: {}",
-            sender_id,
-            content[:100] if content else "<no content>",
-        )
+    async def _send_heartbeat_response(self) -> None:
+        """Send heartbeat response."""
+        if not self._connected_clients:
+            return
+        # Send to first connected client (can be optimized for multiple clients)
+        ws = next(iter(self._connected_clients.keys()))
+        try:
+            response = {
+                "type": "heartbeat_response",
+                "timestamp": asyncio.get_event_loop().time(),
+            }
+            await ws.send(json.dumps(response, ensure_ascii=False))
+        except Exception as e:
+            logger.warning("Failed to send heartbeat response: {}", e)
+
+    async def _send_pong_response(self) -> None:
+        """Send pong response."""
+        if not self._connected_clients:
+            return
+        # Send to first connected client (can be optimized for multiple clients)
+        ws = next(iter(self._connected_clients.keys()))
+        try:
+            response = {"type": "pong"}
+            await ws.send(json.dumps(response, ensure_ascii=False))
+        except Exception as e:
+            logger.warning("Failed to send pong response: {}", e)
 
     async def _http_response(self, websocket: any, request_headers: any) -> any:
         """
