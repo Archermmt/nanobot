@@ -1,7 +1,6 @@
 """Utility functions for xiaozhi_server."""
 
 import socket
-import re
 from typing import Dict
 
 

@@ -1,13 +1,15 @@
-import json
-import time
 import base64
+import glob
 import hashlib
 import hmac
+import json
 import os
 import re
-import glob
+import time
 from typing import Dict, List, Tuple
+
 from aiohttp import web
+from loguru import logger
 
 from ..auth import AuthManager
 from ..utils.util import get_local_ip, get_vision_url
@@ -95,11 +97,9 @@ class OTAHandler(BaseHandler):
 
             self._bin_cache["files_by_model"] = files_by_model
             self._bin_cache["updated_at"] = now
-            self.logger.bind(tag=TAG).info(
-                f"Firmware cache refreshed: {len(files_by_model)} models"
-            )
+            logger.info(f"Firmware cache refreshed: {len(files_by_model)} models")
         except Exception as e:
-            self.logger.bind(tag=TAG).error(f"刷新固件缓存失败: {e}")
+            logger.error(f"刷新固件缓存失败：{e}")
             # keep previous cache if any
 
     def generate_password_signature(self, content: str, secret_key: str) -> str:
@@ -119,7 +119,7 @@ class OTAHandler(BaseHandler):
             signature = hmac_obj.digest()
             return base64.b64encode(signature).decode("utf-8")
         except Exception as e:
-            self.logger.bind(tag=TAG).error(f"生成MQTT密码签名失败: {e}")
+            logger.error(f"生成 MQTT 密码签名失败：{e}")
             return ""
 
     def _get_websocket_url(self, local_ip: str, port: int) -> str:
@@ -151,21 +151,21 @@ class OTAHandler(BaseHandler):
         """
         try:
             data = await request.text()
-            self.logger.bind(tag=TAG).debug(f"OTA请求方法: {request.method}")
-            self.logger.bind(tag=TAG).debug(f"OTA请求头: {request.headers}")
-            self.logger.bind(tag=TAG).debug(f"OTA请求数据: {data}")
+            logger.debug(f"OTA 请求方法：{request.method}")
+            logger.debug(f"OTA 请求头：{request.headers}")
+            logger.debug(f"OTA 请求数据：{data}")
 
             device_id = request.headers.get("device-id", "")
             if device_id:
-                self.logger.bind(tag=TAG).info(f"OTA请求设备ID: {device_id}")
+                logger.info(f"OTA 请求设备 ID: {device_id}")
             else:
-                raise Exception("OTA请求设备ID为空")
+                raise Exception("OTA 请求设备 ID 为空")
 
             client_id = request.headers.get("client-id", "")
             if client_id:
-                self.logger.bind(tag=TAG).info(f"OTA请求ClientID: {client_id}")
+                logger.info(f"OTA 请求 ClientID: {client_id}")
             else:
-                raise Exception("OTA请求ClientID为空")
+                raise Exception("OTA 请求 ClientID 为空")
 
             data_json = {}
             try:
@@ -178,7 +178,6 @@ class OTAHandler(BaseHandler):
             # - websocket_port is used to construct websocket URL (server["port"])
             # - http_port is used to construct OTA download URLs (server["http_port"])
             websocket_port = int(server_config.get("port", 8000))
-            http_port = int(server_config.get("http_port", 8003))
             local_ip = get_local_ip()
 
             # Determine device model (prefer headers)
@@ -239,7 +238,7 @@ class OTAHandler(BaseHandler):
                 try:
                     group_id = f"GID_{device_model}".replace(":", "_").replace(" ", "_")
                 except Exception as e:
-                    self.logger.bind(tag=TAG).error(f"获取设备型号失败: {e}")
+                    logger.error(f"获取设备型号失败：{e}")
                     group_id = "GID_default"
 
                 mac_address_safe = device_id.replace(":", "_")
@@ -253,7 +252,7 @@ class OTAHandler(BaseHandler):
                         "utf-8"
                     )
                 except Exception as e:
-                    self.logger.bind(tag=TAG).error(f"生成用户名失败: {e}")
+                    logger.error(f"生成用户名失败：{e}")
                     username = ""
 
                 # 生成密码
@@ -266,9 +265,9 @@ class OTAHandler(BaseHandler):
                     if not password:
                         password = ""  # 签名失败则留空，由设备决定是否允许无密码
                 else:
-                    self.logger.bind(tag=TAG).warning("缺少MQTT签名密钥，密码留空")
+                    logger.warning("缺少 MQTT 签名密钥，密码留空")
 
-                # 构建MQTT配置（直接使用 mqtt_gateway 字符串）
+                # 构建 MQTT 配置（直接使用 mqtt_gateway 字符串）
                 return_json["mqtt"] = {
                     "endpoint": mqtt_gateway_endpoint,
                     "client_id": mqtt_client_id,
@@ -277,7 +276,7 @@ class OTAHandler(BaseHandler):
                     "publish_topic": "device-server",
                     "subscribe_topic": f"devices/p2p/{mac_address_safe}",
                 }
-                self.logger.bind(tag=TAG).info(f"为设备 {device_id} 下发MQTT网关配置")
+                logger.info(f"为设备 {device_id} 下发 MQTT 网关配置")
 
             else:  # 未配置 mqtt_gateway，下发 WebSocket
                 # 如果开启了认证，则进行认证校验
@@ -293,9 +292,7 @@ class OTAHandler(BaseHandler):
                     "url": self._get_websocket_url(local_ip, websocket_port),
                     "token": token,
                 }
-                self.logger.bind(tag=TAG).info(
-                    f"未配置MQTT网关，为设备 {device_id} 下发WebSocket配置"
-                )
+                logger.info(f"未配置 MQTT 网关，为设备 {device_id} 下发 WebSocket 配置")
 
             # Now check firmware files for updates
             try:
@@ -303,7 +300,7 @@ class OTAHandler(BaseHandler):
                 files_by_model = self._bin_cache.get("files_by_model", {})
                 candidates = files_by_model.get(device_model, [])
 
-                self.logger.bind(tag=TAG).info(
+                logger.info(
                     f"查找型号 {device_model} 的固件，找到 {len(candidates)} 个候选"
                 )
 
@@ -326,23 +323,21 @@ class OTAHandler(BaseHandler):
                 if chosen_url:
                     return_json["firmware"]["version"] = chosen_version
                     return_json["firmware"]["url"] = chosen_url
-                    self.logger.bind(tag=TAG).info(
-                        f"为设备 {device_id} 下发固件 {chosen_version} [如果地址前缀有误，请检查配置文件中的server.vision_explain]-> {chosen_url} "
+                    logger.info(
+                        f"为设备 {device_id} 下发固件 {chosen_version} [如果地址前缀有误，请检查配置文件中的 server.vision_explain]-> {chosen_url} "
                     )
                 else:
-                    self.logger.bind(tag=TAG).info(
-                        f"设备 {device_id} 固件已是最新: {device_version}"
-                    )
+                    logger.info(f"设备 {device_id} 固件已是最新：{device_version}")
 
             except Exception as e:
-                self.logger.bind(tag=TAG).error(f"检查固件版本时出错: {e}")
+                logger.error(f"检查固件版本时出错：{e}")
 
             response = web.Response(
                 text=json.dumps(return_json, separators=(",", ":")),
                 content_type="application/json",
             )
         except Exception as e:
-            self.logger.bind(tag=TAG).error(f"OTA POST 处理异常：{e}")
+            logger.error(f"OTA POST 处理异常：{e}")
             return_json = {"success": False, "message": "request error."}
             response = web.Response(
                 text=json.dumps(return_json, separators=(",", ":")),
@@ -360,10 +355,12 @@ class OTAHandler(BaseHandler):
             # use websocket port for websocket URL
             websocket_port = int(server_config.get("port", 8000))
             websocket_url = self._get_websocket_url(local_ip, websocket_port)
-            message = f"OTA接口运行正常，向设备发送的websocket地址是：{websocket_url}"
+            message = (
+                f"OTA 接口运行正常，向设备发送的 websocket 地址是：{websocket_url}"
+            )
             response = web.Response(text=message, content_type="text/plain")
         except Exception as e:
-            self.logger.bind(tag=TAG).error(f"OTA GET 请求异常：{e}")
+            logger.error(f"OTA GET 请求异常：{e}")
             response = web.Response(text="OTA 接口异常", content_type="text/plain")
 
         self._add_cors_headers(response)
@@ -405,7 +402,7 @@ class OTAHandler(BaseHandler):
         except web.HTTPError as e:
             resp = e
         except Exception as e:
-            self.logger.bind(tag=TAG).error(f"固件下载异常：{e}")
+            logger.error(f"固件下载异常：{e}")
             resp = web.Response(text="download error", status=500)
 
         try:

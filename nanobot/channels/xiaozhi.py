@@ -1,19 +1,21 @@
 """XiaoZhi channel implementation for WebSocket communication with ESP32 devices."""
 
 import asyncio
+import base64
 import json
-from collections import OrderedDict
-import websockets
-from loguru import logger
-from urllib.parse import parse_qs, urlparse
 import subprocess
 import tempfile
-import base64
+from collections import OrderedDict
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
-from nanobot.bus.events import InboundMessage, OutboundMessage
+import websockets
+from loguru import logger
+
+from nanobot.bus.events import OutboundMessage
 from nanobot.bus.queue import MessageBus
 from nanobot.channels.base import BaseChannel
+from nanobot.config.schema import XiaoZhiConfig
 
 
 class AuthenticationError(Exception):
@@ -58,7 +60,7 @@ class XiaoZhiChannel(BaseChannel):
 
     name = "xiaozhi"
 
-    def __init__(self, config: any, bus: MessageBus):
+    def __init__(self, config: XiaoZhiConfig, bus: MessageBus):
         """
         Initialize the XiaoZhi channel.
 
@@ -76,6 +78,19 @@ class XiaoZhiChannel(BaseChannel):
         self._processed_message_ids: OrderedDict[str, None] = (
             OrderedDict()
         )  # Ordered dedup cache
+        self.config_lock = asyncio.Lock()
+
+        # VAD and module initialization
+        self._vad = None
+
+        # OTA handler initialization
+        try:
+            from .xiaozhi_server.core.api.ota_handler import OTAHandler
+
+            self._ota_handler = OTAHandler(config)
+        except Exception as e:
+            logger.error(f"初始化 OTAHandler 失败：{e}")
+            self._ota_handler = None
 
     async def start(self) -> None:
         """Start the WebSocket server and begin listening for connections."""
@@ -140,6 +155,161 @@ class XiaoZhiChannel(BaseChannel):
             self._message_handler_task = None
 
         logger.info("XiaoZhi WebSocket server stopped")
+
+    async def _handle_ota_request(
+        self, websocket: any, path: str, request_headers: any
+    ) -> any:
+        """
+        Handle OTA HTTP requests by delegating to OTAHandler.
+
+        Args:
+            websocket: The WebSocket connection object.
+            path: The request path.
+            request_headers: The HTTP request headers.
+
+        Returns:
+            HTTP response from OTAHandler.
+        """
+        if not self._ota_handler:
+            logger.error("OTAHandler not initialized")
+            return websocket.respond(500, "OTA service not available")
+
+        try:
+            # Delegate to OTAHandler based on path
+            if path == "/xiaozhi/ota/" or path == "/xiaozhi/ota":
+                # GET request
+                return await self._ota_handler.handle_get(request_headers)
+            elif path.startswith("/xiaozhi/ota/download/"):
+                # Download request
+                filename = path.replace("/xiaozhi/ota/download/", "")
+
+                # Create a mock request object for OTAHandler
+                class MockRequest:
+                    def __init__(self, fname):
+                        self.match_info = {"filename": fname}
+
+                mock_request = MockRequest(filename)
+                return await self._ota_handler.handle_download(mock_request)
+            else:
+                # POST request - would need proper implementation with body reading
+                logger.warning("OTA POST request not fully supported in this context")
+                return websocket.respond(405, "Method Not Allowed")
+        except Exception as e:
+            logger.error(f"OTA request error: {e}")
+            return websocket.respond(500, f"Internal Server Error: {str(e)}")
+
+    def _initialize_modules(self, update_vad: bool = False):
+        """
+        Initialize VAD module.
+
+        Args:
+            update_vad: Whether to update VAD module
+        """
+        try:
+            # Try to import and initialize modules
+            # This is a simplified version - in real implementation you would
+            # load the actual VAD modules based on config
+            if update_vad:
+                logger.info("Reinitializing VAD module")
+                # self._vad = load_vad_module(self.config)
+
+            logger.info("Module initialization completed")
+        except Exception as e:
+            logger.error(f"初始化模块失败：{e}")
+
+    def _check_vad_update(self, old_config: any, new_config: any) -> bool:
+        """
+        Check if VAD needs to be updated.
+
+        Args:
+            old_config: Old configuration
+            new_config: New configuration
+
+        Returns:
+            bool: True if VAD needs update
+        """
+        try:
+            old_vad = getattr(old_config, "selected_module", {}).get("VAD", "")
+            new_vad = getattr(new_config, "selected_module", {}).get("VAD", "")
+            return old_vad != new_vad
+        except Exception:
+            return False
+
+    async def update_config(self) -> bool:
+        """
+        Update server configuration and reinitialize components.
+
+        Returns:
+            bool: True if update successful
+        """
+        try:
+            async with self.config_lock:
+                # Get new configuration (this is a placeholder - implement based on your config source)
+                new_config = self.config  # TODO: Implement actual config fetching
+
+                if new_config is None:
+                    logger.error("获取新配置失败")
+                    return False
+
+                logger.info("获取新配置成功")
+
+                # Check if VAD needs update
+                update_vad = self._check_vad_update(self.config, new_config)
+                logger.info(f"检查 VAD 类型是否需要更新：{update_vad}")
+
+                # Update configuration
+                self.config = new_config
+
+                # Reinitialize modules
+                self._initialize_modules(update_vad)
+
+                logger.info("更新配置任务执行完毕")
+                return True
+        except Exception as e:
+            logger.error(f"更新服务器配置失败：{str(e)}")
+            return False
+
+    async def _handle_ota_request(
+        self, websocket: any, path: str, request_headers: any
+    ) -> any:
+        """
+        Handle OTA HTTP requests by delegating to OTAHandler.
+
+        Args:
+            websocket: The WebSocket connection object.
+            path: The request path.
+            request_headers: The HTTP request headers.
+
+        Returns:
+            HTTP response from OTAHandler.
+        """
+        if not self._ota_handler:
+            logger.error("OTAHandler not initialized")
+            return websocket.respond(500, "OTA service not available")
+
+        try:
+            # Delegate to OTAHandler based on path
+            if path == "/xiaozhi/ota/" or path == "/xiaozhi/ota":
+                # GET request
+                return await self._ota_handler.handle_get(request_headers)
+            elif path.startswith("/xiaozhi/ota/download/"):
+                # Download request
+                filename = path.replace("/xiaozhi/ota/download/", "")
+
+                # Create a mock request object for OTAHandler
+                class MockRequest:
+                    def __init__(self, fname):
+                        self.match_info = {"filename": fname}
+
+                mock_request = MockRequest(filename)
+                return await self._ota_handler.handle_download(mock_request)
+            else:
+                # POST request - would need proper implementation with body reading
+                logger.warning("OTA POST request not fully supported in this context")
+                return websocket.respond(405, "Method Not Allowed")
+        except Exception as e:
+            logger.error(f"OTA request error: {e}")
+            return websocket.respond(500, f"Internal Server Error: {str(e)}")
 
     async def _handle_connection(self, websocket: any) -> None:
         """
@@ -242,6 +412,10 @@ class XiaoZhiChannel(BaseChannel):
         Raises:
             AuthenticationError: If authentication fails.
         """
+        # Check if auth is enabled
+        if not self._auth_enable:
+            return
+
         # Check whitelist
         if self._allowed_devices and device_id in self._allowed_devices:
             logger.debug("Device {} in whitelist, skipping token validation", device_id)
@@ -256,11 +430,28 @@ class XiaoZhiChannel(BaseChannel):
         if token.startswith("Bearer "):
             token = token[7:]
 
-        # Simple token validation
-        if not token or token != self._auth_key:
-            raise AuthenticationError("Invalid authorization token")
+        # Verify token using AuthManager
+        if self._auth:
+            auth_success = self._auth.verify_token(
+                token, client_id=client_id or device_id, username=device_id
+            )
+            if not auth_success:
+                raise AuthenticationError("Invalid or expired token")
+        else:
+            # Fallback to simple token validation if AuthManager not available
+            if not token or token != self._auth_key:
+                raise AuthenticationError("Invalid authorization token")
 
         logger.debug("Device {} authenticated successfully", device_id)
+
+    def get_vad(self):
+        """
+        Get the VAD instance.
+
+        Returns:
+            The VAD instance or None if not initialized.
+        """
+        return self._vad
 
     async def _handle_client_messages(self, websocket: any, client_info: dict) -> None:
         """
@@ -337,7 +528,7 @@ class XiaoZhiChannel(BaseChannel):
             media_dir = Path.home() / ".nanobot" / "media"
             media_dir.mkdir(parents=True, exist_ok=True)
 
-            for media_item in media:
+            for i, media_item in enumerate(media):
                 media_data, filename = media_item["data"], media_item.get(
                     "file_name", ""
                 )
@@ -472,7 +663,12 @@ class XiaoZhiChannel(BaseChannel):
         if connection_header == "upgrade":
             return None
         else:
-            return websocket.respond(200, "XiaoZhi Channel Server is running\n")
+            # Check if it's an OTA request
+            path = request_headers.path
+            if path and path.startswith("/xiaozhi/ota"):
+                return await self._handle_ota_request(websocket, path, request_headers)
+            else:
+                return websocket.respond(200, "XiaoZhi Channel Server is running\n")
 
     async def send(self, msg: OutboundMessage) -> None:
         """
