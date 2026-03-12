@@ -149,10 +149,22 @@ class ChannelManager:
             try:
                 from nanobot.channels.websocket import WebSocketChannel
 
-                self.channels["websocket"] = WebSocketChannel(self.config.channels.websocket, self.bus)
+                self.channels["websocket"] = WebSocketChannel(
+                    self.config.channels.websocket, self.bus
+                )
                 logger.info("WebSocket channel enabled")
             except ImportError as e:
                 logger.warning("WebSocket channel not available: {}", e)
+
+        # Xiaozhi channel
+        if self.config.channels.xiaozhi and self.config.channels.xiaozhi.enabled:
+            try:
+                from nanobot.channels.xiaozhi import XiaoZhiChannel
+
+                self.channels["xiaozhi"] = XiaoZhiChannel(self.config.channels.xiaozhi, self.bus)
+                logger.info("XiaoZhi channel enabled")
+            except ImportError as e:
+                logger.warning("XiaoZhi channel not available: {}", e)
 
         self._validate_allow_from()
 
@@ -220,7 +232,10 @@ class ChannelManager:
                 if msg.metadata.get("_progress"):
                     if msg.metadata.get("_tool_hint") and not self.config.channels.send_tool_hints:
                         continue
-                    if not msg.metadata.get("_tool_hint") and not self.config.channels.send_progress:
+                    if (
+                        not msg.metadata.get("_tool_hint")
+                        and not self.config.channels.send_progress
+                    ):
                         continue
 
                 channel = self.channels.get(msg.channel)
@@ -243,7 +258,10 @@ class ChannelManager:
 
     def get_status(self) -> dict[str, Any]:
         """Get status of all channels."""
-        return {name: {"enabled": True, "running": channel.is_running} for name, channel in self.channels.items()}
+        return {
+            name: {"enabled": True, "running": channel.is_running}
+            for name, channel in self.channels.items()
+        }
 
     @property
     def enabled_channels(self) -> list[str]:
