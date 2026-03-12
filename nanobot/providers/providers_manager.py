@@ -1,8 +1,10 @@
 """Providers manager for handling multiple LLM providers and modes."""
 
 from typing import Any
+
 from loguru import logger
 
+from nanobot.bus.events import OutboundMessage
 from nanobot.config.schema import Config
 from nanobot.providers.base import LLMProvider, LLMResponse
 from nanobot.providers.litellm_provider import LiteLLMProvider
@@ -27,6 +29,10 @@ class ProvidersManager:
         self._modes = modes
         self._default_mode = default_mode
         self._config = config
+        self._send_callback = None
+        self._default_channel = None
+        self._default_chat_id = None
+        self._default_message_id = None
 
     def _create_provider(self, model_id: str, provider_name: str = "auto") -> LLMProvider:
         """
@@ -92,7 +98,11 @@ class ProvidersManager:
             )
             # Get decider's response - it should return only a mode name
             decider_response = await decider.chat(
-                messages=decider_messages, tools=None, model=decider.get_default_model(), max_tokens=50, temperature=0.1
+                messages=decider_messages,
+                tools=None,
+                model=decider.get_default_model(),
+                max_tokens=50,
+                temperature=0.1,
             )
             # Extract mode from decider response (should be just one word)
             selected_mode = decider_response.content.strip() if decider_response.content else "main"
@@ -113,6 +123,14 @@ class ProvidersManager:
         else:
             raise ValueError(f"Unknown mode: {mode} and no fallback available")
 
+        msg = OutboundMessage(
+            channel=self._default_channel,
+            chat_id=self._default_chat_id,
+            content=f"Choose mode -> {mode}",
+            metadata={"_progress": True, "mode_hint": mode},
+        )
+        await self._send_callback(msg)
+
         # Make the chat request
         return await provider.chat(
             messages=messages,
@@ -123,7 +141,7 @@ class ProvidersManager:
             reasoning_effort=reasoning_effort,
         )
 
-    def add_mode(self, mode: str, model_id: str, describe: str) -> None:
+    async def add_mode(self, mode: str, model_id: str, describe: str) -> None:
         """
         Add a new mode with the given configuration.
 
@@ -133,9 +151,19 @@ class ProvidersManager:
             describe: Description of this mode's purpose
         """
         # Add to mode data
-        self._modes[mode] = {"provider": self._create_provider(model_id), "describe": describe}
+        self._modes[mode] = {
+            "provider": self._create_provider(model_id),
+            "describe": describe,
+        }
+        msg = OutboundMessage(
+            channel=self._default_channel,
+            chat_id=self._default_chat_id,
+            content=f"Add mode -> {mode}",
+            metadata={"mode_hint": mode},
+        )
+        await self._send_callback(msg)
 
-    def update_mode(self, mode: str, model_id: str) -> None:
+    async def update_mode(self, mode: str, model_id: str) -> None:
         """
         Update an existing mode's configuration.
 
@@ -151,8 +179,15 @@ class ProvidersManager:
         if model_id != current_model:
             # Create new provider for the new model
             self._modes[mode].update({"provider": self._create_provider(model_id)})
+        msg = OutboundMessage(
+            channel=self._default_channel,
+            chat_id=self._default_chat_id,
+            content=f"Update mode -> {mode}",
+            metadata={"mode_hint": mode},
+        )
+        await self._send_callback(msg)
 
-    def remove_mode(self, mode: str) -> None:
+    async def remove_mode(self, mode: str) -> None:
         """
         Remove a mode from the modes configuration.
 
@@ -161,6 +196,13 @@ class ProvidersManager:
         """
         if mode in self._modes:
             self._modes.pop(mode)
+        msg = OutboundMessage(
+            channel=self._default_channel,
+            chat_id=self._default_chat_id,
+            content=f"Remove mode -> {mode}",
+            metadata={"mode_hint": mode},
+        )
+        await self._send_callback(msg)
 
     def summary_modes(self) -> str:
         """
@@ -175,7 +217,9 @@ class ProvidersManager:
 
         summary_parts = []
         for mode_name, m_info in self._modes.items():
-            summary_parts.append(f"Mode '{mode_name}'({self.get_model(mode_name)}) : {m_info['describe']}")
+            summary_parts.append(
+                f"Mode '{mode_name}'({self.get_model(mode_name)}) : {m_info['describe']}"
+            )
         return "\n".join(summary_parts)
 
     def get_provider(self, mode: str):
@@ -213,4 +257,17 @@ class ProvidersManager:
     def list_models(self) -> list[str]:
         """List all available models."""
 
-        return [{"name": k, "model": self.get_model(k), "describe": v["describe"]} for k, v in self._modes.items()]
+        return [
+            {"name": k, "model": self.get_model(k), "describe": v["describe"]}
+            for k, v in self._modes.items()
+        ]
+
+    def set_send_callback(self, send_callback) -> None:
+        """Set the callback for sending messages."""
+        self._send_callback = send_callback
+
+    def set_context(self, channel: str, chat_id: str, message_id: str | None = None) -> None:
+        """Set the current message context."""
+        self._default_channel = channel
+        self._default_chat_id = chat_id
+        self._default_message_id = message_id

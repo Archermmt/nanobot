@@ -1,6 +1,7 @@
 """Agent tools: unified mode management with add, remove, update, list, and switch methods."""
 
 from typing import Any
+
 from nanobot.agent.tools.base import Tool
 from nanobot.providers.providers_manager import ProvidersManager
 
@@ -104,14 +105,14 @@ class AgentModeTool(Tool):
 
     async def _add_model(self, mode: str, model_id: str | None, describe: str | None) -> str:
         """Add a new model configuration."""
-        self.provider.add_mode(mode, model_id, describe)
-        return f"✓ Model added: {mode}\n" f"  Model: {model_id}\n" f"  Description: {describe}"
+        await self.provider.add_mode(mode, model_id, describe)
+        return f"✓ Model added: {mode}\n  Model: {model_id}\n  Description: {describe}"
 
     async def _remove_model(self, mode: str) -> str:
         """Remove a model configuration."""
         if not mode:
             return "Error: 'mode' parameter is required for remove method"
-        self.provider.remove_mode(mode)
+        await self.provider.remove_mode(mode)
 
     async def _update_model(self, mode: str, model_id: str | None) -> str:
         """Update an existing model configuration."""
@@ -120,5 +121,5 @@ class AgentModeTool(Tool):
 
         if not model_id:
             return "Error: 'model_id' parameter is required for update method"
-        self.provider.update_mode(mode, model_id)
-        return f"✓ Model updated: {mode}\n" f"  Model: {model_id}"
+        await self.provider.update_mode(mode, model_id)
+        return f"✓ Model updated: {mode}\n  Model: {model_id}"

@@ -1,14 +1,15 @@
 """WebSocket channel implementation for generic WebSocket communication."""
 
 import asyncio
+import base64
 import json
-import threading
-from collections import OrderedDict
-from loguru import logger
 import subprocess
 import tempfile
-import base64
+import threading
+from collections import OrderedDict
 from pathlib import Path
+
+from loguru import logger
 
 from nanobot.bus.events import OutboundMessage
 from nanobot.bus.queue import MessageBus
@@ -50,9 +51,7 @@ class WebSocketChannel(BaseChannel):
         self.config: WebSocketConfig = config
         self._ws = None
         self._ws_thread: threading.Thread | None = None
-        self._processed_message_ids: OrderedDict[str, None] = (
-            OrderedDict()
-        )  # Ordered dedup cache
+        self._processed_message_ids: OrderedDict[str, None] = OrderedDict()  # Ordered dedup cache
         self._loop: asyncio.AbstractEventLoop | None = None
         self._heartbeat_task: asyncio.Task | None = None
         self._reconnect_task: asyncio.Task | None = None
@@ -69,9 +68,7 @@ class WebSocketChannel(BaseChannel):
             await self._start_server()
         else:
             # Act as WebSocket client (connect to external server)
-            logger.info(
-                "Starting WebSocket client connecting to {}", self.config.server_url
-            )
+            logger.info("Starting WebSocket client connecting to {}", self.config.server_url)
             await self._connect_with_retry()
 
             # Keep running until stopped
@@ -117,10 +114,10 @@ class WebSocketChannel(BaseChannel):
 
     async def _start_server(self) -> None:
         """Start WebSocket server to accept client connections."""
-        import websockets
-
         # Parse server URL to get host and port
         from urllib.parse import urlparse
+
+        import websockets
 
         parsed = urlparse(self.config.server_url)
         host = parsed.hostname or "localhost"
@@ -130,9 +127,7 @@ class WebSocketChannel(BaseChannel):
 
         async def handler(websocket, *args):
             """Handle individual WebSocket connections."""
-            logger.info(
-                "New WebSocket client connected from {}", websocket.remote_address
-            )
+            logger.info("New WebSocket client connected from {}", websocket.remote_address)
             self._ws = websocket
             self._connected = True
 
@@ -140,9 +135,7 @@ class WebSocketChannel(BaseChannel):
                 # Handle authentication if token is required
                 if self.config.auth_token:
                     try:
-                        auth_msg = await asyncio.wait_for(
-                            websocket.recv(), timeout=10.0
-                        )
+                        auth_msg = await asyncio.wait_for(websocket.recv(), timeout=10.0)
                         auth_data = json.loads(auth_msg)
                         if (
                             auth_data.get("type") == "auth"
@@ -228,9 +221,7 @@ class WebSocketChannel(BaseChannel):
             try:
                 import websockets
 
-                logger.info(
-                    "Connecting to WebSocket server at {}", self.config.server_url
-                )
+                logger.info("Connecting to WebSocket server at {}", self.config.server_url)
 
                 self._ws = await websockets.connect(self.config.server_url)
                 self._connected = True
@@ -331,9 +322,7 @@ class WebSocketChannel(BaseChannel):
             media_dir.mkdir(parents=True, exist_ok=True)
 
             for media_item in media:
-                media_data, filename = media_item["data"], media_item.get(
-                    "file_name", ""
-                )
+                media_data, filename = media_item["data"], media_item.get("file_name", "")
                 # Check if media is base64 data (data URL format: data:<mime>;base64,<data>)
                 if isinstance(media_data, str) and media_data.startswith("data:"):
                     try:
@@ -391,9 +380,7 @@ class WebSocketChannel(BaseChannel):
                             )
                             # Check if conversion was successful
                             if result.returncode != 0:
-                                logger.error(
-                                    f"FFmpeg conversion failed: {result.stderr.decode()}"
-                                )
+                                logger.error(f"FFmpeg conversion failed: {result.stderr.decode()}")
                                 raise RuntimeError(
                                     f"FFmpeg conversion failed with code {result.returncode}"
                                 )
@@ -401,9 +388,7 @@ class WebSocketChannel(BaseChannel):
                         else:
                             file_path.write_bytes(file_data)
                         media_paths.append(str(file_path))
-                        content_parts.append(
-                            f"{filename}({msg_type}) saved to {file_path}"
-                        )
+                        content_parts.append(f"{filename}({msg_type}) saved to {file_path}")
                         logger.debug("Saved base64 media to {}", file_path)
                     except Exception as e:
                         logger.error("Failed to process base64 media: {}", e)

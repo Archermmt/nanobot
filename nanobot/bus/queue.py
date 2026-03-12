@@ -2,6 +2,7 @@
 
 import asyncio
 from typing import Dict
+
 from loguru import logger
 
 from nanobot.bus.events import InboundMessage, OutboundMessage
@@ -38,9 +39,7 @@ class MessageBus:
         msg_type = msg.metadata.get("msg_type", "text")
         handler = self._input_handlers.get(msg_type)
         if handler and handler.can_handle(msg):
-            logger.info(
-                "Processing {} input with {}", msg_type, handler.__class__.__name__
-            )
+            logger.info("Processing {} input with {}", msg_type, handler.__class__.__name__)
             msg = await handler.handle(msg)
         await self.inbound.put(msg)
 
@@ -53,9 +52,7 @@ class MessageBus:
         msg_type = msg.metadata.get("msg_type", "text")
         handler = self._output_handlers.get(msg_type)
         if handler and handler.can_handle(msg):
-            logger.info(
-                "Processing {} output with {}", msg_type, handler.__class__.__name__
-            )
+            logger.info("Processing {} output with {}", msg_type, handler.__class__.__name__)
             msg = await handler.handle(msg)
         await self.outbound.put(msg)
 

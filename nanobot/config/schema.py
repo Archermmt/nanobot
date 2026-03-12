@@ -78,9 +78,7 @@ class MatrixConfig(Base):
     access_token: str = ""
     user_id: str = ""  # @bot:matrix.org
     device_id: str = ""
-    e2ee_enabled: bool = (
-        True  # Enable Matrix E2EE support (encryption + encrypted room handling).
-    )
+    e2ee_enabled: bool = True  # Enable Matrix E2EE support (encryption + encrypted room handling).
     sync_stop_grace_seconds: int = (
         2  # Max seconds to wait for sync_forever to stop gracefully before cancellation fallback.
     )
@@ -124,9 +122,7 @@ class EmailConfig(Base):
     mark_seen: bool = True
     max_body_chars: int = 12000
     subject_prefix: str = "Re: "
-    allow_from: list[str] = Field(
-        default_factory=list
-    )  # Allowed sender email addresses
+    allow_from: list[str] = Field(default_factory=list)  # Allowed sender email addresses
 
 
 class MochatMentionConfig(Base):
@@ -187,13 +183,9 @@ class SlackConfig(Base):
     user_token_read_only: bool = True
     reply_in_thread: bool = True
     react_emoji: str = "eyes"
-    allow_from: list[str] = Field(
-        default_factory=list
-    )  # Allowed Slack user IDs (sender-level)
+    allow_from: list[str] = Field(default_factory=list)  # Allowed Slack user IDs (sender-level)
     group_policy: str = "mention"  # "mention", "open", "allowlist"
-    group_allow_from: list[str] = Field(
-        default_factory=list
-    )  # Allowed channel IDs if allowlist
+    group_allow_from: list[str] = Field(default_factory=list)  # Allowed channel IDs if allowlist
     dm: SlackDMConfig = Field(default_factory=SlackDMConfig)
 
 
@@ -217,9 +209,7 @@ class WebSocketConfig(Base):
     allow_from: list[str] = Field(default_factory=list)  # Allowed sender identifiers
     reconnect_interval: int = 5  # Reconnection interval in seconds
     heartbeat_interval: int = 30  # Heartbeat interval in seconds
-    as_server: bool = (
-        True  # If True, act as WebSocket server; if False, connect as client
-    )
+    as_server: bool = True  # If True, act as WebSocket server; if False, connect as client
 
 
 class XiaoZhiConfig(Base):
@@ -338,9 +328,7 @@ class AgentDefaults(Base):
     temperature: float = 0.1
     max_tool_iterations: int = 40
     memory_window: int = 100
-    reasoning_effort: str | None = (
-        None  # low / medium / high — enables LLM thinking mode
-    )
+    reasoning_effort: str | None = None  # low / medium / high — enables LLM thinking mode
 
 
 class AgentsConfig(Base):
@@ -355,17 +343,13 @@ class ProviderConfig(Base):
 
     api_key: str = ""
     api_base: str | None = None
-    extra_headers: dict[str, str] | None = (
-        None  # Custom headers (e.g. APP-Code for AiHubMix)
-    )
+    extra_headers: dict[str, str] | None = None  # Custom headers (e.g. APP-Code for AiHubMix)
 
 
 class ProvidersConfig(Base):
     """Configuration for LLM providers."""
 
-    custom: ProviderConfig = Field(
-        default_factory=ProviderConfig
-    )  # Any OpenAI-compatible endpoint
+    custom: ProviderConfig = Field(default_factory=ProviderConfig)  # Any OpenAI-compatible endpoint
     azure_openai: ProviderConfig = Field(
         default_factory=ProviderConfig
     )  # Azure OpenAI (model = deployment name)
@@ -380,21 +364,11 @@ class ProvidersConfig(Base):
     gemini: ProviderConfig = Field(default_factory=ProviderConfig)
     moonshot: ProviderConfig = Field(default_factory=ProviderConfig)
     minimax: ProviderConfig = Field(default_factory=ProviderConfig)
-    aihubmix: ProviderConfig = Field(
-        default_factory=ProviderConfig
-    )  # AiHubMix API gateway
-    siliconflow: ProviderConfig = Field(
-        default_factory=ProviderConfig
-    )  # SiliconFlow (硅基流动)
-    volcengine: ProviderConfig = Field(
-        default_factory=ProviderConfig
-    )  # VolcEngine (火山引擎)
-    openai_codex: ProviderConfig = Field(
-        default_factory=ProviderConfig
-    )  # OpenAI Codex (OAuth)
-    github_copilot: ProviderConfig = Field(
-        default_factory=ProviderConfig
-    )  # Github Copilot (OAuth)
+    aihubmix: ProviderConfig = Field(default_factory=ProviderConfig)  # AiHubMix API gateway
+    siliconflow: ProviderConfig = Field(default_factory=ProviderConfig)  # SiliconFlow (硅基流动)
+    volcengine: ProviderConfig = Field(default_factory=ProviderConfig)  # VolcEngine (火山引擎)
+    openai_codex: ProviderConfig = Field(default_factory=ProviderConfig)  # OpenAI Codex (OAuth)
+    github_copilot: ProviderConfig = Field(default_factory=ProviderConfig)  # Github Copilot (OAuth)
 
 
 class HeartbeatConfig(Base):
@@ -439,9 +413,7 @@ class ExecToolConfig(Base):
 class MCPServerConfig(Base):
     """MCP server connection configuration (stdio or HTTP)."""
 
-    type: Literal["stdio", "sse", "streamableHttp"] | None = (
-        None  # auto-detected if omitted
-    )
+    type: Literal["stdio", "sse", "streamableHttp"] | None = None  # auto-detected if omitted
     command: str = ""  # Stdio: command to run (e.g. "npx")
     args: list[str] = Field(default_factory=list)  # Stdio: command arguments
     env: dict[str, str] = Field(default_factory=dict)  # Stdio: extra env vars
@@ -455,9 +427,7 @@ class ToolsConfig(Base):
 
     web: WebToolsConfig = Field(default_factory=WebToolsConfig)
     exec: ExecToolConfig = Field(default_factory=ExecToolConfig)
-    restrict_to_workspace: bool = (
-        False  # If true, restrict all tool access to workspace directory
-    )
+    restrict_to_workspace: bool = False  # If true, restrict all tool access to workspace directory
     mcp_servers: dict[str, MCPServerConfig] = Field(default_factory=dict)
 
 

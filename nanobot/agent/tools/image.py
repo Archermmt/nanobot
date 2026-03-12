@@ -210,17 +210,13 @@ class ImageTool(Tool):
         mime_type = self._get_mime_type(image_path)
         return f"data:{mime_type};base64,{encoded_image}"
 
-    def set_context(
-        self, channel: str, chat_id: str, message_id: str | None = None
-    ) -> None:
+    def set_context(self, channel: str, chat_id: str, message_id: str | None = None) -> None:
         """Set the current message context."""
         self._default_channel = channel
         self._default_chat_id = chat_id
         self._default_message_id = message_id
 
-    def set_send_callback(
-        self, callback: Callable[[OutboundMessage], Awaitable[None]]
-    ) -> None:
+    def set_send_callback(self, callback: Callable[[OutboundMessage], Awaitable[None]]) -> None:
         """Set the callback for sending messages."""
         self._send_callback = callback
 
@@ -255,13 +251,9 @@ class ImageTool(Tool):
             Analysis result (vision mode), status message (display mode), or generation result (generate mode).
         """
         if mode == "vision":
-            return await self._execute_vision(
-                text=text, image_path=image_path, **kwargs
-            )
+            return await self._execute_vision(text=text, image_path=image_path, **kwargs)
         elif mode == "display":
-            return await self._execute_display(
-                text=text, image_path=image_path, **kwargs
-            )
+            return await self._execute_display(text=text, image_path=image_path, **kwargs)
         elif mode == "generate":
             return await self._execute_generate(
                 text=text,
@@ -431,9 +423,7 @@ class ImageTool(Tool):
         if error:
             return "Failed generate image: " + str(error)
         for img_path in image_paths:
-            await self._execute_display(
-                f"Generated image:\n{os.path.basename(img_path)}", img_path
-            )
+            await self._execute_display(f"Generated image:\n{os.path.basename(img_path)}", img_path)
         return f"Generated {len(image_paths)} images by {provider} successfully."
 
     async def _dashscope_generate(
@@ -531,7 +521,9 @@ class ImageTool(Tool):
             choices = output.get("choices", [])
 
             if not choices:
-                error = f"Error: No image generated. Response: {json.dumps(result, ensure_ascii=False)}"
+                error = (
+                    f"Error: No image generated. Response: {json.dumps(result, ensure_ascii=False)}"
+                )
                 return [], error
 
             # Get image URLs
@@ -558,10 +550,7 @@ class ImageTool(Tool):
                     if len(image_urls) > 1:
                         # Multiple images: add index to filename
                         path_obj = Path("~/.nanobot/media") / image_path
-                        save_path = (
-                            path_obj.parent
-                            / f"{path_obj.stem}_{idx + 1}{path_obj.suffix}"
-                        )
+                        save_path = path_obj.parent / f"{path_obj.stem}_{idx + 1}{path_obj.suffix}"
                     else:
                         save_path = Path("~/.nanobot/media") / image_path
 
@@ -578,9 +567,7 @@ class ImageTool(Tool):
             height = usage.get("height", "unknown")
 
             if len(saved_paths) == 1:
-                logger.info(
-                    f"Image generated successfully: {saved_paths[0]} ({width}x{height})"
-                )
+                logger.info(f"Image generated successfully: {saved_paths[0]} ({width}x{height})")
                 return saved_paths, ""
             msg = (
                 f"Generated {len(saved_paths)} images successfully:\n"
@@ -593,9 +580,7 @@ class ImageTool(Tool):
             error_detail = e.response.text if e.response else str(e)
             try:
                 error_json = e.response.json()
-                error_msg = error_json.get(
-                    "message", error_json.get("error", error_detail)
-                )
+                error_msg = error_json.get("message", error_json.get("error", error_detail))
             except Exception:
                 error_msg = error_detail
             return [], f"Error: HTTP {e.response.status_code} - {error_msg}"
@@ -651,9 +636,7 @@ class ImageTool(Tool):
 
         # Build request payload with optional reference image
         if ref_image:
-            model_name = os.getenv(
-                "MODELSCOPE_IMAGE_EDIT_MODEL", "Qwen/Qwen-Image-2512"
-            )
+            model_name = os.getenv("MODELSCOPE_IMAGE_EDIT_MODEL", "Qwen/Qwen-Image-2512")
         else:
             model_name = os.getenv("MODELSCOPE_IMAGE_GEN_MODEL", "Qwen/Qwen-Image-2512")
 
@@ -684,9 +667,7 @@ class ImageTool(Tool):
             result.raise_for_status()
             data = result.json()
             if data["task_status"] == "SUCCEED":
-                image = Image.open(
-                    BytesIO(requests.get(data["output_images"][0]).content)
-                )
+                image = Image.open(BytesIO(requests.get(data["output_images"][0]).content))
                 image.save(image_path)
                 return [image_path], ""
             if data["task_status"] == "FAILED":

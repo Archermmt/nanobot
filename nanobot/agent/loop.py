@@ -119,6 +119,8 @@ class AgentLoop:
         self._active_tasks: dict[str, list[asyncio.Task]] = {}  # session_key -> tasks
         self._processing_lock = asyncio.Lock()
         self._register_default_tools()
+        if isinstance(self.provider, ProvidersManager):
+            self.provider.set_send_callback(send_callback=self.bus.publish_outbound)
         load_dotenv(dotenv_path=self.workspace / ".env")
 
     def _register_default_tools(self) -> None:
@@ -539,6 +541,8 @@ class AgentLoop:
         if message_tool := self.tools.get("message"):
             if isinstance(message_tool, MessageTool):
                 message_tool.start_turn()
+        if isinstance(self.provider, ProvidersManager):
+            self.provider.set_context(msg.channel, msg.chat_id)
 
         history = session.get_history(max_messages=self.memory_window)
         initial_messages = self.context.build_messages(
@@ -555,7 +559,10 @@ class AgentLoop:
             meta["_progress"] = True
             await self.bus.publish_outbound(
                 OutboundMessage(
-                    channel=msg.channel, chat_id=msg.chat_id, content=hint_content, metadata=meta
+                    channel=msg.channel,
+                    chat_id=msg.chat_id,
+                    content=hint_content,
+                    metadata=meta,
                 )
             )
 

@@ -75,9 +75,7 @@ class XiaoZhiChannel(BaseChannel):
         self._auth_enabled = False
         self._allowed_devices: set = set()
         self._auth_key = ""
-        self._processed_message_ids: OrderedDict[str, None] = (
-            OrderedDict()
-        )  # Ordered dedup cache
+        self._processed_message_ids: OrderedDict[str, None] = OrderedDict()  # Ordered dedup cache
         self.config_lock = asyncio.Lock()
 
         # VAD and module initialization
@@ -156,9 +154,7 @@ class XiaoZhiChannel(BaseChannel):
 
         logger.info("XiaoZhi WebSocket server stopped")
 
-    async def _handle_ota_request(
-        self, websocket: any, path: str, request_headers: any
-    ) -> any:
+    async def _handle_ota_request(self, websocket: any, path: str, request_headers: any) -> any:
         """
         Handle OTA HTTP requests by delegating to OTAHandler.
 
@@ -269,9 +265,7 @@ class XiaoZhiChannel(BaseChannel):
             logger.error(f"更新服务器配置失败：{str(e)}")
             return False
 
-    async def _handle_ota_request(
-        self, websocket: any, path: str, request_headers: any
-    ) -> any:
+    async def _handle_ota_request(self, websocket: any, path: str, request_headers: any) -> any:
         """
         Handle OTA HTTP requests by delegating to OTAHandler.
 
@@ -358,9 +352,7 @@ class XiaoZhiChannel(BaseChannel):
             try:
                 await self._authenticate(device_id, client_id, authorization)
             except AuthenticationError as e:
-                logger.warning(
-                    "Authentication failed for device {}: {}", device_id, str(e)
-                )
+                logger.warning("Authentication failed for device {}: {}", device_id, str(e))
                 await websocket.send(f"Authentication failed: {str(e)}")
                 await websocket.close()
                 return
@@ -470,16 +462,12 @@ class XiaoZhiChannel(BaseChannel):
                 msg_data = json.loads(message)
                 await self._process_incoming_message(msg_data)
             except json.JSONDecodeError as e:
-                logger.warning(
-                    "Invalid JSON message from {}: {}", client_info["device_id"], e
-                )
+                logger.warning("Invalid JSON message from {}: {}", client_info["device_id"], e)
                 await websocket.send(
                     json.dumps({"type": "error", "content": "Invalid JSON format"})
                 )
             except Exception as e:
-                logger.error(
-                    "Error processing message from {}: {}", client_info["device_id"], e
-                )
+                logger.error("Error processing message from {}: {}", client_info["device_id"], e)
 
     async def _process_incoming_message(self, msg_data: dict) -> None:
         """Process an incoming message from WebSocket."""
@@ -529,9 +517,7 @@ class XiaoZhiChannel(BaseChannel):
             media_dir.mkdir(parents=True, exist_ok=True)
 
             for i, media_item in enumerate(media):
-                media_data, filename = media_item["data"], media_item.get(
-                    "file_name", ""
-                )
+                media_data, filename = media_item["data"], media_item.get("file_name", "")
                 # Check if media is base64 data (data URL format: data:<mime>;base64,<data>)
                 if isinstance(media_data, str) and media_data.startswith("data:"):
                     try:
@@ -589,9 +575,7 @@ class XiaoZhiChannel(BaseChannel):
                             )
                             # Check if conversion was successful
                             if result.returncode != 0:
-                                logger.error(
-                                    f"FFmpeg conversion failed: {result.stderr.decode()}"
-                                )
+                                logger.error(f"FFmpeg conversion failed: {result.stderr.decode()}")
                                 raise RuntimeError(
                                     f"FFmpeg conversion failed with code {result.returncode}"
                                 )
@@ -599,9 +583,7 @@ class XiaoZhiChannel(BaseChannel):
                         else:
                             file_path.write_bytes(file_data)
                         media_paths.append(str(file_path))
-                        content_parts.append(
-                            f"{filename}({msg_type}) saved to {file_path}"
-                        )
+                        content_parts.append(f"{filename}({msg_type}) saved to {file_path}")
                         logger.debug("Saved base64 media to {}", file_path)
                     except Exception as e:
                         logger.error("Failed to process base64 media: {}", e)
@@ -684,10 +666,7 @@ class XiaoZhiChannel(BaseChannel):
         # Find the appropriate client connection
         target_ws = None
         for ws, client_info in self._connected_clients.items():
-            if (
-                client_info["client_id"] == msg.chat_id
-                or client_info["device_id"] == msg.chat_id
-            ):
+            if client_info["client_id"] == msg.chat_id or client_info["device_id"] == msg.chat_id:
                 target_ws = ws
                 break
 
