@@ -2,13 +2,12 @@
 
 import asyncio
 from typing import Dict
-
 from loguru import logger
 
 from nanobot.bus.events import InboundMessage, OutboundMessage
 from nanobot.bus.handlers.audio_handler import load_audio_handler
 from nanobot.bus.handlers.base_handler import BaseHandler
-from nanobot.config.schema import BusConfig
+from nanobot.config.schema import BusConfig, InputHandlerConfig
 
 
 class MessageBus:
@@ -23,9 +22,11 @@ class MessageBus:
         self.config = config or BusConfig()
         self.inbound: asyncio.Queue[InboundMessage] = asyncio.Queue()
         self.outbound: asyncio.Queue[OutboundMessage] = asyncio.Queue()
-        self._handlers: Dict[str, BaseHandler] = {}
-        if self.config.audio_handler and self.config.audio_handler.enabled:
-            self._handlers["audio"] = load_audio_handler(self.config.audio_handler)
+        self._input_handlers: Dict[str, BaseHandler] = {}
+        self._output_handlers: Dict[str, BaseHandler] = {}
+        input_handler: InputHandlerConfig = self.config.input_handler
+        if input_handler.audio and input_handler.audio.enabled:
+            self._input_handlers["audio"] = load_audio_handler(input_handler.audio)
 
     async def publish_inbound(self, msg: InboundMessage) -> None:
         """
@@ -34,11 +35,13 @@ class MessageBus:
         If the message contains media, it will be automatically
         transcribed to text before being published.
         """
-        # Process media messages automatically
         msg_type = msg.metadata.get("msg_type", "text")
-        if msg_type in self._handlers and self._handlers[msg_type].can_handle(msg):
-            logger.info("Processing {} message with {}", msg_type, self._handlers[msg_type].__class__.__name__)
-            msg = await self._handlers[msg_type].handle(msg)
+        handler = self._input_handlers.get(msg_type)
+        if handler and handler.can_handle(msg):
+            logger.info(
+                "Processing {} input with {}", msg_type, handler.__class__.__name__
+            )
+            msg = await handler.handle(msg)
         await self.inbound.put(msg)
 
     async def consume_inbound(self) -> InboundMessage:
@@ -47,6 +50,13 @@ class MessageBus:
 
     async def publish_outbound(self, msg: OutboundMessage) -> None:
         """Publish a response from the agent to channels."""
+        msg_type = msg.metadata.get("msg_type", "text")
+        handler = self._output_handlers.get(msg_type)
+        if handler and handler.can_handle(msg):
+            logger.info(
+                "Processing {} output with {}", msg_type, handler.__class__.__name__
+            )
+            msg = await handler.handle(msg)
         await self.outbound.put(msg)
 
     async def consume_outbound(self) -> OutboundMessage:

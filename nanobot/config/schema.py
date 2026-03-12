@@ -246,14 +246,33 @@ class AudioHandlerConfig(Base):
     custom_handler_path: str | None = None
 
 
+class InputHandlerConfig(Base):
+    """Configuration for input handlers."""
+
+    audio: AudioHandlerConfig | None = None
+
+    def model_post_init(self, __context):
+        if self.audio is None:
+            self.audio = AudioHandlerConfig()
+
+
+class OutputHandlerConfig(Base):
+    """Configuration for output handlers."""
+
+    pass
+
+
 class BusConfig(Base):
     """Configuration for MessageBus."""
 
-    audio_handler: AudioHandlerConfig | None = None
+    input_handler: InputHandlerConfig | None = None
+    output_handler: OutputHandlerConfig | None = None
 
     def model_post_init(self, __context):
-        if self.audio_handler is None:
-            self.audio_handler = AudioHandlerConfig()
+        if self.input_handler is None:
+            self.input_handler = InputHandlerConfig()
+        if self.output_handler is None:
+            self.output_handler = OutputHandlerConfig()
 
 
 class MatrixConfig(Base):
