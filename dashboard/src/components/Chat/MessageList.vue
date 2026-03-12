@@ -138,7 +138,7 @@ const visibleMessages = computed(() => {
         currentModeHint.value = msg.metadata.mode_hint
       }
     })
-    return props.messages
+    return props.messages.filter(msg => !msg.metadata?.mode_hint)
   } else {
     // Hide messages with _progress: true in metadata
     props.messages.forEach(msg => {
@@ -147,7 +147,7 @@ const visibleMessages = computed(() => {
         currentModeHint.value = msg.metadata.mode_hint
       }
     })
-    return props.messages.filter(msg => !msg.metadata?._progress)
+    return props.messages.filter(msg => !msg.metadata?._progress && !msg.metadata?.mode_hint)
   }
 })
 
