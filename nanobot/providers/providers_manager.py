@@ -82,6 +82,7 @@ class ProvidersManager:
         """
 
         mode = mode or self._default_mode
+        decide_mode = mode
         user_content = messages[-1]["content"]
         if mode == "auto":
             assert "main" in self._modes, "No main mode configured for auto mode"
@@ -109,25 +110,25 @@ class ProvidersManager:
             # Use the selected mode's provider
             if selected_mode in self._modes:
                 logger.info(f"Choose {selected_mode} for task: {user_content[:20]}")
-                provider = self.get_provider(selected_mode)
+                decide_mode = selected_mode
             else:
                 # Fallback to main if selected mode not found
                 logger.info(f"Fallback to main for task: {user_content[:20]}")
-                provider = self.get_provider("main")
+                decide_mode = "main"
         elif mode in self._modes:
             logger.info(f"Use specified {mode} for task: {user_content[:20]}")
-            provider = self.get_provider(mode)
+            decide_mode = mode
         elif "main" in self._modes:
             logger.info(f"Fallback to main for task: {user_content[:20]}")
-            provider = self.get_provider("main")
+            decide_mode = "main"
         else:
             raise ValueError(f"Unknown mode: {mode} and no fallback available")
-
+        provider = self.get_provider(decide_mode)
         msg = OutboundMessage(
             channel=self._default_channel,
             chat_id=self._default_chat_id,
-            content=f"Choose mode -> {mode}",
-            metadata={"_progress": True, "mode_hint": mode},
+            content=f"Choose mode -> {decide_mode}",
+            metadata={"_progress": True, "mode_hint": decide_mode},
         )
         await self._send_callback(msg)
 

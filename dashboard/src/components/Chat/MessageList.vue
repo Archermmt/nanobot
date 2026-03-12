@@ -25,6 +25,7 @@ interface Message {
     file_type?: string
     _progress?: boolean
     _response_for?: string
+    mode_hint?: string
   }
 }
 
@@ -60,6 +61,7 @@ const showThinking = computed(() => {
 
 const currentAudio = ref<HTMLAudioElement | null>(null)
 const expandedImages = ref<string[]>([])
+const currentModeHint = ref<string | null>(null)
 
 // Extract image URL from media data
 const getImageUrlFromMessage = (msg: Message): string | null => {
@@ -130,9 +132,21 @@ const visibleMessages = computed(() => {
   // Filter messages based on showProgressMessages prop
   if (props.showProgressMessages !== false) {
     // Show all messages including_progress messages
+    props.messages.forEach(msg => {
+      // Cache mode_hint from messages
+      if (msg.metadata?.mode_hint) {
+        currentModeHint.value = msg.metadata.mode_hint
+      }
+    })
     return props.messages
   } else {
     // Hide messages with _progress: true in metadata
+    props.messages.forEach(msg => {
+      // Cache mode_hint from messages (even progress messages)
+      if (msg.metadata?.mode_hint) {
+        currentModeHint.value = msg.metadata.mode_hint
+      }
+    })
     return props.messages.filter(msg => !msg.metadata?._progress)
   }
 })
@@ -214,7 +228,9 @@ watch(() => props.showProgressMessages, scrollToBottom)
       <div
         class="bg-gradient-to-br from-yellow-100 to-yellow-200 border border-yellow-300 rounded shadow-[4px_4px_0_rgba(0,0,0,0.5)] px-4 py-3">
         <div class="flex items-center space-x-2">
-          <div class="text-xs text-yellow-800">Thinking</div>
+          <div class="text-xs text-yellow-800">
+            Thinking<span v-if="currentModeHint">({{ currentModeHint }})</span>
+          </div>
           <div class="flex space-x-1">
             <div class="w-2 h-2 bg-blue-500 rounded animate-bounce" style="animation-delay: 0ms"></div>
             <div class="w-2 h-2 bg-blue-500 rounded animate-bounce" style="animation-delay: 150ms"></div>
