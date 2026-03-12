@@ -171,6 +171,12 @@ const handleWebSocketMessage = (event: MessageEvent) => {
         })
       }
 
+      // Check if message contains mode_hint and is not a progress message
+      if (data.metadata?.mode_hint && !data.metadata?._progress) {
+        // Call handleSendStatus to update status bar
+        handleSendStatus()
+      }
+
       // Only set isLoading to false if _progress is not true
       if (!data.metadata?._progress) {
         isLoading.value = false
@@ -385,8 +391,6 @@ const handleSendStatus = () => {
       timestamp: Date.now()
     })
   }
-
-
 }
 
 const handleConnected = () => {
