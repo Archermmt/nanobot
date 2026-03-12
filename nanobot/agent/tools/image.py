@@ -55,7 +55,8 @@ class ImageTool(Tool):
             "- display: Display images to users by reading from disk and sending to frontend. "
             "Use this when you want to show an image to the user directly.\n"
             "- generate: Generate images from text prompts using Alibaba Cloud Qwen-Image API. "
-            "Supports various artistic styles and text rendering in images.\n"
+            "Supports various artistic styles and text rendering in images. "
+            "In generate mode, can also perform image-to-image generation by providing a reference image.\n"
             "Images are encoded as base64 for processing or display."
         )
 
@@ -129,6 +130,17 @@ class ImageTool(Tool):
                     "description": (
                         "[Optional for generate mode] Add 'Qwen-Image' watermark to bottom-right corner. "
                         "Default is false."
+                    ),
+                },
+                "ref_image": {
+                    "type": "string",
+                    "description": (
+                        "[Optional for generate mode] Reference image path for image-to-image generation. "
+                        "When provided, the model will generate a new image based on both the text prompt and the reference image. "
+                        "The generated image will maintain similar style, composition, or content from the reference. "
+                        "Should be an absolute path to a local image file (e.g., '/Users/archer/Desktop/photo.png'). "
+                        "Supported formats: PNG, JPG, JPEG, GIF, WEBP.\n"
+                        "Example: Use ref_image to create variations of an existing image with different styles or modifications."
                     ),
                 },
             },
@@ -222,6 +234,7 @@ class ImageTool(Tool):
         n: int = 1,
         prompt_extend: bool = True,
         watermark: bool = False,
+        ref_image: str | None = None,
         **kwargs: Any,
     ) -> str:
         """
@@ -236,6 +249,7 @@ class ImageTool(Tool):
             n: [Generate mode] Number of images to generate.
             prompt_extend: [Generate mode] Enable AI prompt enhancement.
             watermark: [Generate mode] Add watermark.
+            ref_image: [Generate mode] Reference image URL or file path for image-to-image generation.
 
         Returns:
             Analysis result (vision mode), status message (display mode), or generation result (generate mode).
@@ -257,6 +271,7 @@ class ImageTool(Tool):
                 n=n,
                 prompt_extend=prompt_extend,
                 watermark=watermark,
+                ref_image=ref_image,
                 **kwargs,
             )
         else:
@@ -356,6 +371,7 @@ class ImageTool(Tool):
         n: int = 1,
         prompt_extend: bool = True,
         watermark: bool = False,
+        ref_image: str | None = None,
         **kwargs: Any,
     ) -> str:
         """
@@ -369,6 +385,7 @@ class ImageTool(Tool):
             n: Number of images to generate (1-6 for qwen-image-2.0 series, fixed 1 for max/plus).
             prompt_extend: Enable AI-powered prompt enhancement.
             watermark: Add 'Qwen-Image' watermark.
+            ref_image: Reference image URL or file path for image-to-image generation.
 
         Returns:
             Status message with generation result or error details.
@@ -379,6 +396,9 @@ class ImageTool(Tool):
 
         if not image_path:
             return "Error: Image save path is required."
+
+        if ref_image and not os.path.exists(ref_image):
+            return "Error: Ref image path is invalid."
 
         provider = os.getenv("IMAGE_GEN_PROVIDER", "dashscope")
         image_paths, error = [], ""
@@ -391,6 +411,7 @@ class ImageTool(Tool):
                 n=n,
                 prompt_extend=prompt_extend,
                 watermark=watermark,
+                ref_image=ref_image,
                 **kwargs,
             )
         elif provider == "modelscope":
@@ -402,6 +423,7 @@ class ImageTool(Tool):
                 n=n,
                 prompt_extend=prompt_extend,
                 watermark=watermark,
+                ref_image=ref_image,
                 **kwargs,
             )
         else:
@@ -423,6 +445,7 @@ class ImageTool(Tool):
         n: int = 1,
         prompt_extend: bool = True,
         watermark: bool = False,
+        ref_image: str | None = None,
         **kwargs: Any,
     ) -> str:
         """
@@ -436,6 +459,7 @@ class ImageTool(Tool):
             n: Number of images to generate (1-6 for qwen-image-2.0 series, fixed 1 for max/plus).
             prompt_extend: Enable AI-powered prompt enhancement.
             watermark: Add 'Qwen-Image' watermark.
+            ref_image: Reference image URL or file path for image-to-image generation.
 
         Returns:
             Status message with generation result or error details.
@@ -462,9 +486,21 @@ class ImageTool(Tool):
             )
 
         # Build request payload
+        if ref_image:
+            model_name = os.getenv("DASHSCOPE_IMAGE_EDIT_MODEL", "qwen-image-max")
+        else:
+            model_name = os.getenv("DASHSCOPE_IMAGE_GEN_MODEL", "qwen-image-max")
+
+        # Build content array based on whether ref_image is provided
+        content_items = []
+        if ref_image:
+            # Image-to-image generation: add reference image first
+            content_items.append({"image": self._get_image_data(ref_image)})
+        content_items.append({"text": text})
+
         payload = {
-            "model": os.getenv("DASHSCOPE_IMAGE_GEN_MODEL", "qwen-image-max"),
-            "input": {"messages": [{"role": "user", "content": [{"text": text}]}]},
+            "model": model_name,
+            "input": {"messages": [{"role": "user", "content": content_items}]},
             "parameters": {
                 "size": size,
                 "prompt_extend": prompt_extend,
@@ -581,8 +617,25 @@ class ImageTool(Tool):
         n: int = 1,
         prompt_extend: bool = True,
         watermark: bool = False,
+        ref_image: str | None = None,
         **kwargs: Any,
     ) -> str:
+        """
+        Execute image generation using ModelScope API.
+
+        Args:
+            text: Text prompt describing the desired image content, style, and composition.
+            image_path: File name where the generated image will be saved.
+            size: Output image resolution in format 'width*height'.
+            negative_prompt: Negative prompt for undesired content.
+            n: Number of images to generate.
+            prompt_extend: Enable AI-powered prompt enhancement.
+            watermark: Add watermark.
+            ref_image: Reference image URL or file path for image-to-image generation.
+
+        Returns:
+            Status message with generation result or error details.
+        """
 
         from PIL import Image
 
@@ -595,16 +648,25 @@ class ImageTool(Tool):
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
         }
+
+        # Build request payload with optional reference image
+        if ref_image:
+            model_name = os.getenv(
+                "MODELSCOPE_IMAGE_EDIT_MODEL", "Qwen/Qwen-Image-2512"
+            )
+        else:
+            model_name = os.getenv("MODELSCOPE_IMAGE_GEN_MODEL", "Qwen/Qwen-Image-2512")
+
+        payload = {"model": model_name, "prompt": text}
+        # Add reference image for image-to-image generation
+        if ref_image:
+            payload["image_url"] = [self._get_image_data(ref_image)]
+
         response = requests.post(
             f"{base_url}v1/images/generations",
             headers={**common_headers, "X-ModelScope-Async-Mode": "true"},
             data=json.dumps(
-                {
-                    "model": os.getenv(
-                        "MODELSCOPE_IMAGE_GEN_MODEL", "Qwen/Qwen-Image-2512"
-                    ),  # ModelScope Model-Id, required
-                    "prompt": text,
-                },
+                payload,
                 ensure_ascii=False,
             ).encode("utf-8"),
         )
