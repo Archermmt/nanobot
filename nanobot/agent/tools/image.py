@@ -180,13 +180,35 @@ class ImageTool(Tool):
         }
         return mime_types.get(ext, "image/png")
 
-    def set_context(self, channel: str, chat_id: str, message_id: str | None = None) -> None:
+    def _get_image_data(self, image_path: str) -> str:
+        """
+        Get image data as base64 encoded string with MIME type.
+
+        Args:
+            image_path: Absolute path to the image file.
+
+        Returns:
+            Data URL formatted string: "data:<mime_type>;base64,<encoded_image>"
+
+        Raises:
+            FileNotFoundError: If image file doesn't exist.
+            ValueError: If file is not a valid image.
+        """
+        encoded_image = self._encode_image(image_path)
+        mime_type = self._get_mime_type(image_path)
+        return f"data:{mime_type};base64,{encoded_image}"
+
+    def set_context(
+        self, channel: str, chat_id: str, message_id: str | None = None
+    ) -> None:
         """Set the current message context."""
         self._default_channel = channel
         self._default_chat_id = chat_id
         self._default_message_id = message_id
 
-    def set_send_callback(self, callback: Callable[[OutboundMessage], Awaitable[None]]) -> None:
+    def set_send_callback(
+        self, callback: Callable[[OutboundMessage], Awaitable[None]]
+    ) -> None:
         """Set the callback for sending messages."""
         self._send_callback = callback
 
@@ -219,9 +241,13 @@ class ImageTool(Tool):
             Analysis result (vision mode), status message (display mode), or generation result (generate mode).
         """
         if mode == "vision":
-            return await self._execute_vision(text=text, image_path=image_path, **kwargs)
+            return await self._execute_vision(
+                text=text, image_path=image_path, **kwargs
+            )
         elif mode == "display":
-            return await self._execute_display(text=text, image_path=image_path, **kwargs)
+            return await self._execute_display(
+                text=text, image_path=image_path, **kwargs
+            )
         elif mode == "generate":
             return await self._execute_generate(
                 text=text,
@@ -254,17 +280,8 @@ class ImageTool(Tool):
 
         # Process image
         try:
-            encoded_image = self._encode_image(image_path)
-            mime_type = self._get_mime_type(image_path)
-
-            # Add image to content in OpenAI format
-            # Reference: https://platform.moonshot.cn/docs/guide/use-kimi-vision-model
-            content.append(
-                {
-                    "type": "image_url",
-                    "image_url": {"url": f"data:{mime_type};base64,{encoded_image}"},
-                }
-            )
+            image_data = self._get_image_data(image_path)
+            content.append({"type": "image_url", "image_url": {"url": image_data}})
         except FileNotFoundError as e:
             return f"Error: {str(e)}"
         except ValueError as e:
@@ -301,16 +318,11 @@ class ImageTool(Tool):
             return "Error: Message sending not configured"
 
         try:
-            # Encode image to base64
-            encoded_image = self._encode_image(image_path)
-            mime_type = self._get_mime_type(image_path)
-
             # Prepare media data for the message
             media_data = {
-                "data": f"data:{mime_type};base64,{encoded_image}",
+                "data": self._get_image_data(image_path),
                 "file_name": Path(image_path).name,
             }
-
             # Create outbound message with image as media
             msg = OutboundMessage(
                 channel=self._default_channel,
@@ -319,7 +331,7 @@ class ImageTool(Tool):
                 media=[media_data],
                 metadata={
                     "msg_type": "image",  # Indicate this is an image message
-                    "file_type": mime_type,
+                    "file_type": self._get_mime_type(image_path),
                 },
             )
 
@@ -397,7 +409,9 @@ class ImageTool(Tool):
         if error:
             return "Failed generate image: " + str(error)
         for img_path in image_paths:
-            await self._execute_display(f"Generated image:\n{os.path.basename(img_path)}", img_path)
+            await self._execute_display(
+                f"Generated image:\n{os.path.basename(img_path)}", img_path
+            )
         return f"Generated {len(image_paths)} images by {provider} successfully."
 
     async def _dashscope_generate(
@@ -442,13 +456,20 @@ class ImageTool(Tool):
         elif region == "singapore":
             endpoint = "https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
         else:
-            return [], f"Error: Invalid region '{region}'. Must be 'beijing' or 'singapore'."
+            return (
+                [],
+                f"Error: Invalid region '{region}'. Must be 'beijing' or 'singapore'.",
+            )
 
         # Build request payload
         payload = {
             "model": os.getenv("DASHSCOPE_IMAGE_GEN_MODEL", "qwen-image-max"),
             "input": {"messages": [{"role": "user", "content": [{"text": text}]}]},
-            "parameters": {"size": size, "prompt_extend": prompt_extend, "watermark": watermark},
+            "parameters": {
+                "size": size,
+                "prompt_extend": prompt_extend,
+                "watermark": watermark,
+            },
         }
 
         # Add optional parameters
@@ -459,7 +480,10 @@ class ImageTool(Tool):
         if n > 1:
             payload["parameters"]["n"] = min(n, 6)  # Cap at 6 for 2.0 series
 
-        headers = {"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"}
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}",
+        }
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
                 response = await client.post(endpoint, headers=headers, json=payload)
@@ -471,9 +495,7 @@ class ImageTool(Tool):
             choices = output.get("choices", [])
 
             if not choices:
-                error = (
-                    f"Error: No image generated. Response: {json.dumps(result, ensure_ascii=False)}"
-                )
+                error = f"Error: No image generated. Response: {json.dumps(result, ensure_ascii=False)}"
                 return [], error
 
             # Get image URLs
@@ -500,7 +522,10 @@ class ImageTool(Tool):
                     if len(image_urls) > 1:
                         # Multiple images: add index to filename
                         path_obj = Path("~/.nanobot/media") / image_path
-                        save_path = path_obj.parent / f"{path_obj.stem}_{idx + 1}{path_obj.suffix}"
+                        save_path = (
+                            path_obj.parent
+                            / f"{path_obj.stem}_{idx + 1}{path_obj.suffix}"
+                        )
                     else:
                         save_path = Path("~/.nanobot/media") / image_path
 
@@ -517,7 +542,9 @@ class ImageTool(Tool):
             height = usage.get("height", "unknown")
 
             if len(saved_paths) == 1:
-                logger.info(f"Image generated successfully: {saved_paths[0]} ({width}x{height})")
+                logger.info(
+                    f"Image generated successfully: {saved_paths[0]} ({width}x{height})"
+                )
                 return saved_paths, ""
             msg = (
                 f"Generated {len(saved_paths)} images successfully:\n"
@@ -530,7 +557,9 @@ class ImageTool(Tool):
             error_detail = e.response.text if e.response else str(e)
             try:
                 error_json = e.response.json()
-                error_msg = error_json.get("message", error_json.get("error", error_detail))
+                error_msg = error_json.get(
+                    "message", error_json.get("error", error_detail)
+                )
             except Exception:
                 error_msg = error_detail
             return [], f"Error: HTTP {e.response.status_code} - {error_msg}"
@@ -562,7 +591,10 @@ class ImageTool(Tool):
         if not api_key:
             error = "Error: MODELSCOPE_API_KEY not found. Please set it in environment variables at ~/.nanobot/workspace/.env"
             return [], error
-        common_headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+        common_headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
         response = requests.post(
             f"{base_url}v1/images/generations",
             headers={**common_headers, "X-ModelScope-Async-Mode": "true"},
@@ -582,12 +614,17 @@ class ImageTool(Tool):
         while True:
             result = requests.get(
                 f"{base_url}v1/tasks/{task_id}",
-                headers={**common_headers, "X-ModelScope-Task-Type": "image_generation"},
+                headers={
+                    **common_headers,
+                    "X-ModelScope-Task-Type": "image_generation",
+                },
             )
             result.raise_for_status()
             data = result.json()
             if data["task_status"] == "SUCCEED":
-                image = Image.open(BytesIO(requests.get(data["output_images"][0]).content))
+                image = Image.open(
+                    BytesIO(requests.get(data["output_images"][0]).content)
+                )
                 image.save(image_path)
                 return [image_path], ""
             if data["task_status"] == "FAILED":

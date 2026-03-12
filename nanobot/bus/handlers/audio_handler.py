@@ -8,7 +8,6 @@ import os
 import subprocess
 import tempfile
 import wave
-from ntpath import isdir, isfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -16,6 +15,7 @@ from loguru import logger
 
 from nanobot.bus.events import InboundMessage
 from nanobot.bus.handlers.base_handler import BaseHandler
+from nanobot.utils.log import CaptureOutput
 
 if TYPE_CHECKING:
     from nanobot.config.schema import AudioHandlerConfig
@@ -70,7 +70,10 @@ class BaseAudioHandler(BaseHandler):
                 msg.content = transcribed_text
                 msg.media, keep_keys = [], ("source", "timestamp", "session_id")
                 keep_meta = {k: v for k, v in msg.metadata.items() if k in keep_keys}
-                msg.metadata = {**keep_meta, "_hint_content": "ASR: " + transcribed_text}
+                msg.metadata = {
+                    **keep_meta,
+                    "_hint_content": "ASR: " + transcribed_text,
+                }
             else:
                 logger.warning("No speech recognized, skipping message")
                 msg.content = "No speech recognized, skipping message"
@@ -135,10 +138,14 @@ class BaseAudioHandler(BaseHandler):
                     os.unlink(tmp_out_path)
 
         except subprocess.CalledProcessError as e:
-            logger.error(f"FFmpeg conversion failed: {e.stderr.decode() if e.stderr else e}")
+            logger.error(
+                f"FFmpeg conversion failed: {e.stderr.decode() if e.stderr else e}"
+            )
             return None
         except FileNotFoundError:
-            logger.error("FFmpeg not found. Please install ffmpeg to convert non-WAV audio.")
+            logger.error(
+                "FFmpeg not found. Please install ffmpeg to convert non-WAV audio."
+            )
             return None
         except Exception as e:
             logger.error(f"Audio conversion error: {e}")
@@ -164,17 +171,20 @@ class FunasrHandler(BaseAudioHandler):
             model_dir_expanded = Path(model).expanduser()
 
             if not model_dir_expanded.exists():
-                logger.warning(f"FunASR model not found at {model}. Please download it manually.")
+                logger.warning(
+                    f"FunASR model not found at {model}. Please download it manually."
+                )
                 return
             model = str(model_dir_expanded)
         logger.info(f"Loading FunASR model {model}")
-        self._model = AutoModel(
-            model=model,
-            vad_model="fsmn-vad",
-            vad_kwargs={"max_single_segment_time": 30000},
-            hub="hf",
-            disable_update=True,
-        )
+        with CaptureOutput():
+            self._model = AutoModel(
+                model=model,
+                vad_model="fsmn-vad",
+                vad_kwargs={"max_single_segment_time": 30000},
+                hub="hf",
+                disable_update=True,
+            )
 
     async def _process_audio(self, media_data: str) -> str:
         """
@@ -252,7 +262,9 @@ class VoskAudioHandler(BaseAudioHandler):
 
         model_dir_expanded = Path(model).expanduser()
         if not model_dir_expanded.exists():
-            logger.warning(f"Vosk model not found at {model}. Please download it manually.")
+            logger.warning(
+                f"Vosk model not found at {model}. Please download it manually."
+            )
             logger.warning("Download from: https://alphacephei.com/vosk/models")
             logger.warning("Using small model: vosk-model-small-cn-0.22")
             return ""
@@ -353,7 +365,9 @@ def load_audio_handler(config: "AudioHandlerConfig") -> BaseAudioHandler | None:
             from pathlib import Path
 
             handler_path = Path(config.custom_handler_path).expanduser()
-            spec = importlib.util.spec_from_file_location("custom_handler", handler_path)
+            spec = importlib.util.spec_from_file_location(
+                "custom_handler", handler_path
+            )
             if spec and spec.loader:
                 module = importlib.util.module_from_spec(spec)
                 spec.loader.exec_module(module)
@@ -361,7 +375,9 @@ def load_audio_handler(config: "AudioHandlerConfig") -> BaseAudioHandler | None:
                 if hasattr(module, "CustomHandler"):
                     return module.CustomHandler()
                 else:
-                    logger.error(f"Custom handler module does not have CustomHandler class")
+                    logger.error(
+                        f"Custom handler module does not have CustomHandler class"
+                    )
         return None
     else:
         logger.warning(f"Unknown audio handler type: {handler_type}")
