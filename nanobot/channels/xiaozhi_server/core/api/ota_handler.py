@@ -6,10 +6,13 @@ import json
 import os
 import re
 import time
+from pathlib import Path
 from typing import Dict, List, Tuple
 
 from aiohttp import web
 from loguru import logger
+
+from nanobot.config.schema import XiaoZhiConfig
 
 from ..auth import AuthManager
 from ..utils.util import get_local_ip, get_vision_url
@@ -46,31 +49,27 @@ def _is_higher_version(a: str, b: str) -> bool:
 
 
 class OTAHandler(BaseHandler):
-    def __init__(self, config: dict):
+    def __init__(self, config: XiaoZhiConfig):
         super().__init__(config)
-        auth_config = config["server"].get("auth", {})
-        self.auth_enable = auth_config.get("enabled", False)
+        self.auth_enable = config.auth_enabled
         # 设备白名单
-        self.allowed_devices = set(auth_config.get("allowed_devices", []))
-        secret_key = config["server"]["auth_key"]
-        expire_seconds = auth_config.get("expire_seconds")
-        self.auth = AuthManager(secret_key=secret_key, expire_seconds=expire_seconds)
-
+        self.allowed_devices = set(config.allowed_devices)
+        self.auth = AuthManager(secret_key=config.auth_key, expire_seconds=config.expire_seconds)
         # firmware storage
-        self.bin_dir = os.path.join(os.getcwd(), "data", "bin")
+        self.bin_dir = Path(self.config.depends_folder) / "bin"
         # cache structure: { 'updated_at': timestamp, 'ttl': seconds, 'files_by_model': { model: [(version, filename), ...] } }
         self._bin_cache: Dict = {
             "updated_at": 0,
-            "ttl": config.get("firmware_cache_ttl", 30),
+            "ttl": config.firmware_cache_ttl,
             "files_by_model": {},
         }
 
     def _refresh_bin_cache_if_needed(self):
         now = int(time.time())
         ttl = int(self._bin_cache.get("ttl", 30))
-        if now - int(
-            self._bin_cache.get("updated_at", 0)
-        ) < ttl and self._bin_cache.get("files_by_model"):
+        if now - int(self._bin_cache.get("updated_at", 0)) < ttl and self._bin_cache.get(
+            "files_by_model"
+        ):
             return
 
         files_by_model: Dict[str, List[Tuple[str, str]]] = {}
@@ -113,9 +112,7 @@ class OTAHandler(BaseHandler):
             str: Base64编码的HMAC-SHA256签名
         """
         try:
-            hmac_obj = hmac.new(
-                secret_key.encode("utf-8"), content.encode("utf-8"), hashlib.sha256
-            )
+            hmac_obj = hmac.new(secret_key.encode("utf-8"), content.encode("utf-8"), hashlib.sha256)
             signature = hmac_obj.digest()
             return base64.b64encode(signature).decode("utf-8")
         except Exception as e:
@@ -132,13 +129,7 @@ class OTAHandler(BaseHandler):
         Returns:
             str: websocket地址
         """
-        server_config = self.config["server"]
-        websocket_config = server_config.get("websocket", "")
-
-        if "你的" not in websocket_config:
-            return websocket_config
-        else:
-            return f"ws://{local_ip}:{port}/xiaozhi/v1/"
+        return f"ws://{local_ip}:{port}/xiaozhi/v1/"
 
     async def handle_post(self, request):
         """处理 OTA POST 请求
@@ -149,6 +140,7 @@ class OTAHandler(BaseHandler):
         - check data/bin for newer firmware for that model
         - if found a newer firmware, set firmware.url to the download endpoint
         """
+
         try:
             data = await request.text()
             logger.debug(f"OTA 请求方法：{request.method}")
@@ -173,11 +165,10 @@ class OTAHandler(BaseHandler):
             except Exception:
                 data_json = {}
 
-            server_config = self.config["server"]
             # Distinguish ports:
             # - websocket_port is used to construct websocket URL (server["port"])
             # - http_port is used to construct OTA download URLs (server["http_port"])
-            websocket_port = int(server_config.get("port", 8000))
+            websocket_port = self.config.port
             local_ip = get_local_ip()
 
             # Determine device model (prefer headers)
@@ -222,7 +213,7 @@ class OTAHandler(BaseHandler):
             return_json = {
                 "server_time": {
                     "timestamp": int(round(time.time() * 1000)),
-                    "timezone_offset": server_config.get("timezone_offset", 8) * 60,
+                    "timezone_offset": self.config.timezone_offset * 60,
                 },
                 "firmware": {
                     "version": device_version,
@@ -231,7 +222,7 @@ class OTAHandler(BaseHandler):
             }
 
             # existing mqtt/websocket logic (unchanged)
-            mqtt_gateway_endpoint = server_config.get("mqtt_gateway")
+            mqtt_gateway_endpoint = self.config.mqtt_gateway
 
             if mqtt_gateway_endpoint:  # 如果配置了非空字符串
                 # 尝试从请求数据中获取设备型号（已解析 above）
@@ -248,16 +239,14 @@ class OTAHandler(BaseHandler):
                 user_data = {"ip": "unknown"}
                 try:
                     user_data_json = json.dumps(user_data)
-                    username = base64.b64encode(user_data_json.encode("utf-8")).decode(
-                        "utf-8"
-                    )
+                    username = base64.b64encode(user_data_json.encode("utf-8")).decode("utf-8")
                 except Exception as e:
                     logger.error(f"生成用户名失败：{e}")
                     username = ""
 
                 # 生成密码
                 password = ""
-                signature_key = server_config.get("mqtt_signature_key", "")
+                signature_key = self.config.mqtt_signature_key
                 if signature_key:
                     password = self.generate_password_signature(
                         mqtt_client_id + "|" + username, signature_key
@@ -300,9 +289,7 @@ class OTAHandler(BaseHandler):
                 files_by_model = self._bin_cache.get("files_by_model", {})
                 candidates = files_by_model.get(device_model, [])
 
-                logger.info(
-                    f"查找型号 {device_model} 的固件，找到 {len(candidates)} 个候选"
-                )
+                logger.info(f"查找型号 {device_model} 的固件，找到 {len(candidates)} 个候选")
 
                 chosen_url = ""
                 chosen_version = device_version
@@ -349,15 +336,13 @@ class OTAHandler(BaseHandler):
 
     async def handle_get(self, request):
         """处理 OTA GET 请求"""
+
         try:
-            server_config = self.config["server"]
             local_ip = get_local_ip()
             # use websocket port for websocket URL
-            websocket_port = int(server_config.get("port", 8000))
+            websocket_port = self.config.port
             websocket_url = self._get_websocket_url(local_ip, websocket_port)
-            message = (
-                f"OTA 接口运行正常，向设备发送的 websocket 地址是：{websocket_url}"
-            )
+            message = f"OTA 接口运行正常，向设备发送的 websocket 地址是：{websocket_url}"
             response = web.Response(text=message, content_type="text/plain")
         except Exception as e:
             logger.error(f"OTA GET 请求异常：{e}")
@@ -373,6 +358,7 @@ class OTAHandler(BaseHandler):
         - 只允许下载 data/bin 目录下的 .bin 文件
         - filename 必须是 basename 且匹配安全的模式
         """
+
         try:
             fname = request.match_info.get("filename", "")
             if not fname:
@@ -388,10 +374,7 @@ class OTAHandler(BaseHandler):
             # ensure realpath is under bin_dir
             file_real = os.path.realpath(file_path)
             bin_dir_real = os.path.realpath(self.bin_dir)
-            if (
-                not file_real.startswith(bin_dir_real + os.sep)
-                and file_real != bin_dir_real
-            ):
+            if not file_real.startswith(bin_dir_real + os.sep) and file_real != bin_dir_real:
                 raise web.HTTPForbidden(text="forbidden")
 
             if not os.path.isfile(file_real):

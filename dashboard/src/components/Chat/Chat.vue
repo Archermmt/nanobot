@@ -379,7 +379,8 @@ const handleSendStatus = () => {
       metadata: {
         source: 'web_dashboard',
         timestamp: Date.now(),
-        session_id: sessionId.value
+        session_id: sessionId.value,
+        _hide_from_ui: true
       }
     }
     console.log('📤 Sending /status command:', statusMsg)

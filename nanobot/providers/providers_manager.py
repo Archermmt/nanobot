@@ -128,7 +128,7 @@ class ProvidersManager:
             channel=self._default_channel,
             chat_id=self._default_chat_id,
             content=f"Choose mode -> {decide_mode}",
-            metadata={"_progress": True, "mode_hint": decide_mode, "_hide_from_ui": True},
+            metadata={"_progress": True, "mode_hint": decide_mode},
         )
         await self._send_callback(msg)
 
@@ -160,7 +160,7 @@ class ProvidersManager:
             channel=self._default_channel,
             chat_id=self._default_chat_id,
             content=f"Add mode -> {mode}",
-            metadata={"mode_hint": mode, "_hide_from_ui": True},
+            metadata={"mode_hint": mode},
         )
         await self._send_callback(msg)
 
@@ -184,7 +184,7 @@ class ProvidersManager:
             channel=self._default_channel,
             chat_id=self._default_chat_id,
             content=f"Update mode -> {mode}",
-            metadata={"mode_hint": mode, "_hide_from_ui": True},
+            metadata={"mode_hint": mode},
         )
         await self._send_callback(msg)
 
@@ -201,7 +201,19 @@ class ProvidersManager:
             channel=self._default_channel,
             chat_id=self._default_chat_id,
             content=f"Remove mode -> {mode}",
-            metadata={"mode_hint": mode, "_hide_from_ui": True},
+            metadata={"mode_hint": mode},
+        )
+        await self._send_callback(msg)
+
+    async def change_mode(self, mode):
+        """Set the default mode."""
+
+        self._default_mode = mode
+        msg = OutboundMessage(
+            channel=self._default_channel,
+            chat_id=self._default_chat_id,
+            content=f"Change mode -> {mode}",
+            metadata={"mode_hint": mode},
         )
         await self._send_callback(msg)
 
@@ -250,10 +262,6 @@ class ProvidersManager:
     def get_default_mode(self):
         """Get the default mode."""
         return self._default_mode
-
-    def set_default_mode(self, mode):
-        """Set the default mode."""
-        self._default_mode = mode
 
     def list_models(self) -> list[str]:
         """List all available models."""

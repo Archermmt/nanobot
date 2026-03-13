@@ -100,7 +100,7 @@ class AgentModeTool(Tool):
     async def _switch_mode(self, mode: str) -> str:
         """Switch to a specific mode."""
         old_mode = self.provider.get_default_mode()
-        self.provider.set_default_mode(mode)
+        await self.provider.change_mode(mode)
         return f"✓ Mode switched: {old_mode} → {mode}"
 
     async def _add_model(self, mode: str, model_id: str | None, describe: str | None) -> str:

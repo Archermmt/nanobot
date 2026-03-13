@@ -5,6 +5,7 @@ import base64
 import json
 import subprocess
 import tempfile
+import uuid
 from collections import OrderedDict
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -15,6 +16,7 @@ from loguru import logger
 from nanobot.bus.events import OutboundMessage
 from nanobot.bus.queue import MessageBus
 from nanobot.channels.base import BaseChannel
+from nanobot.channels.xiaozhi_server.core.http_server import SimpleHttpServer
 from nanobot.config.schema import XiaoZhiConfig
 
 
@@ -69,49 +71,51 @@ class XiaoZhiChannel(BaseChannel):
             bus: The message bus for communication.
         """
         super().__init__(config, bus)
-        self._ws_server = None
+        self._ws = None
         self._connected_clients: dict[any, dict] = {}
-        self._message_handler_task: asyncio.Task | None = None
         self._auth_enabled = False
         self._allowed_devices: set = set()
         self._auth_key = ""
         self._processed_message_ids: OrderedDict[str, None] = OrderedDict()  # Ordered dedup cache
         self.config_lock = asyncio.Lock()
+        self.session_id = str(uuid.uuid4())
+        self.audio_format = "opus"
+        self.welcome_msg = {
+            "type": "hello",
+            "version": 1,
+            "transport": "websocket",
+            "audio_params": {
+                "format": "opus",
+                "sample_rate": 24000,
+                "channels": 1,
+                "frame_duration": 60,
+            },
+        }
 
         # VAD and module initialization
         self._vad = None
-
-        # OTA handler initialization
-        try:
-            from .xiaozhi_server.core.api.ota_handler import OTAHandler
-
-            self._ota_handler = OTAHandler(config)
-        except Exception as e:
-            logger.error(f"初始化 OTAHandler 失败：{e}")
-            self._ota_handler = None
 
     async def start(self) -> None:
         """Start the WebSocket server and begin listening for connections."""
         self._running = True
 
+        # Start ota_server
+        ota_server = SimpleHttpServer(self.config)
+        self.ota_task = asyncio.create_task(ota_server.start())
+
         # Get server configuration
-        host = getattr(self.config, "host", "0.0.0.0")
-        port = getattr(self.config, "port", 8765)
-        auth_enabled = getattr(self.config, "auth_enabled", False)
-        allowed_devices = getattr(self.config, "allowed_devices", [])
-        auth_key = getattr(self.config, "auth_key", "")
+        host = self.config.host
+        port = self.config.port
+        self._auth_enabled = self.config.auth_enabled
+        self._allowed_devices = self.config.allowed_devices
+        self._auth_key = self.config.auth_key
 
         logger.info(
             "Starting XiaoZhi WebSocket server on {}:{} (auth: {})",
             host,
             port,
-            "enabled" if auth_enabled else "disabled",
+            "enabled" if self._auth_enabled else "disabled",
         )
-
-        # Store auth config for later use
-        self._auth_enabled = auth_enabled
-        self._allowed_devices = set(allowed_devices)
-        self._auth_key = auth_key
 
         # Start WebSocket server
         try:
@@ -119,8 +123,8 @@ class XiaoZhiChannel(BaseChannel):
                 self._handle_connection,
                 host,
                 port,
-                process_request=self._http_response,
                 max_size=20 * 1024 * 1024,
+                process_request=self._http_response,
             ):
                 logger.info("XiaoZhi WebSocket server started and listening")
                 while self._running:
@@ -142,57 +146,18 @@ class XiaoZhiChannel(BaseChannel):
                 logger.warning("Error closing client connection: {}", e)
 
         self._connected_clients.clear()
-
-        # Cancel message handler task
-        if self._message_handler_task:
-            self._message_handler_task.cancel()
+        # Close WebSocket connection/server
+        if self._ws:
             try:
-                await self._message_handler_task
-            except asyncio.CancelledError:
-                pass
-            self._message_handler_task = None
+                await self._ws.close()
+            except Exception as e:
+                logger.warning("Error closing WebSocket: {}", e)
+            self._ws = None
+
+        if self.ota_task:
+            self.ota_task.cancel()
 
         logger.info("XiaoZhi WebSocket server stopped")
-
-    async def _handle_ota_request(self, websocket: any, path: str, request_headers: any) -> any:
-        """
-        Handle OTA HTTP requests by delegating to OTAHandler.
-
-        Args:
-            websocket: The WebSocket connection object.
-            path: The request path.
-            request_headers: The HTTP request headers.
-
-        Returns:
-            HTTP response from OTAHandler.
-        """
-        if not self._ota_handler:
-            logger.error("OTAHandler not initialized")
-            return websocket.respond(500, "OTA service not available")
-
-        try:
-            # Delegate to OTAHandler based on path
-            if path == "/xiaozhi/ota/" or path == "/xiaozhi/ota":
-                # GET request
-                return await self._ota_handler.handle_get(request_headers)
-            elif path.startswith("/xiaozhi/ota/download/"):
-                # Download request
-                filename = path.replace("/xiaozhi/ota/download/", "")
-
-                # Create a mock request object for OTAHandler
-                class MockRequest:
-                    def __init__(self, fname):
-                        self.match_info = {"filename": fname}
-
-                mock_request = MockRequest(filename)
-                return await self._ota_handler.handle_download(mock_request)
-            else:
-                # POST request - would need proper implementation with body reading
-                logger.warning("OTA POST request not fully supported in this context")
-                return websocket.respond(405, "Method Not Allowed")
-        except Exception as e:
-            logger.error(f"OTA request error: {e}")
-            return websocket.respond(500, f"Internal Server Error: {str(e)}")
 
     def _initialize_modules(self, update_vad: bool = False):
         """
@@ -265,131 +230,6 @@ class XiaoZhiChannel(BaseChannel):
             logger.error(f"更新服务器配置失败：{str(e)}")
             return False
 
-    async def _handle_ota_request(self, websocket: any, path: str, request_headers: any) -> any:
-        """
-        Handle OTA HTTP requests by delegating to OTAHandler.
-
-        Args:
-            websocket: The WebSocket connection object.
-            path: The request path.
-            request_headers: The HTTP request headers.
-
-        Returns:
-            HTTP response from OTAHandler.
-        """
-        if not self._ota_handler:
-            logger.error("OTAHandler not initialized")
-            return websocket.respond(500, "OTA service not available")
-
-        try:
-            # Delegate to OTAHandler based on path
-            if path == "/xiaozhi/ota/" or path == "/xiaozhi/ota":
-                # GET request
-                return await self._ota_handler.handle_get(request_headers)
-            elif path.startswith("/xiaozhi/ota/download/"):
-                # Download request
-                filename = path.replace("/xiaozhi/ota/download/", "")
-
-                # Create a mock request object for OTAHandler
-                class MockRequest:
-                    def __init__(self, fname):
-                        self.match_info = {"filename": fname}
-
-                mock_request = MockRequest(filename)
-                return await self._ota_handler.handle_download(mock_request)
-            else:
-                # POST request - would need proper implementation with body reading
-                logger.warning("OTA POST request not fully supported in this context")
-                return websocket.respond(405, "Method Not Allowed")
-        except Exception as e:
-            logger.error(f"OTA request error: {e}")
-            return websocket.respond(500, f"Internal Server Error: {str(e)}")
-
-    async def _handle_connection(self, websocket: any) -> None:
-        """
-        Handle a new WebSocket connection.
-
-        Args:
-            websocket: The WebSocket connection object.
-        """
-
-        # Extract headers
-        headers = dict(websocket.request.headers)
-
-        # Try to get device-id from headers or URL parameters
-        device_id = headers.get("device-id")
-        client_id = headers.get("client-id")
-        authorization = headers.get("authorization")
-
-        # If not in headers, try URL parameters
-        if not device_id:
-            request_path = websocket.request.path
-            if request_path:
-                parsed_url = urlparse(request_path)
-                query_params = parse_qs(parsed_url.query)
-
-                if "device-id" in query_params:
-                    device_id = query_params["device-id"][0]
-                    headers["device-id"] = device_id
-
-                if "client-id" in query_params:
-                    client_id = query_params["client-id"][0]
-                    headers["client-id"] = client_id
-
-                if "authorization" in query_params:
-                    authorization = query_params["authorization"][0]
-                    headers["authorization"] = authorization
-
-        # Validate device-id
-        if not device_id:
-            logger.warning("Connection rejected: missing device-id")
-            await websocket.send("Error: device-id required")
-            await websocket.close()
-            return
-
-        # Authenticate if enabled
-        if self._auth_enabled:
-            try:
-                await self._authenticate(device_id, client_id, authorization)
-            except AuthenticationError as e:
-                logger.warning("Authentication failed for device {}: {}", device_id, str(e))
-                await websocket.send(f"Authentication failed: {str(e)}")
-                await websocket.close()
-                return
-
-        # Register client
-        client_info = {
-            "device_id": device_id,
-            "client_id": client_id or device_id,
-            "authenticated": True,
-        }
-        self._connected_clients[websocket] = client_info
-
-        logger.info(
-            "New client connected: device_id={}, client_id={}",
-            device_id,
-            client_id or device_id,
-        )
-
-        try:
-            # Handle messages from this client
-            await self._handle_client_messages(websocket, client_info)
-        except websockets.exceptions.ConnectionClosed:
-            logger.info("Client disconnected: {}", device_id)
-        except Exception as e:
-            logger.error("Error handling client {}: {}", device_id, e)
-        finally:
-            # Clean up
-            if websocket in self._connected_clients:
-                del self._connected_clients[websocket]
-
-            # Close connection if still open
-            try:
-                if not websocket.closed:
-                    await websocket.close()
-            except Exception as close_error:
-                logger.warning("Error closing connection: {}", close_error)
-
     async def _authenticate(
         self, device_id: str, client_id: str | None, authorization: str | None
     ) -> None:
@@ -405,7 +245,7 @@ class XiaoZhiChannel(BaseChannel):
             AuthenticationError: If authentication fails.
         """
         # Check if auth is enabled
-        if not self._auth_enable:
+        if not self._auth_enabled:
             return
 
         # Check whitelist
@@ -458,9 +298,16 @@ class XiaoZhiChannel(BaseChannel):
                 break
 
             try:
+                if isinstance(message, str):
+                    logger.info("\n\n[TMINFO] text message " + str(message))
+                    msg_data = json.loads(message)
+                elif isinstance(message, bytes):
+                    logger.info("\n\n[TMINFO] bytes message " + str(message))
+                    raise Exception("not implemented!!")
+                else:
+                    return
                 # Parse message
-                msg_data = json.loads(message)
-                await self._process_incoming_message(msg_data)
+                await self._process_incoming_message(msg_data, client_info)
             except json.JSONDecodeError as e:
                 logger.warning("Invalid JSON message from {}: {}", client_info["device_id"], e)
                 await websocket.send(
@@ -469,19 +316,12 @@ class XiaoZhiChannel(BaseChannel):
             except Exception as e:
                 logger.error("Error processing message from {}: {}", client_info["device_id"], e)
 
-    async def _process_incoming_message(self, msg_data: dict) -> None:
+    async def _process_incoming_message(self, msg_data: dict, client_info: dict) -> None:
         """Process an incoming message from WebSocket."""
-        msg_type = msg_data.get("type", "message")
 
-        # Handle special message types
-        if msg_type == "heartbeat":
-            await self._send_heartbeat_response()
-            return
-        elif msg_type == "ping":
-            await self._send_pong_response()
-            return
-        elif msg_type != "message":
-            # Ignore unknown message types
+        msg_type = msg_data.get("type", "hello")
+        if msg_type == "hello":
+            await self._send_hello_message(msg_data)
             return
 
         # Extract message fields
@@ -601,6 +441,117 @@ class XiaoZhiChannel(BaseChannel):
             metadata=metadata,
         )
 
+    async def _send_hello_message(self, msg_data: dict):
+        """处理hello消息"""
+
+        audio_params = msg_data.get("audio_params")
+        if audio_params:
+            self.audio_format = audio_params.get("format")
+            self.welcome_msg["audio_params"] = audio_params
+        try:
+            response = self.welcome_msg
+            response["session_id"] = self.session_id
+            print("\n\n[TMINFO] welcom msg " + str(response))
+            await self._ws.send(json.dumps(response, ensure_ascii=False))
+        except Exception as e:
+            logger.warning("Failed to send hello response: {}", e)
+
+    async def _handle_connection(self, websocket: any) -> None:
+        """
+        Handle a new WebSocket connection.
+
+        Args:
+            websocket: The WebSocket connection object.
+        """
+
+        self._ws = websocket
+
+        # Extract headers
+        headers = dict(websocket.request.headers)
+
+        # Try to get device-id from headers or URL parameters
+        device_id = headers.get("device-id")
+        client_id = headers.get("client-id")
+        authorization = headers.get("authorization")
+
+        # If not in headers, try URL parameters
+        if not device_id:
+            request_path = websocket.request.path
+            if request_path:
+                parsed_url = urlparse(request_path)
+                query_params = parse_qs(parsed_url.query)
+
+                if "device-id" in query_params:
+                    device_id = query_params["device-id"][0]
+                    headers["device-id"] = device_id
+
+                if "client-id" in query_params:
+                    client_id = query_params["client-id"][0]
+                    headers["client-id"] = client_id
+
+                if "authorization" in query_params:
+                    authorization = query_params["authorization"][0]
+                    headers["authorization"] = authorization
+
+        # Validate device-id
+        if not device_id:
+            logger.warning("Connection rejected: missing device-id")
+            await websocket.send("Error: device-id required")
+            await websocket.close()
+            return
+
+        # Authenticate if enabled
+        if self._auth_enabled:
+            try:
+                await self._authenticate(device_id, client_id, authorization)
+            except AuthenticationError as e:
+                logger.warning("Authentication failed for device {}: {}", device_id, str(e))
+                await websocket.send(f"Authentication failed: {str(e)}")
+                await websocket.close()
+                return
+
+        # Register client
+        client_info = {
+            "device_id": device_id,
+            "client_id": client_id or device_id,
+            "authenticated": True,
+        }
+        self._connected_clients[websocket] = client_info
+
+        logger.info(
+            "New client connected: device_id={}, client_id={}",
+            device_id,
+            client_id or device_id,
+        )
+
+        try:
+            # Handle messages from this client
+            await self._handle_client_messages(websocket, client_info)
+        except websockets.exceptions.ConnectionClosed:
+            logger.info("Client disconnected: {}", device_id)
+        except Exception as e:
+            logger.error("Error handling client {}: {}", device_id, e)
+        finally:
+            # Clean up
+            if websocket in self._connected_clients:
+                del self._connected_clients[websocket]
+
+            # Close connection if still open
+            try:
+                if not websocket.closed:
+                    await websocket.close()
+            except Exception as close_error:
+                logger.warning("Error closing connection: {}", close_error)
+
+    async def _http_response(self, websocket, request_headers):
+        # 检查是否为 WebSocket 升级请求
+        if request_headers.headers.get("connection", "").lower() == "upgrade":
+            # 如果是 WebSocket 请求，返回 None 允许握手继续
+            return None
+        else:
+            # 如果是普通 HTTP 请求，返回 "server is running"
+            return websocket.respond(200, "Server is running\n")
+
     async def _send_heartbeat_response(self) -> None:
         """Send heartbeat response."""
         if not self._connected_clients:
@@ -627,30 +578,6 @@ class XiaoZhiChannel(BaseChannel):
             await ws.send(json.dumps(response, ensure_ascii=False))
         except Exception as e:
             logger.warning("Failed to send pong response: {}", e)
-
-    async def _http_response(self, websocket: any, request_headers: any) -> any:
-        """
-        Handle HTTP requests (non-WebSocket upgrade requests).
-
-        Args:
-            websocket: The WebSocket connection.
-            request_headers: The HTTP request headers.
-
-        Returns:
-            None for WebSocket upgrade requests, HTTP response otherwise.
-        """
-        # Check if it's a WebSocket upgrade request
-        connection_header = request_headers.headers.get("connection", "").lower()
-
-        if connection_header == "upgrade":
-            return None
-        else:
-            # Check if it's an OTA request
-            path = request_headers.path
-            if path and path.startswith("/xiaozhi/ota"):
-                return await self._handle_ota_request(websocket, path, request_headers)
-            else:
-                return websocket.respond(200, "XiaoZhi Channel Server is running\n")
 
     async def send(self, msg: OutboundMessage) -> None:
         """
