@@ -23,6 +23,8 @@ const currentSection = ref('chat')
 const chatComponentRef = ref<any>(null)
 const statusBarComponentRef = ref<any>(null)
 const showProgressMessages = ref(true)
+const isCameraOn = ref(false)
+const isMicrophoneOn = ref(false)
 
 // WebSocket connection methods
 const connectWebSocket = () => {
@@ -165,6 +167,19 @@ const handleWsStatusChange = (data: any) => {
   // This is now managed directly in App.vue
   console.log('🔌 WebSocket status change (managed in App.vue):', data)
 }
+
+// Camera and microphone controls
+const toggleCamera = () => {
+  isCameraOn.value = !isCameraOn.value
+  console.log(`Camera ${isCameraOn.value ? 'enabled' : 'disabled'}`)
+  // TODO: Implement actual camera logic
+}
+
+const toggleMicrophone = () => {
+  isMicrophoneOn.value = !isMicrophoneOn.value
+  console.log(`Microphone ${isMicrophoneOn.value ? 'enabled' : 'disabled'}`)
+  // TODO: Implement actual microphone logic
+}
 </script>
 
 <template>
@@ -197,8 +212,26 @@ const handleWsStatusChange = (data: any) => {
             </svg>
           </button>
 
+          <button @click="toggleCamera" class="nes-btn" :class="{ 'is-error': isCameraOn, 'is-disabled': !isConnected }"
+            :title="isCameraOn ? '关闭摄像头' : '开启摄像头'">
+            <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
+              <path
+                d="M17,10.5V7A1,1 0 0,0 16,6H4A1,1 0 0,0 3,7V17A1,1 0 0,0 4,18H16A1,1 0 0,0 17,17V13.5L21,17.5V6.5L17,10.5Z" />
+            </svg>
+          </button>
+
+          <button @click="toggleMicrophone" class="nes-btn"
+            :class="{ 'is-error': isMicrophoneOn, 'is-disabled': !isConnected }"
+            :title="isMicrophoneOn ? '关闭麦克风' : '开启麦克风'">
+            <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
+              <path
+                d="M12,2A3,3 0 0,1 15,5V11A3,3 0 0,1 12,14A3,3 0 0,1 9,11V5A3,3 0 0,1 12,2M19,11C19,14.53 16.39,17.44 13,17.93V21H11V17.93C7.61,17.44 5,14.53 5,11H7A5,5 0 0,0 12,16A5,5 0 0,0 17,11H19Z" />
+            </svg>
+          </button>
+
           <button @click="showProgressMessages = !showProgressMessages" class="nes-btn"
-            :class="{ 'is-error': showProgressMessages }" :title="showProgressMessages ? '关闭进度消息' : '开启进度消息'">
+            :class="{ 'is-error': showProgressMessages, 'is-disabled': !isConnected }"
+            :title="showProgressMessages ? '关闭进度消息' : '开启进度消息'">
             <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
               <path
                 d="M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9M12,17A5,5 0 0,1 7,12A5,5 0 0,1 12,7A5,5 0 0,1 17,12A5,5 0 0,1 12,17M12,4.5C7,4.5 2.73,7.61 1,12C2.73,16.39 7,19.5 12,19.5C17,19.5 21.27,16.39 23,12C21.27,7.61 17,4.5 12,4.5Z" />
