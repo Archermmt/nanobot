@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, getCurrentInstance, onUnmounted } from 'vue'
+import { ref, getCurrentInstance, onUnmounted, onMounted } from 'vue'
 import Sidebar from './components/Sidebar/Sidebar.vue'
 import StatusBar from './components/StatusBar/StatusBar.vue'
 import Chat from './components/Chat/Chat.vue'
@@ -27,6 +27,12 @@ const isCameraOn = ref(false)
 const isMicrophoneOn = ref(false)
 const videoStream = ref<MediaStream | null>(null)
 const audioStream = ref<MediaStream | null>(null)
+const videoElement = ref<HTMLVideoElement | null>(null)
+
+// Draggable camera window state
+const cameraWindowPos = ref({ x: 100, y: 100 })
+const isDraggingCamera = ref(false)
+const dragOffset = ref({ x: 0, y: 0 })
 
 // WebSocket connection methods
 const connectWebSocket = () => {
@@ -141,6 +147,9 @@ onUnmounted(() => {
   if (audioStream.value) {
     audioStream.value.getTracks().forEach(track => track.stop())
   }
+  // Remove global event listeners
+  document.removeEventListener('mousemove', dragCamera)
+  document.removeEventListener('mouseup', stopDragCamera)
 })
 
 const handleNavigate = (section: string) => {
@@ -199,6 +208,14 @@ const toggleCamera = async () => {
       })
       videoStream.value = stream
       isCameraOn.value = true
+
+      // Set video element srcObject
+      setTimeout(() => {
+        if (videoElement.value) {
+          videoElement.value.srcObject = stream
+        }
+      }, 100)
+
       console.log('Camera enabled')
     } catch (error) {
       console.error('Error accessing camera:', error)
@@ -236,6 +253,33 @@ const toggleMicrophone = async () => {
     }
   }
 }
+
+// Camera window drag functions
+const startDragCamera = (event: MouseEvent) => {
+  isDraggingCamera.value = true
+  const rect = (event.target as HTMLElement).getBoundingClientRect()
+  dragOffset.value = {
+    x: event.clientX - rect.left,
+    y: event.clientY - rect.top
+  }
+}
+
+const dragCamera = (event: MouseEvent) => {
+  if (!isDraggingCamera.value) return
+  event.preventDefault()
+  cameraWindowPos.value = {
+    x: event.clientX - dragOffset.value.x,
+    y: event.clientY - dragOffset.value.y
+  }
+}
+
+const stopDragCamera = () => {
+  isDraggingCamera.value = false
+}
+
+// Add global event listeners for drag
+document.addEventListener('mousemove', dragCamera)
+document.addEventListener('mouseup', stopDragCamera)
 </script>
 
 <template>
@@ -313,6 +357,18 @@ const toggleMicrophone = async () => {
       <!-- Status Bar -->
       <StatusBar ref="statusBarComponentRef" @open-llm-settings="handleOpenLLMSettings" @send-status="handleSendStatus"
         :ws-status="wsConnectionStatus" />
+    </div>
+
+    <!-- Draggable Camera Window -->
+    <div v-if="isCameraOn" class="camera-window"
+      :style="{ left: cameraWindowPos.x + 'px', top: cameraWindowPos.y + 'px' }">
+      <div class="camera-header" @mousedown="startDragCamera">
+        <span class="camera-title">📹 摄像头</span>
+        <button @click="toggleCamera" class="camera-close-btn">&times;</button>
+      </div>
+      <div class="camera-content">
+        <video ref="videoElement" autoplay playsinline muted class="camera-video"></video>
+      </div>
     </div>
   </div>
 </template>
@@ -440,5 +496,71 @@ body {
 .btn-text {
   font-weight: bold;
   letter-spacing: 0.5px;
+}
+
+/* Draggable Camera Window */
+.camera-window {
+  position: fixed;
+  width: 320px;
+  background-color: #1f2937;
+  border: 3px solid #374151;
+  box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.8);
+  z-index: 9999;
+  user-select: none;
+}
+
+.camera-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background-color: #374151;
+  cursor: move;
+  border-bottom: 2px solid #1f2937;
+}
+
+.camera-title {
+  font-size: 12px;
+  font-family: 'Press Start 2P', 'Noto Sans SC', monospace;
+  color: #e5e7eb;
+  font-weight: bold;
+}
+
+.camera-close-btn {
+  width: 24px;
+  height: 24px;
+  background-color: #dc2626;
+  color: white;
+  border: 2px solid #b91c1c;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Press Start 2P', 'Noto Sans SC', monospace;
+  transition: all 0.1s ease;
+}
+
+.camera-close-btn:hover {
+  background-color: #ef4444;
+  transform: translate(-1px, -1px);
+}
+
+.camera-close-btn:active {
+  transform: translate(1px, 1px);
+}
+
+.camera-content {
+  padding: 8px;
+  background-color: #111827;
+}
+
+.camera-video {
+  width: 100%;
+  height: auto;
+  border: 2px solid #374151;
+  background-color: #000;
+  display: block;
 }
 </style>
