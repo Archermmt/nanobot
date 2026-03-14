@@ -10,7 +10,6 @@ const emit = defineEmits(['upload-image', 'upload-audio', 'upload-file'])
 
 const imageInput = ref<HTMLInputElement | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
-const audioInput = ref<HTMLInputElement | null>(null)
 const isRecording = ref(false)
 const mediaRecorder = ref<MediaRecorder | null>(null)
 const audioChunks = ref<Blob[]>([])
@@ -25,11 +24,6 @@ const triggerFileUpload = () => {
   fileInput.value?.click()
 }
 
-const triggerAudioUpload = () => {
-  if (props.disabled) return
-  audioInput.value?.click()
-}
-
 const handleImageUpload = (event: Event) => {
   const target = event.target as HTMLInputElement
   const file = target.files?.[0]
@@ -37,23 +31,6 @@ const handleImageUpload = (event: Event) => {
     const reader = new FileReader()
     reader.onload = (e) => {
       emit('upload-image', {
-        data: e.target?.result as string,
-        type: file.type,
-        name: file.name
-      })
-    }
-    reader.readAsDataURL(file)
-  }
-}
-
-const handleAudioUpload = (event: Event) => {
-  const target = event.target as HTMLInputElement
-  const file = target.files?.[0]
-  if (file) {
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      // Emit audio data in the same format as image upload
-      emit('upload-audio', {
         data: e.target?.result as string,
         type: file.type,
         name: file.name

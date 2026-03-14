@@ -229,7 +229,7 @@ defineExpose({
           NEW
         </button>
         <button @click="handleClearChat"
-          class="nes-btn is-error text-xs px-3 py-2 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          class="nes-btn is-warning text-xs px-3 py-2 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           :disabled="props.disabled || isLoading" title="Clear Chat History">
           CLEAR
         </button>

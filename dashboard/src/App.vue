@@ -177,30 +177,33 @@ const handleWsStatusChange = (data: any) => {
       <!-- WebSocket Connection Control Panel -->
       <div class="border-b-4 border-gray-700 bg-gray-800 p-3 pixel-font">
         <div class="flex items-center space-x-3 flex-wrap gap-2">
-          <label class="text-xs font-bold text-gray-300 whitespace-nowrap">WebSocket url:</label>
+          <label class="text-xs font-bold text-gray-300 whitespace-nowrap">WS-URL</label>
           <input v-model="wsUrl" type="text" :disabled="isConnecting || isConnected"
             class="nes-input flex-1 min-w-[200px] max-w-[400px] text-xs py-1 px-2 border-2 border-gray-600 bg-gray-900 text-gray-300 disabled:bg-gray-700 disabled:text-gray-500"
             placeholder="ws://localhost:8765" />
 
           <button v-if="!isConnected" @click="connectWebSocket" :disabled="isConnecting || !wsUrl.trim()"
-            class="nes-btn is-primary text-xs px-3 py-1">
-            {{ isConnecting ? 'Connecting...' : 'Connect' }}
+            class="nes-btn" title="连接">
+            <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
+              <path
+                d="M6.62,10.79C8.06,13.62 10.38,15.94 13.21,17.38L15.41,15.18C15.69,14.9 16.08,14.82 16.43,14.93C17.55,15.3 18.75,15.5 20,15.5A1,1 0 0,1 21,16.5V20A1,1 0 0,1 20,21A17,17 0 0,1 3,4A1,1 0 0,1 4,3H7.5A1,1 0 0,1 8.5,4C8.5,5.25 8.7,6.45 9.07,7.57C9.18,7.92 9.1,8.31 8.82,8.59L6.62,10.79Z" />
+            </svg>
           </button>
 
-          <button v-if="isConnected" @click="disconnectWebSocket" class="nes-btn is-danger text-xs px-3 py-1">
-            Disconnect
+          <button v-if="isConnected" @click="disconnectWebSocket" class="nes-btn is-error" title="断开连接">
+            <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
+              <path
+                d="M6.62,10.79C8.06,13.62 10.38,15.94 13.21,17.38L15.41,15.18C15.69,14.9 16.08,14.82 16.43,14.93C17.55,15.3 18.75,15.5 20,15.5A1,1 0 0,1 21,16.5V20A1,1 0 0,1 20,21A17,17 0 0,1 3,4A1,1 0 0,1 4,3H7.5A1,1 0 0,1 8.5,4C8.5,5.25 8.7,6.45 9.07,7.57C9.18,7.92 9.1,8.31 8.82,8.59L6.62,10.79Z" />
+            </svg>
           </button>
 
-          <div class="flex items-center space-x-2 ml-4">
-            <label class="text-xs font-bold text-gray-300 whitespace-nowrap">Peek:</label>
-            <label class="nes-switch">
-              <input type="checkbox" v-model="showProgressMessages" />
-              <span class="nes-switch-slider"></span>
-            </label>
-            <span class="text-xs font-bold" :class="showProgressMessages ? 'text-green-400' : 'text-gray-500'">
-              {{ showProgressMessages ? 'ON' : 'OFF' }}
-            </span>
-          </div>
+          <button @click="showProgressMessages = !showProgressMessages" class="nes-btn"
+            :class="{ 'is-error': showProgressMessages }" :title="showProgressMessages ? '关闭进度消息' : '开启进度消息'">
+            <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
+              <path
+                d="M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9M12,17A5,5 0 0,1 7,12A5,5 0 0,1 12,7A5,5 0 0,1 17,12A5,5 0 0,1 12,17M12,4.5C7,4.5 2.73,7.61 1,12C2.73,16.39 7,19.5 12,19.5C17,19.5 21.27,16.39 23,12C21.27,7.61 17,4.5 12,4.5Z" />
+            </svg>
+          </button>
         </div>
 
         <div v-if="connectionError" class="text-xs text-red-500">
@@ -291,5 +294,62 @@ body {
 .nes-switch input:checked+.nes-switch-slider:before {
   transform: translateX(26px);
   background-color: #f0fdf4;
+}
+
+/* Pixel Style Control Buttons */
+.control-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-family: 'Press Start 2P', 'Noto Sans SC', monospace;
+  background-color: #374151;
+  color: #e5e7eb;
+  border: 2px solid #1f2937;
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+  transition: all 0.1s ease;
+  position: relative;
+}
+
+.control-btn:hover {
+  background-color: #4b5563;
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.5);
+}
+
+.control-btn:active {
+  transform: translate(1px, 1px);
+  box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.5);
+}
+
+.control-btn.is-danger {
+  background-color: #dc2626;
+  color: white;
+}
+
+.control-btn.is-danger:hover {
+  background-color: #ef4444;
+}
+
+.control-btn.peek-btn.is-active {
+  background-color: #10b981;
+  color: white;
+}
+
+.control-btn.peek-btn.is-active:hover {
+  background-color: #34d399;
+}
+
+.btn-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.btn-text {
+  font-weight: bold;
+  letter-spacing: 0.5px;
 }
 </style>
