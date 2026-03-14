@@ -25,6 +25,8 @@ const statusBarComponentRef = ref<any>(null)
 const showProgressMessages = ref(true)
 const isCameraOn = ref(false)
 const isMicrophoneOn = ref(false)
+const videoStream = ref<MediaStream | null>(null)
+const audioStream = ref<MediaStream | null>(null)
 
 // WebSocket connection methods
 const connectWebSocket = () => {
@@ -132,6 +134,13 @@ onUnmounted(() => {
   if (ws) {
     ws.close()
   }
+  // Clean up media streams
+  if (videoStream.value) {
+    videoStream.value.getTracks().forEach(track => track.stop())
+  }
+  if (audioStream.value) {
+    audioStream.value.getTracks().forEach(track => track.stop())
+  }
 })
 
 const handleNavigate = (section: string) => {
@@ -169,16 +178,63 @@ const handleWsStatusChange = (data: any) => {
 }
 
 // Camera and microphone controls
-const toggleCamera = () => {
-  isCameraOn.value = !isCameraOn.value
-  console.log(`Camera ${isCameraOn.value ? 'enabled' : 'disabled'}`)
-  // TODO: Implement actual camera logic
+const toggleCamera = async () => {
+  if (isCameraOn.value) {
+    // Turn off camera
+    if (videoStream.value) {
+      videoStream.value.getTracks().forEach(track => track.stop())
+      videoStream.value = null
+    }
+    isCameraOn.value = false
+    console.log('Camera disabled')
+  } else {
+    // Turn on camera
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          facingMode: 'user'
+        }
+      })
+      videoStream.value = stream
+      isCameraOn.value = true
+      console.log('Camera enabled')
+    } catch (error) {
+      console.error('Error accessing camera:', error)
+      alert('无法访问摄像头，请确保已授予权限')
+    }
+  }
 }
 
-const toggleMicrophone = () => {
-  isMicrophoneOn.value = !isMicrophoneOn.value
-  console.log(`Microphone ${isMicrophoneOn.value ? 'enabled' : 'disabled'}`)
-  // TODO: Implement actual microphone logic
+const toggleMicrophone = async () => {
+  if (isMicrophoneOn.value) {
+    // Turn off microphone
+    if (audioStream.value) {
+      audioStream.value.getTracks().forEach(track => track.stop())
+      audioStream.value = null
+    }
+    isMicrophoneOn.value = false
+    console.log('Microphone disabled')
+  } else {
+    // Turn on microphone
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          sampleRate: 16000,
+          channelCount: 1
+        }
+      })
+      audioStream.value = stream
+      isMicrophoneOn.value = true
+      console.log('Microphone enabled')
+    } catch (error) {
+      console.error('Error accessing microphone:', error)
+      alert('无法访问麦克风，请确保已授予权限')
+    }
+  }
 }
 </script>
 
