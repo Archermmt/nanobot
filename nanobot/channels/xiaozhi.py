@@ -80,6 +80,7 @@ class XiaoZhiChannel(BaseChannel):
         self.config_lock = asyncio.Lock()
         self.session_id = str(uuid.uuid4())
         self.audio_format = "opus"
+        self.features = {}
         self.welcome_msg = {
             "type": "hello",
             "version": 1,
@@ -158,6 +159,100 @@ class XiaoZhiChannel(BaseChannel):
             self.ota_task.cancel()
 
         logger.info("XiaoZhi WebSocket server stopped")
+
+    async def _handle_connection(self, websocket: any) -> None:
+        """
+        Handle a new WebSocket connection.
+
+        Args:
+            websocket: The WebSocket connection object.
+        """
+
+        self._ws = websocket
+
+        # Extract headers
+        headers = dict(websocket.request.headers)
+
+        # Try to get device-id from headers or URL parameters
+        device_id = headers.get("device-id")
+        client_id = headers.get("client-id")
+        authorization = headers.get("authorization")
+
+        # If not in headers, try URL parameters
+        if not device_id:
+            request_path = websocket.request.path
+            if request_path:
+                parsed_url = urlparse(request_path)
+                query_params = parse_qs(parsed_url.query)
+
+                if "device-id" in query_params:
+                    device_id = query_params["device-id"][0]
+                    headers["device-id"] = device_id
+
+                if "client-id" in query_params:
+                    client_id = query_params["client-id"][0]
+                    headers["client-id"] = client_id
+
+                if "authorization" in query_params:
+                    authorization = query_params["authorization"][0]
+                    headers["authorization"] = authorization
+
+        # Validate device-id
+        if not device_id:
+            logger.warning("Connection rejected: missing device-id")
+            await websocket.send("Error: device-id required")
+            await websocket.close()
+            return
+
+        # Authenticate if enabled
+        if self._auth_enabled:
+            try:
+                await self._authenticate(device_id, client_id, authorization)
+            except AuthenticationError as e:
+                logger.warning("Authentication failed for device {}: {}", device_id, str(e))
+                await websocket.send(f"Authentication failed: {str(e)}")
+                await websocket.close()
+                return
+
+        # Register client
+        client_info = {
+            "device_id": device_id,
+            "client_id": client_id or device_id,
+            "authenticated": True,
+        }
+        self._connected_clients[websocket] = client_info
+
+        logger.info(
+            "New client connected: device_id={}, client_id={}",
+            device_id,
+            client_id or device_id,
+        )
+
+        try:
+            # Handle messages from this client
+            await self._handle_client_messages(websocket, client_info)
+        except websockets.exceptions.ConnectionClosed:
+            logger.info("Client disconnected: {}", device_id)
+        except Exception as e:
+            logger.error("Error handling client {}: {}", device_id, e)
+        finally:
+            # Clean up
+            if websocket in self._connected_clients:
+                del self._connected_clients[websocket]
+            # Close connection if still open
+            try:
+                await websocket.close()
+            except Exception as close_error:
+                logger.warning("Error closing connection: {}", close_error)
+
+    async def _http_response(self, websocket, request_headers):
+        # 检查是否为 WebSocket 升级请求
+        if request_headers.headers.get("connection", "").lower() == "upgrade":
+            # 如果是 WebSocket 请求，返回 None 允许握手继续
+            return None
+        else:
+            # 如果是普通 HTTP 请求，返回 "server is running"
+            return websocket.respond(200, "Server is running\n")
 
     def _initialize_modules(self, update_vad: bool = False):
         """
@@ -321,13 +416,16 @@ class XiaoZhiChannel(BaseChannel):
 
         msg_type = msg_data.get("type", "hello")
         if msg_type == "hello":
-            await self._send_hello_message(msg_data)
+            await self._handle_hello_message(msg_data)
+            return
+        if msg_type == "mcp":
+            await self._handle_mcp_message(msg_data, client_info)
             return
 
         # Extract message fields
         message_id = msg_data.get("message_id") or str(hash(str(msg_data)))
-        sender_id = msg_data.get("sender_id", "unknown")
-        chat_id = msg_data.get("chat_id", "default")
+        sender_id = self.session_id
+        chat_id = msg_data.get("chat_id", client_info["client_id"])
         content = msg_data.get("content", "")
         media = msg_data.get("media", [])
         metadata = msg_data.get("metadata", {})
@@ -441,143 +539,131 @@ class XiaoZhiChannel(BaseChannel):
             metadata=metadata,
         )
 
-    async def _send_hello_message(self, msg_data: dict):
+    async def _handle_hello_message(self, msg_data: dict):
         """处理hello消息"""
 
         audio_params = msg_data.get("audio_params")
         if audio_params:
             self.audio_format = audio_params.get("format")
             self.welcome_msg["audio_params"] = audio_params
+        self.features = msg_data.get("features", {})
+        if self.features:
+            if self.features.get("mcp"):
+                asyncio.create_task(self._send_mcp_initialize_message())
         try:
             response = self.welcome_msg
             response["session_id"] = self.session_id
-            print("\n\n[TMINFO] welcom msg " + str(response))
             await self._ws.send(json.dumps(response, ensure_ascii=False))
         except Exception as e:
             logger.warning("Failed to send hello response: {}", e)
 
-    async def _handle_connection(self, websocket: any) -> None:
-        """
-        Handle a new WebSocket connection.
+    async def _handle_mcp_message(self, msg_data: dict, client_info: dict):
+        """处理mcp消息"""
 
-        Args:
-            websocket: The WebSocket connection object.
-        """
-
-        self._ws = websocket
-
-        # Extract headers
-        headers = dict(websocket.request.headers)
-
-        # Try to get device-id from headers or URL parameters
-        device_id = headers.get("device-id")
-        client_id = headers.get("client-id")
-        authorization = headers.get("authorization")
-
-        # If not in headers, try URL parameters
-        if not device_id:
-            request_path = websocket.request.path
-            if request_path:
-                parsed_url = urlparse(request_path)
-                query_params = parse_qs(parsed_url.query)
-
-                if "device-id" in query_params:
-                    device_id = query_params["device-id"][0]
-                    headers["device-id"] = device_id
-
-                if "client-id" in query_params:
-                    client_id = query_params["client-id"][0]
-                    headers["client-id"] = client_id
-
-                if "authorization" in query_params:
-                    authorization = query_params["authorization"][0]
-                    headers["authorization"] = authorization
-
-        # Validate device-id
-        if not device_id:
-            logger.warning("Connection rejected: missing device-id")
-            await websocket.send("Error: device-id required")
-            await websocket.close()
+        # Handle result
+        payload = msg_data["payload"]
+        if "error" in payload:
+            error_data = payload["error"]
+            error_msg = error_data.get("message", "未知错误")
+            logger.error(f"收到MCP错误响应: {error_msg}")
             return
 
-        # Authenticate if enabled
-        if self._auth_enabled:
-            try:
-                await self._authenticate(device_id, client_id, authorization)
-            except AuthenticationError as e:
-                logger.warning("Authentication failed for device {}: {}", device_id, str(e))
-                await websocket.send(f"Authentication failed: {str(e)}")
-                await websocket.close()
-                return
+        if "result" not in payload:
+            return
 
-        # Register client
-        client_info = {
-            "device_id": device_id,
-            "client_id": client_id or device_id,
-            "authenticated": True,
+        result = payload["result"]
+        msg_id = int(payload.get("id", 0))
+        if msg_id == 1:  # mcpInitializeID
+            logger.debug("收到MCP初始化响应")
+            server_info = result.get("serverInfo")
+            if isinstance(server_info, dict):
+                name = server_info.get("name")
+                version = server_info.get("version")
+                logger.debug(f"客户端MCP服务器信息: name={name}, version={version}")
+            await asyncio.sleep(1)
+            logger.debug("初始化完成，开始请求MCP工具列表")
+            await self._send_mcp_tools_list_request()
+            return
+
+        if msg_id == 2:  # mcpToolsListID
+            logger.debug("收到MCP工具列表响应")
+            mcp_tools = []
+            if isinstance(result, dict) and "tools" in result:
+                tools_data = result["tools"]
+                if not isinstance(tools_data, list):
+                    logger.error("工具列表格式错误")
+                    return
+                logger.info(f"客户端设备支持的工具数量: {len(tools_data)}")
+                for i, tool in enumerate(tools_data):
+                    if not isinstance(tool, dict):
+                        continue
+                    name = tool.get("name", "")
+                    description = tool.get("description", "")
+                    input_schema = {"type": "object", "properties": {}, "required": []}
+                    if "inputSchema" in tool and isinstance(tool["inputSchema"], dict):
+                        schema = tool["inputSchema"]
+                        input_schema["type"] = schema.get("type", "object")
+                        input_schema["properties"] = schema.get("properties", {})
+                        input_schema["required"] = [
+                            s for s in schema.get("required", []) if isinstance(s, str)
+                        ]
+                    new_tool = {
+                        "name": name,
+                        "description": description,
+                        "inputSchema": input_schema,
+                    }
+                    mcp_tools.append(new_tool)
+                    logger.debug(f"客户端工具 #{i + 1}: {name}")
+            await self._handle_message(
+                sender_id=self.session_id,
+                chat_id=msg_data.get("chat_id", client_info["client_id"]),
+                content="/register_extern_tools",
+                metadata={
+                    "type": "xiaozhi",
+                    "kwargs": {"websocket": self._ws, "timeout": 30},
+                    "tools": mcp_tools,
+                },
+            )
+
+    async def _send_mcp_initialize_message(self):
+        """发送MCP初始化消息"""
+
+        payload = {
+            "jsonrpc": "2.0",
+            "id": 1,  # mcpInitializeID
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {
+                    "roots": {"listChanged": True},
+                    "sampling": {},
+                },
+                "clientInfo": {
+                    "name": "XiaozhiClient",
+                    "version": "1.0.0",
+                },
+            },
         }
-        self._connected_clients[websocket] = client_info
+        await self._send_mcp_message(payload)
 
-        logger.info(
-            "New client connected: device_id={}, client_id={}",
-            device_id,
-            client_id or device_id,
-        )
+    async def _send_mcp_tools_list_request(self):
+        """发送MCP工具列表请求"""
+        payload = {"jsonrpc": "2.0", "id": 2, "method": "tools/list"}
+        logger.debug("发送MCP工具列表请求")
+        await self._send_mcp_message(payload)
 
-        try:
-            # Handle messages from this client
-            await self._handle_client_messages(websocket, client_info)
-        except websockets.exceptions.ConnectionClosed:
-            logger.info("Client disconnected: {}", device_id)
-        except Exception as e:
-            logger.error("Error handling client {}: {}", device_id, e)
-        finally:
-            # Clean up
-            if websocket in self._connected_clients:
-                del self._connected_clients[websocket]
-
-            # Close connection if still open
-            try:
-                if not websocket.closed:
-                    await websocket.close()
-            except Exception as close_error:
-                logger.warning("Error closing connection: {}", close_error)
-
-    async def _http_response(self, websocket, request_headers):
-        # 检查是否为 WebSocket 升级请求
-        if request_headers.headers.get("connection", "").lower() == "upgrade":
-            # 如果是 WebSocket 请求，返回 None 允许握手继续
-            return None
-        else:
-            # 如果是普通 HTTP 请求，返回 "server is running"
-            return websocket.respond(200, "Server is running\n")
-
-    async def _send_heartbeat_response(self) -> None:
-        """Send heartbeat response."""
-        if not self._connected_clients:
+    async def _send_mcp_message(self, payload: dict):
+        """Helper to send MCP messages, encapsulating common logic."""
+        if not self.features.get("mcp"):
+            logger.warning("客户端不支持MCP，无法发送MCP消息")
             return
-        # Send to first connected client (can be optimized for multiple clients)
-        ws = next(iter(self._connected_clients.keys()))
-        try:
-            response = {
-                "type": "heartbeat_response",
-                "timestamp": asyncio.get_event_loop().time(),
-            }
-            await ws.send(json.dumps(response, ensure_ascii=False))
-        except Exception as e:
-            logger.warning("Failed to send heartbeat response: {}", e)
 
-    async def _send_pong_response(self) -> None:
-        """Send pong response."""
-        if not self._connected_clients:
-            return
-        # Send to first connected client (can be optimized for multiple clients)
-        ws = next(iter(self._connected_clients.keys()))
+        message = json.dumps({"type": "mcp", "payload": payload})
         try:
-            response = {"type": "pong"}
-            await ws.send(json.dumps(response, ensure_ascii=False))
+            await self._ws.send(message)
+            logger.debug(f"成功发送MCP消息: {message}")
         except Exception as e:
-            logger.warning("Failed to send pong response: {}", e)
+            logger.error(f"发送MCP消息失败: {e}")
 
     async def send(self, msg: OutboundMessage) -> None:
         """
@@ -588,6 +674,10 @@ class XiaoZhiChannel(BaseChannel):
         """
         if not self._running:
             logger.warning("Channel not running, cannot send message")
+            return
+
+        # Ignore some cases
+        if msg.metadata and msg.metadata.get("_response_for", "") == "register_extern_tools":
             return
 
         # Find the appropriate client connection

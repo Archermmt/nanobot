@@ -518,6 +518,40 @@ class AgentLoop:
                 content=json.dumps(status),
                 metadata=metadata,
             )
+        if cmd == "/register_extern_tools":
+            # register extern tools
+            metadata = msg.metadata or {}
+            required_fields = {"type", "tools"}
+            assert all(field in metadata for field in required_fields), (
+                "Missing required fields " + str(required_fields)
+            )
+            tool_type = metadata["type"]
+            kwargs = metadata.get("kwargs", {})
+            # Get the ExternTool subclass by type
+            from nanobot.agent.tools.extern import ExternTool
+
+            tool_class, tools = ExternTool.get_registered_type(tool_type), []
+            if tool_class:
+                # Register each tool spec as an instance of the ExternTool subclass
+                for spec in metadata["tools"]:
+                    try:
+                        tool_instance = tool_class(spec=spec, **kwargs)
+                        self.tools.register(tool_instance)
+                        logger.info(f"Registered extern tool({tool_type}): {tool_instance.name}")
+                        tools.append(tool_instance.name)
+                    except Exception as e:
+                        logger.warning(
+                            f"Failed to register extern tool {spec.get('name', 'unknown')}: {e}"
+                        )
+                        continue
+            else:
+                logger.warning(f"ExternTool type '{tool_type}' not registered")
+            return OutboundMessage(
+                channel=msg.channel,
+                chat_id=msg.chat_id,
+                content="Registered extern tools: " + ",".join(tools),
+                metadata={"_response_for": "register_extern_tools"},
+            )
 
         unconsolidated = len(session.messages) - session.last_consolidated
         if unconsolidated >= self.memory_window and session.key not in self._consolidating:

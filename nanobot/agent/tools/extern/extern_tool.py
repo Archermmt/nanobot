@@ -1,0 +1,99 @@
+"""External tool wrapper for dynamic tool specifications."""
+
+from typing import Any, Type
+
+from ..base import Tool
+
+
+class ExternTool(Tool):
+    """
+    External tool wrapper that dynamically creates tools from specifications.
+
+    This class allows creating tools at runtime by providing a specification
+    that includes name, description, and input schema.
+    """
+
+    _registered_types: dict[str, Type["ExternTool"]] = {}
+
+    def __init__(self, spec: dict[str, Any], **kwargs) -> None:
+        """
+        Initialize the external tool.
+
+        Args:
+            workspace: The workspace path for tool execution context.
+            spec: Tool specification containing:
+                - name: Tool name used in function calls.
+                - description: Description of what the tool does.
+                - inputSchema: JSON Schema for tool parameters (maps to parameters).
+        """
+
+        required = ["name", "description", "inputSchema"]
+        for key in required:
+            if key not in spec:
+                raise ValueError(f"Missing required key in spec: {key}")
+        self._name = spec["name"]
+        self._description = spec["description"]
+        self._parameters = spec["inputSchema"]
+        self.setup(kwargs)
+
+    def setup(self, kwargs: dict[str, Any]) -> None:
+        """Setup method to initialize the tool with additional parameters."""
+        pass
+
+    @property
+    def name(self) -> str:
+        """Tool name used in function calls."""
+        return self._name
+
+    @property
+    def description(self) -> str:
+        """Description of what the tool does."""
+        return self._description
+
+    @property
+    def parameters(self) -> dict[str, Any]:
+        """JSON Schema for tool parameters."""
+        return self._parameters
+
+    async def execute(self, **kwargs: Any) -> str:
+        """
+        Execute the external tool with given parameters.
+
+        Args:
+            **kwargs: Tool-specific parameters passed to the external tool.
+
+        Returns:
+            String result of the tool execution.
+
+        Raises:
+            NotImplementedError: This method should be overridden by subclasses
+                or the tool should be configured with an execution handler.
+        """
+        raise NotImplementedError(
+            f"ExternTool '{self._name}' execution not implemented. "
+            "Subclass this class and override execute() method."
+        )
+
+    @staticmethod
+    def register_type(type_name: str, tool_class: Type["ExternTool"]) -> None:
+        """
+        Register a subclass of ExternTool.
+
+        Args:
+            type_name: Unique identifier for the tool type.
+            tool_class: The subclass to register.
+        """
+        ExternTool._registered_types[type_name] = tool_class
+
+    @staticmethod
+    def get_registered_type(type_name: str) -> Type["ExternTool"] | None:
+        """
+        Get a registered subclass by type name.
+
+        Args:
+            type_name: The unique identifier of the tool type.
+
+        Returns:
+            The registered subclass, or None if not found.
+        """
+        return ExternTool._registered_types.get(type_name)
