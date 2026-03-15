@@ -9,25 +9,56 @@ import subprocess
 import tempfile
 import wave
 from pathlib import Path
-from typing import TYPE_CHECKING
 
+from botpy import Type
 from loguru import logger
 
 from nanobot.bus.events import InboundMessage
-from nanobot.bus.handlers.base_handler import BaseHandler
+from nanobot.bus.handlers.input.input_handler import InputHandler
+from nanobot.config.schema import AudioHandlerConfig
 from nanobot.utils.log import CaptureOutput
 
-if TYPE_CHECKING:
-    from nanobot.config.schema import AudioHandlerConfig
 
-
-class BaseAudioHandler(BaseHandler):
+class BaseAudioHandler(InputHandler):
     """Base class for audio processing handlers."""
 
     @property
     def supported_msg_types(self) -> list[str]:
         """Audio handler can process 'audio' type messages."""
         return ["audio"]
+
+    @classmethod
+    def register(cls, handler_type: str):
+        """
+        Decorator to register a subclass with a specific handler type.
+
+        Args:
+            handler_type: The handler type to register (e.g., "vosk", "funasr")
+
+        Usage:
+            @BaseAudioHandler.register_type("funasr")
+            class FunasrHandler(BaseAudioHandler):
+                pass
+        """
+
+        def decorator(subclass: Type["BaseAudioHandler"]) -> Type["BaseAudioHandler"]:
+            InputHandler._registry[f"audio.{handler_type}"] = subclass
+            return subclass
+
+        return decorator
+
+    @classmethod
+    def get_registered_type(cls, handler_type: str) -> Type["BaseAudioHandler"] | None:
+        """
+        Get a registered handler class by message type.
+
+        Args:
+            msg_type: The message type to look up
+
+        Returns:
+            The registered handler class, or None if not found
+        """
+        return InputHandler.get_registered_type("audio", handler_type)
 
     async def _process_audio(self, media_data: str) -> str:
         """
@@ -61,6 +92,9 @@ class BaseAudioHandler(BaseHandler):
             # If media is a dict with 'data' key, extract it
             if isinstance(media_data, dict):
                 media_data = media_data.get("data", "")
+            elif isinstance(media_data, str) and media_data.startswith("data:"):
+                print("[TMINFO] get raw data!!")
+                media_data = base64.b64decode(media_data.split(",", 1)[1])
 
             # Recognize speech from audio
             transcribed_text = await self._process_audio(media_data)
@@ -138,27 +172,25 @@ class BaseAudioHandler(BaseHandler):
                     os.unlink(tmp_out_path)
 
         except subprocess.CalledProcessError as e:
-            logger.error(
-                f"FFmpeg conversion failed: {e.stderr.decode() if e.stderr else e}"
-            )
+            logger.error(f"FFmpeg conversion failed: {e.stderr.decode() if e.stderr else e}")
             return None
         except FileNotFoundError:
-            logger.error(
-                "FFmpeg not found. Please install ffmpeg to convert non-WAV audio."
-            )
+            logger.error("FFmpeg not found. Please install ffmpeg to convert non-WAV audio.")
             return None
         except Exception as e:
             logger.error(f"Audio conversion error: {e}")
             return None
 
 
+@BaseAudioHandler.register("funasr")
 class FunasrHandler(BaseAudioHandler):
     """FunASR-based speech recognition handler."""
 
-    def __init__(self, model: str = "paraformer-zh"):
+    def __init__(self, config: AudioHandlerConfig):
         import psutil
         from funasr import AutoModel
 
+        model = config.model
         # 内存检测，要求大于 2G
         min_mem_bytes = 2 * 1024 * 1024 * 1024
         total_mem = psutil.virtual_memory().total
@@ -171,9 +203,7 @@ class FunasrHandler(BaseAudioHandler):
             model_dir_expanded = Path(model).expanduser()
 
             if not model_dir_expanded.exists():
-                logger.warning(
-                    f"FunASR model not found at {model}. Please download it manually."
-                )
+                logger.warning(f"FunASR model not found at {model}. Please download it manually.")
                 return
             model = str(model_dir_expanded)
         logger.info(f"Loading FunASR model {model}")
@@ -254,17 +284,17 @@ class FunasrHandler(BaseAudioHandler):
             return ""
 
 
-class VoskAudioHandler(BaseAudioHandler):
+@BaseAudioHandler.register("vosk")
+class VoskHandler(BaseAudioHandler):
     """Vosk-based speech recognition handler."""
 
-    def __init__(self, model: str = "~/.nanobot/models/vosk-model-small-cn-0.22"):
+    def __init__(self, config: AudioHandlerConfig):
         from vosk import Model
 
+        model = config.model
         model_dir_expanded = Path(model).expanduser()
         if not model_dir_expanded.exists():
-            logger.warning(
-                f"Vosk model not found at {model}. Please download it manually."
-            )
+            logger.warning(f"Vosk model not found at {model}. Please download it manually.")
             logger.warning("Download from: https://alphacephei.com/vosk/models")
             logger.warning("Using small model: vosk-model-small-cn-0.22")
             return ""
@@ -355,7 +385,7 @@ def load_audio_handler(config: "AudioHandlerConfig") -> BaseAudioHandler | None:
 
     handler_type = config.handler_type
     if handler_type == "vosk":
-        return VoskAudioHandler(model=config.model)
+        return VoskHandler(model=config.model)
     elif handler_type == "funasr":
         return FunasrHandler(model=config.model)
     elif handler_type == "custom":
@@ -365,9 +395,7 @@ def load_audio_handler(config: "AudioHandlerConfig") -> BaseAudioHandler | None:
             from pathlib import Path
 
             handler_path = Path(config.custom_handler_path).expanduser()
-            spec = importlib.util.spec_from_file_location(
-                "custom_handler", handler_path
-            )
+            spec = importlib.util.spec_from_file_location("custom_handler", handler_path)
             if spec and spec.loader:
                 module = importlib.util.module_from_spec(spec)
                 spec.loader.exec_module(module)
@@ -375,9 +403,7 @@ def load_audio_handler(config: "AudioHandlerConfig") -> BaseAudioHandler | None:
                 if hasattr(module, "CustomHandler"):
                     return module.CustomHandler()
                 else:
-                    logger.error(
-                        f"Custom handler module does not have CustomHandler class"
-                    )
+                    logger.error(f"Custom handler module does not have CustomHandler class")
         return None
     else:
         logger.warning(f"Unknown audio handler type: {handler_type}")

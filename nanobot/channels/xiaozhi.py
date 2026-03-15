@@ -1,12 +1,10 @@
 """XiaoZhi channel implementation for WebSocket communication with ESP32 devices."""
 
 import asyncio
-import base64
 import json
-import subprocess
-import tempfile
 import uuid
 from collections import OrderedDict
+from enum import Enum
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
@@ -18,6 +16,19 @@ from nanobot.bus.queue import MessageBus
 from nanobot.channels.base import BaseChannel
 from nanobot.channels.xiaozhi_server.core.http_server import SimpleHttpServer
 from nanobot.config.schema import XiaoZhiConfig
+from nanobot.utils.media import save_media
+
+
+class TextMessageType(Enum):
+    """消息类型枚举"""
+
+    HELLO = "hello"
+    ABORT = "abort"
+    LISTEN = "listen"
+    IOT = "iot"
+    MCP = "mcp"
+    SERVER = "server"
+    PING = "ping"
 
 
 class AuthenticationError(Exception):
@@ -80,6 +91,8 @@ class XiaoZhiChannel(BaseChannel):
         self.config_lock = asyncio.Lock()
         self.session_id = str(uuid.uuid4())
         self.audio_format = "opus"
+        self.client_listen_mode = "auto"
+        self.just_woken_up = False
         self.features = {}
         self.welcome_msg = {
             "type": "hello",
@@ -414,12 +427,55 @@ class XiaoZhiChannel(BaseChannel):
     async def _process_incoming_message(self, msg_data: dict, client_info: dict) -> None:
         """Process an incoming message from WebSocket."""
 
-        msg_type = msg_data.get("type", "hello")
-        if msg_type == "hello":
+        msg_type = msg_data.get("type", TextMessageType.LISTEN)
+        if msg_type == TextMessageType.HELLO:
             await self._handle_hello_message(msg_data)
             return
-        if msg_type == "mcp":
+        if msg_type == TextMessageType.MCP:
             await self._handle_mcp_message(msg_data, client_info)
+            return
+        if msg_type == TextMessageType.LISTEN:
+            if "mode" in msg_data:
+                self.client_listen_mode = msg_data["mode"]
+                logger.debug(f"客户端拾音模式：{self.client_listen_mode}")
+            if msg_data["state"] == "start":
+                # 设备从播放模式切回录音模式,清除所有音频状态和缓冲区
+                # conn.reset_audio_states()
+                raise NotImplementedError("start record is not implemented")
+            elif msg_data["state"] == "stop":
+                """
+                conn.client_voice_stop = True
+                if conn.asr.interface_type == InterfaceType.STREAM:
+                    # 流式模式下，发送结束请求
+                    asyncio.create_task(conn.asr._send_stop_request())
+                else:
+                    # 非流式模式：直接触发ASR识别
+                    if len(conn.asr_audio) > 0:
+                        asr_audio_task = conn.asr_audio.copy()
+                        conn.reset_audio_states()
+
+                        if len(asr_audio_task) > 0:
+                            await conn.asr.handle_voice_stop(conn, asr_audio_task)
+                """
+                raise NotImplementedError("Stop record is not implemented")
+            elif msg_data["state"] == "detect":
+                # conn.client_have_voice = False
+                # conn.reset_audio_states()
+                if "text" in msg_data:
+                    content = msg_data["text"]  # 保留原始文本
+                    # 识别是否是唤醒词
+                    if content in self.config.wakeup_words:
+                        self.just_woken_up = True
+                        # 上报纯文字数据（复用ASR上报功能，但不提供音频数据）
+                        # enqueue_asr_report(conn, "嘿，你好呀", [])
+                        # await startToChat(conn, "嘿，你好呀")
+                        raise NotImplementedError("is_wakeup_words is not implemented")
+                    else:
+                        self.just_woken_up = True
+                        # 上报纯文字数据（复用ASR上报功能，但不提供音频数据）
+                        enqueue_asr_report(conn, original_text, [])
+                        # 否则需要LLM对文字内容进行答复
+                        await startToChat(conn, original_text)
             return
 
         # Extract message fields
@@ -453,82 +509,19 @@ class XiaoZhiChannel(BaseChannel):
         if media:
             media_dir = Path.home() / ".nanobot" / "media"
             media_dir.mkdir(parents=True, exist_ok=True)
-
-            for i, media_item in enumerate(media):
+            for media_item in media:
                 media_data, filename = media_item["data"], media_item.get("file_name", "")
                 # Check if media is base64 data (data URL format: data:<mime>;base64,<data>)
                 if isinstance(media_data, str) and media_data.startswith("data:"):
                     try:
-                        # Parse data URL
-                        header, b64_data = media_data.split(",", 1)
-                        mime_type = header.split(";")[0].replace("data:", "")
-
-                        # Decode base64
-                        file_data = base64.b64decode(b64_data)
-                        if not filename:
-                            # Determine file extension from mime type
-                            ext_map = {
-                                "image/jpeg": ".jpg",
-                                "image/png": ".png",
-                                "image/gif": ".gif",
-                                "image/webp": ".webp",
-                                "audio/webm": ".webm",
-                                "audio/mp3": ".mp3",
-                                "audio/aac": ".aac",
-                                "audio/ogg": ".ogg",
-                                "audio/wav": ".wav",
-                                "video/mp4": ".mp4",
-                            }
-                            ext = ext_map.get(mime_type, ".bin")
-
-                            # Save to temporary file
-                            filename = f"ws_{message_id[:8]}_{i}{ext}"
-                        file_path = media_dir / filename
-                        # Read converted WAV file
-                        if filename.endswith(".webm"):
-                            # Change file extension from .webm to .wav
-                            file_path = str(file_path).replace(".webm", ".wav")
-                            with tempfile.NamedTemporaryFile(
-                                suffix=".webm", delete=False
-                            ) as tmp_in:
-                                tmp_in.write(file_data)
-                                tmp_in_path = tmp_in.name
-
-                            result = subprocess.run(
-                                [
-                                    "ffmpeg",
-                                    "-i",
-                                    tmp_in_path,
-                                    "-ar",
-                                    "16000",
-                                    "-ac",
-                                    "1",
-                                    "-f",
-                                    "wav",
-                                    "-y",
-                                    file_path,
-                                ],
-                                capture_output=True,
-                                check=True,
-                            )
-                            # Check if conversion was successful
-                            if result.returncode != 0:
-                                logger.error(f"FFmpeg conversion failed: {result.stderr.decode()}")
-                                raise RuntimeError(
-                                    f"FFmpeg conversion failed with code {result.returncode}"
-                                )
-                            logger.info("Successfully converted audio to WAV format")
-                        else:
-                            file_path.write_bytes(file_data)
+                        file_path, filename = save_media(media_data, media_dir, filename)
                         media_paths.append(str(file_path))
                         content_parts.append(f"{filename}({msg_type}) saved to {file_path}")
-                        logger.debug("Saved base64 media to {}", file_path)
                     except Exception as e:
                         logger.error("Failed to process base64 media: {}", e)
                 else:
                     # Already a file path
                     media_paths.append(media_item)
-
         content = "\n".join(content_parts) if content_parts else ""
         # Forward to message bus
         await self._handle_message(
@@ -582,7 +575,7 @@ class XiaoZhiChannel(BaseChannel):
                 logger.debug(f"客户端MCP服务器信息: name={name}, version={version}")
             await asyncio.sleep(1)
             logger.debug("初始化完成，开始请求MCP工具列表")
-            await self._send_mcp_tools_list_request()
+            await self._send_mcp_message({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
             return
 
         if msg_id == 2:  # mcpToolsListID
@@ -644,12 +637,6 @@ class XiaoZhiChannel(BaseChannel):
                 },
             },
         }
-        await self._send_mcp_message(payload)
-
-    async def _send_mcp_tools_list_request(self):
-        """发送MCP工具列表请求"""
-        payload = {"jsonrpc": "2.0", "id": 2, "method": "tools/list"}
-        logger.debug("发送MCP工具列表请求")
         await self._send_mcp_message(payload)
 
     async def _send_mcp_message(self, payload: dict):

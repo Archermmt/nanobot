@@ -3,6 +3,7 @@ import { ref } from 'vue'
 
 interface Props {
   disabled?: boolean
+  isMicrophoneOn?: boolean
 }
 
 const props = defineProps<Props>()

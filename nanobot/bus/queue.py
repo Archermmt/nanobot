@@ -6,8 +6,8 @@ from typing import Dict
 from loguru import logger
 
 from nanobot.bus.events import InboundMessage, OutboundMessage
-from nanobot.bus.handlers.audio_handler import load_audio_handler
-from nanobot.bus.handlers.base_handler import BaseHandler
+from nanobot.bus.handlers.input.audio_handler import BaseAudioHandler
+from nanobot.bus.handlers.input.input_handler import InputHandler
 from nanobot.config.schema import BusConfig, InputHandlerConfig
 
 
@@ -23,11 +23,12 @@ class MessageBus:
         self.config = config or BusConfig()
         self.inbound: asyncio.Queue[InboundMessage] = asyncio.Queue()
         self.outbound: asyncio.Queue[OutboundMessage] = asyncio.Queue()
-        self._input_handlers: Dict[str, BaseHandler] = {}
-        self._output_handlers: Dict[str, BaseHandler] = {}
+        self._input_handlers: Dict[str, InputHandler] = {}
+        self._output_handlers: Dict[str, InputHandler] = {}
         input_handler: InputHandlerConfig = self.config.input_handler
         if input_handler.audio and input_handler.audio.enabled:
-            self._input_handlers["audio"] = load_audio_handler(input_handler.audio)
+            handler_cls = BaseAudioHandler.get_registered_type(input_handler.audio.handler_type)
+            self._input_handlers["audio"] = handler_cls(input_handler.audio)
 
     async def publish_inbound(self, msg: InboundMessage) -> None:
         """

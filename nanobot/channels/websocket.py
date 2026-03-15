@@ -1,10 +1,7 @@
 """WebSocket channel implementation for generic WebSocket communication."""
 
 import asyncio
-import base64
 import json
-import subprocess
-import tempfile
 import threading
 from collections import OrderedDict
 from pathlib import Path
@@ -15,6 +12,7 @@ from nanobot.bus.events import OutboundMessage
 from nanobot.bus.queue import MessageBus
 from nanobot.channels.base import BaseChannel
 from nanobot.config.schema import WebSocketConfig
+from nanobot.utils.media import save_media
 
 
 class WebSocketChannel(BaseChannel):
@@ -309,6 +307,17 @@ class WebSocketChannel(BaseChannel):
         if not content and not media and not metadata:
             return
 
+        if not content and msg_type == "audio":
+            print("[TMINFO] send raw audio data")
+            await self._handle_message(
+                sender_id=sender_id,
+                chat_id=chat_id,
+                content=content,
+                media=media,
+                metadata=metadata,
+            )
+            return
+
         # Handle base64-encoded media (images, audio, files)
         # Convert base64 data to temporary files
         content_parts = []
@@ -320,76 +329,14 @@ class WebSocketChannel(BaseChannel):
         if media:
             media_dir = Path.home() / ".nanobot" / "media"
             media_dir.mkdir(parents=True, exist_ok=True)
-
             for media_item in media:
                 media_data, filename = media_item["data"], media_item.get("file_name", "")
                 # Check if media is base64 data (data URL format: data:<mime>;base64,<data>)
                 if isinstance(media_data, str) and media_data.startswith("data:"):
                     try:
-                        # Parse data URL
-                        header, b64_data = media_data.split(",", 1)
-                        mime_type = header.split(";")[0].replace("data:", "")
-
-                        # Decode base64
-                        file_data = base64.b64decode(b64_data)
-                        if not filename:
-                            # Determine file extension from mime type
-                            ext_map = {
-                                "image/jpeg": ".jpg",
-                                "image/png": ".png",
-                                "image/gif": ".gif",
-                                "image/webp": ".webp",
-                                "audio/webm": ".webm",
-                                "audio/mp3": ".mp3",
-                                "audio/aac": ".aac",
-                                "audio/ogg": ".ogg",
-                                "audio/wav": ".wav",
-                                "video/mp4": ".mp4",
-                            }
-                            ext = ext_map.get(mime_type, ".bin")
-
-                            # Save to temporary file
-                            filename = f"ws_{message_id[:8]}_{i}{ext}"
-                        file_path = media_dir / filename
-                        # Read converted WAV file
-                        if filename.endswith(".webm"):
-                            # Change file extension from .webm to .wav
-                            file_path = str(file_path).replace(".webm", ".wav")
-                            with tempfile.NamedTemporaryFile(
-                                suffix=".webm", delete=False
-                            ) as tmp_in:
-                                tmp_in.write(file_data)
-                                tmp_in_path = tmp_in.name
-
-                            result = subprocess.run(
-                                [
-                                    "ffmpeg",
-                                    "-i",
-                                    tmp_in_path,
-                                    "-ar",
-                                    "16000",
-                                    "-ac",
-                                    "1",
-                                    "-f",
-                                    "wav",
-                                    "-y",
-                                    file_path,
-                                ],
-                                capture_output=True,
-                                check=True,
-                            )
-                            # Check if conversion was successful
-                            if result.returncode != 0:
-                                logger.error(f"FFmpeg conversion failed: {result.stderr.decode()}")
-                                raise RuntimeError(
-                                    f"FFmpeg conversion failed with code {result.returncode}"
-                                )
-                            logger.info("Successfully converted audio to WAV format")
-                        else:
-                            file_path.write_bytes(file_data)
+                        file_path, filename = save_media(media_data, media_dir, filename)
                         media_paths.append(str(file_path))
                         content_parts.append(f"{filename}({msg_type}) saved to {file_path}")
-                        logger.debug("Saved base64 media to {}", file_path)
                     except Exception as e:
                         logger.error("Failed to process base64 media: {}", e)
                 else:

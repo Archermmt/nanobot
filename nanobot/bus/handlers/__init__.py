@@ -1,15 +1,15 @@
 """Bus handlers for processing messages."""
 
-from nanobot.bus.handlers.audio_handler import (
+from nanobot.bus.handlers.input.audio_handler import (
     BaseAudioHandler,
-    VoskAudioHandler,
+    VoskHandler,
     load_audio_handler,
 )
-from nanobot.bus.handlers.base_handler import BaseHandler
+from nanobot.bus.handlers.input.input_handler import InputHandler
 
 __all__ = [
-    "BaseHandler",
+    "InputHandler",
     "BaseAudioHandler",
-    "VoskAudioHandler",
+    "VoskHandler",
     "load_audio_handler",
 ]

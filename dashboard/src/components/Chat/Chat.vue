@@ -24,6 +24,7 @@ interface Message {
 
 const props = defineProps<{
   showProgressMessages?: boolean
+  isMicrophoneOn?: boolean
 }>()
 
 const emit = defineEmits(['send', 'new-chat', 'clear-chat', 'upload-image', 'upload-audio', 'upload-file', 'ws-status-change', 'send-status', 'status-update'])
@@ -575,8 +576,9 @@ defineExpose({
       :show-progress-messages="props.showProgressMessages" />
 
     <!-- Input -->
-    <ChatInput ref="chatInputRef" :isLoading="isLoading" :disabled="!isConnected" :messages="messages"
-      @send="sendMessage" @new-chat="handleNewChat" @clear-chat="handleClearChat" @upload-image="handleImageUpload"
-      @upload-audio="handleAudioUpload" @upload-file="handleFileUpload" @send-status="handleSendStatus" />
+    <ChatInput ref="chatInputRef" :isLoading="isLoading" :disabled="!isConnected"
+      :is-microphone-on="props.isMicrophoneOn" :messages="messages" @send="sendMessage" @new-chat="handleNewChat"
+      @clear-chat="handleClearChat" @upload-image="handleImageUpload" @upload-audio="handleAudioUpload"
+      @upload-file="handleFileUpload" @send-status="handleSendStatus" />
   </div>
 </template>
