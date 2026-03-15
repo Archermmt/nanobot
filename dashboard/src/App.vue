@@ -292,14 +292,12 @@ document.addEventListener('mouseup', stopDragCamera)
       <!-- WebSocket Connection Control Panel -->
       <div class="border-b-4 border-gray-700 bg-gray-800 p-3 pixel-font">
         <div class="flex items-center space-x-3 flex-wrap gap-2">
-          <!--<div class="nes-field is-inline">
-            <label for="inline_field" class="text-xs font-bold text-gray-300 whitespace-nowrap">.input.is-success</label>
-            <input type="text" id="inline_field" class="nes-input is-success" placeholder="NES.css">
-          </div>-->
-          <label class="text-xs font-bold text-gray-300 whitespace-nowrap">WS-URL</label>
-          <input v-model="wsUrl" type="text" :disabled="isConnecting || isConnected"
-            class="nes-input flex-1 min-w-[200px] max-w-[400px] text-xs py-1 px-2 border-2 border-gray-600 bg-gray-900 text-gray-300 disabled:bg-gray-700 disabled:text-gray-500"
-            placeholder="ws://localhost:8765" />
+          <div class="nes-field is-inline">
+            <label class="text-xs font-bold text-gray-300 whitespace-nowrap">WS-URL</label>
+            <input v-model="wsUrl" type="text" :disabled="isConnecting || isConnected"
+              class="nes-input flex-1 min-w-[200px] max-w-[400px] text-xs py-1 px-2 border-2 border-gray-600 bg-gray-900 text-gray-300 disabled:bg-gray-700 disabled:text-gray-500"
+              placeholder="ws://localhost:8765" />
+          </div>
 
           <button v-if="!isConnected" @click="connectWebSocket" :disabled="isConnecting || !wsUrl.trim()"
             class="nes-btn" title="连接">
@@ -335,7 +333,7 @@ document.addEventListener('mouseup', stopDragCamera)
 
           <button @click="showProgressMessages = !showProgressMessages" class="nes-btn"
             :class="{ 'is-error': showProgressMessages, 'is-disabled': !isConnected }"
-            :title="showProgressMessages ? '关闭进度消息' : '开启进度消息'">
+            :title="showProgressMessages ? '关闭思考模式' : '开启思考模式'">
             <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
               <path
                 d="M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9M12,17A5,5 0 0,1 7,12A5,5 0 0,1 12,7A5,5 0 0,1 17,12A5,5 0 0,1 12,17M12,4.5C7,4.5 2.73,7.61 1,12C2.73,16.39 7,19.5 12,19.5C17,19.5 21.27,16.39 23,12C21.27,7.61 17,4.5 12,4.5Z" />

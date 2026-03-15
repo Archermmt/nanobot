@@ -48,15 +48,16 @@ class ImageTool(Tool):
     @property
     def description(self) -> str:
         return (
-            "Analyze or display images. Supports three modes:\n"
+            "Analyze or display images. Supports four modes:\n"
             "- vision: Analyze and describe images using multimodal LLM models. "
             "Supports image description, text extraction (OCR), visual analysis, "
             "and answering questions about image content.\n"
             "- display: Display images to users by reading from disk and sending to frontend. "
             "Use this when you want to show an image to the user directly.\n"
             "- generate: Generate images from text prompts using Alibaba Cloud Qwen-Image API. "
-            "Supports various artistic styles and text rendering in images. "
-            "In generate mode, can also perform image-to-image generation by providing a reference image.\n"
+            "Supports various artistic styles and text rendering in images.\n"
+            "- edit: Edit an existing image using text prompts. Requires a reference image (ref_image) "
+            "that will be modified according to the text prompt. The ref_image must exist locally.\n"
             "Images are encoded as base64 for processing or display."
         )
 
@@ -67,10 +68,10 @@ class ImageTool(Tool):
             "properties": {
                 "mode": {
                     "type": "string",
-                    "enum": ["vision", "display", "generate"],
+                    "enum": ["vision", "display", "generate", "edit"],
                     "description": (
                         "The operation mode: 'vision' for image analysis, 'display' for showing images to users, "
-                        "'generate' for creating images from text prompts."
+                        "'generate' for creating images from text prompts, 'edit' for editing an existing image with text prompts."
                     ),
                 },
                 "text": {
@@ -135,12 +136,11 @@ class ImageTool(Tool):
                 "ref_image": {
                     "type": "string",
                     "description": (
-                        "[Optional for generate mode] Reference image path for image-to-image generation. "
-                        "When provided, the model will generate a new image based on both the text prompt and the reference image. "
-                        "The generated image will maintain similar style, composition, or content from the reference. "
-                        "Should be an absolute path to a local image file (e.g., '/Users/archer/Desktop/photo.png'). "
+                        "[Required for edit mode] Reference image path for image editing. "
+                        "The model will modify this image according to the text prompt. "
+                        "Must be an absolute path to a local image file that exists (e.g., '/Users/archer/Desktop/photo.png'). "
                         "Supported formats: PNG, JPG, JPEG, GIF, WEBP.\n"
-                        "Example: Use ref_image to create variations of an existing image with different styles or modifications."
+                        "Example: Use ref_image to change style, add/remove objects, or modify appearance of an existing image."
                     ),
                 },
             },
@@ -255,6 +255,19 @@ class ImageTool(Tool):
         elif mode == "display":
             return await self._execute_display(text=text, image_path=image_path, **kwargs)
         elif mode == "generate":
+            return await self._execute_generate(
+                text=text,
+                image_path=image_path,
+                size=size,
+                negative_prompt=negative_prompt,
+                n=n,
+                prompt_extend=prompt_extend,
+                watermark=watermark,
+                **kwargs,
+            )
+        elif mode == "edit":
+            if not ref_image or not os.path.exists(ref_image):
+                return f"Error: Ref image {ref_image} path is invalid."
             return await self._execute_generate(
                 text=text,
                 image_path=image_path,
@@ -388,9 +401,6 @@ class ImageTool(Tool):
 
         if not image_path:
             return "Error: Image save path is required."
-
-        if ref_image and not os.path.exists(ref_image):
-            return "Error: Ref image path is invalid."
 
         provider = os.getenv("IMAGE_GEN_PROVIDER", "dashscope")
         image_paths, error = [], ""
