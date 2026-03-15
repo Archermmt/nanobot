@@ -1,6 +1,6 @@
 ---
 name: image
-description: Unified tool for analyzing and displaying images (vision analysis, image display, and image editing with reference images).
+description: Unified tool for analyzing and displaying images (vision analysis, image display, image generation from text prompts, and editing images with reference images).
 metadata: {"nanobot":{"emoji":"🖼️"}}
 ---
 
@@ -25,7 +25,7 @@ This skill provides the following tool:
 Unified tool for image analysis, display, and generation.
 
 **Parameters**:
-- `mode` (string, required): The operation mode - `vision` for image analysis, `display` for showing images to users, `generate` for creating images from text prompts, `edit` for modifying images based on reference images
+- `mode` (string, required): The operation mode - `vision` for image analysis, `display` for showing images to users, `generate` for creating images from text prompts, `edit` for modifying existing images based on text prompts
 - `image_path` (string, required):
   - In vision/display/edit mode: Absolute path to the image file (e.g., "/Users/archer/Desktop/photo.png")
   - In generate mode: File name where the generated image will be saved. This parameter should contain few words which generalize the `text`
@@ -34,11 +34,8 @@ Unified tool for image analysis, display, and generation.
   - In display mode: Caption to display with the image (appears above the image in the message box)
   - In generate mode: Text prompt describing the desired image content, style, and composition (supports Chinese and English, max 800 characters)
   - In edit mode: Description of how to modify the reference image (e.g., "Add a hat to the cat", "Change the background to beach")
-- `ref_image` (string, optional):
-  - Only used in generate mode for image-to-image generation
-  - When you need to modify an existing image or create variations based on a reference, provide the absolute path to the reference image file
-  - The model will generate a new image that maintains similar style, composition, or content from the reference image
-  - Example: Use this when you want to change the style of an existing image, add/remove objects, or create similar images
+- `ref_image` (string, required in edit mode):
+  - In edit mode: Absolute path to the reference image file that will be modified according to the text prompt. Must exist locally.
   - Supported formats: PNG, JPG, JPEG, GIF, WEBP
 
 ## Examples

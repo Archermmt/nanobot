@@ -94,20 +94,6 @@ class XiaoZhiChannel(BaseChannel):
         self.client_listen_mode = "auto"
         self.just_woken_up = False
         self.features = {}
-        self.welcome_msg = {
-            "type": "hello",
-            "version": 1,
-            "transport": "websocket",
-            "audio_params": {
-                "format": "opus",
-                "sample_rate": 24000,
-                "channels": 1,
-                "frame_duration": 60,
-            },
-        }
-
-        # VAD and module initialization
-        self._vad = None
 
     async def start(self) -> None:
         """Start the WebSocket server and begin listening for connections."""
@@ -120,8 +106,8 @@ class XiaoZhiChannel(BaseChannel):
         # Get server configuration
         host = self.config.host
         port = self.config.port
-        self._auth_enabled = self.config.auth_enabled
         self._allowed_devices = self.config.allowed_devices
+        self._auth_enabled = self.config.auth_enabled
         self._auth_key = self.config.auth_key
 
         logger.info(
@@ -267,77 +253,6 @@ class XiaoZhiChannel(BaseChannel):
             # 如果是普通 HTTP 请求，返回 "server is running"
             return websocket.respond(200, "Server is running\n")
 
-    def _initialize_modules(self, update_vad: bool = False):
-        """
-        Initialize VAD module.
-
-        Args:
-            update_vad: Whether to update VAD module
-        """
-        try:
-            # Try to import and initialize modules
-            # This is a simplified version - in real implementation you would
-            # load the actual VAD modules based on config
-            if update_vad:
-                logger.info("Reinitializing VAD module")
-                # self._vad = load_vad_module(self.config)
-
-            logger.info("Module initialization completed")
-        except Exception as e:
-            logger.error(f"初始化模块失败：{e}")
-
-    def _check_vad_update(self, old_config: any, new_config: any) -> bool:
-        """
-        Check if VAD needs to be updated.
-
-        Args:
-            old_config: Old configuration
-            new_config: New configuration
-
-        Returns:
-            bool: True if VAD needs update
-        """
-        try:
-            old_vad = getattr(old_config, "selected_module", {}).get("VAD", "")
-            new_vad = getattr(new_config, "selected_module", {}).get("VAD", "")
-            return old_vad != new_vad
-        except Exception:
-            return False
-
-    async def update_config(self) -> bool:
-        """
-        Update server configuration and reinitialize components.
-
-        Returns:
-            bool: True if update successful
-        """
-        try:
-            async with self.config_lock:
-                # Get new configuration (this is a placeholder - implement based on your config source)
-                new_config = self.config  # TODO: Implement actual config fetching
-
-                if new_config is None:
-                    logger.error("获取新配置失败")
-                    return False
-
-                logger.info("获取新配置成功")
-
-                # Check if VAD needs update
-                update_vad = self._check_vad_update(self.config, new_config)
-                logger.info(f"检查 VAD 类型是否需要更新：{update_vad}")
-
-                # Update configuration
-                self.config = new_config
-
-                # Reinitialize modules
-                self._initialize_modules(update_vad)
-
-                logger.info("更新配置任务执行完毕")
-                return True
-        except Exception as e:
-            logger.error(f"更新服务器配置失败：{str(e)}")
-            return False
-
     async def _authenticate(
         self, device_id: str, client_id: str | None, authorization: str | None
     ) -> None:
@@ -383,15 +298,6 @@ class XiaoZhiChannel(BaseChannel):
                 raise AuthenticationError("Invalid authorization token")
 
         logger.debug("Device {} authenticated successfully", device_id)
-
-    def get_vad(self):
-        """
-        Get the VAD instance.
-
-        Returns:
-            The VAD instance or None if not initialized.
-        """
-        return self._vad
 
     async def _handle_client_messages(self, websocket: any, client_info: dict) -> None:
         """
@@ -535,17 +441,27 @@ class XiaoZhiChannel(BaseChannel):
     async def _handle_hello_message(self, msg_data: dict):
         """处理hello消息"""
 
+        response = {
+            "session_id": self.session_id,
+            "type": "hello",
+            "version": 1,
+            "transport": "websocket",
+            "audio_params": {
+                "format": "opus",
+                "sample_rate": 24000,
+                "channels": 1,
+                "frame_duration": 60,
+            },
+        }
         audio_params = msg_data.get("audio_params")
         if audio_params:
             self.audio_format = audio_params.get("format")
-            self.welcome_msg["audio_params"] = audio_params
+            response["audio_params"] = audio_params
         self.features = msg_data.get("features", {})
         if self.features:
             if self.features.get("mcp"):
                 asyncio.create_task(self._send_mcp_initialize_message())
         try:
-            response = self.welcome_msg
-            response["session_id"] = self.session_id
             await self._ws.send(json.dumps(response, ensure_ascii=False))
         except Exception as e:
             logger.warning("Failed to send hello response: {}", e)
