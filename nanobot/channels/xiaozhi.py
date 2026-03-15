@@ -18,6 +18,8 @@ from nanobot.channels.xiaozhi_server.core.http_server import SimpleHttpServer
 from nanobot.config.schema import XiaoZhiConfig
 from nanobot.utils.media import save_media
 
+from .xiaozhi_server.core.utils import textUtils
+
 
 class TextMessageType(Enum):
     """消息类型枚举"""
@@ -89,7 +91,7 @@ class XiaoZhiChannel(BaseChannel):
         self._auth_key = ""
         self._processed_message_ids: OrderedDict[str, None] = OrderedDict()  # Ordered dedup cache
         self.config_lock = asyncio.Lock()
-        self.session_id = str(uuid.uuid4())
+        self.session_id = str(uuid.uuid4())[:8]
         self.audio_format = "opus"
         self.client_listen_mode = "auto"
         self.just_woken_up = False
@@ -334,109 +336,57 @@ class XiaoZhiChannel(BaseChannel):
         """Process an incoming message from WebSocket."""
 
         msg_type = msg_data.get("type", TextMessageType.LISTEN)
-        if msg_type == TextMessageType.HELLO:
+        # Handle msg_type handler
+        if msg_type == TextMessageType.HELLO.value:
             await self._handle_hello_message(msg_data)
             return
-        if msg_type == TextMessageType.MCP:
+        if msg_type == TextMessageType.MCP.value:
             await self._handle_mcp_message(msg_data, client_info)
             return
-        if msg_type == TextMessageType.LISTEN:
-            if "mode" in msg_data:
-                self.client_listen_mode = msg_data["mode"]
-                logger.debug(f"客户端拾音模式：{self.client_listen_mode}")
-            if msg_data["state"] == "start":
-                # 设备从播放模式切回录音模式,清除所有音频状态和缓冲区
-                # conn.reset_audio_states()
-                raise NotImplementedError("start record is not implemented")
-            elif msg_data["state"] == "stop":
-                """
-                conn.client_voice_stop = True
-                if conn.asr.interface_type == InterfaceType.STREAM:
-                    # 流式模式下，发送结束请求
-                    asyncio.create_task(conn.asr._send_stop_request())
-                else:
-                    # 非流式模式：直接触发ASR识别
-                    if len(conn.asr_audio) > 0:
-                        asr_audio_task = conn.asr_audio.copy()
-                        conn.reset_audio_states()
-
-                        if len(asr_audio_task) > 0:
-                            await conn.asr.handle_voice_stop(conn, asr_audio_task)
-                """
-                raise NotImplementedError("Stop record is not implemented")
-            elif msg_data["state"] == "detect":
-                # conn.client_have_voice = False
-                # conn.reset_audio_states()
-                if "text" in msg_data:
-                    content = msg_data["text"]  # 保留原始文本
-                    # 识别是否是唤醒词
-                    if content in self.config.wakeup_words:
-                        self.just_woken_up = True
-                        # 上报纯文字数据（复用ASR上报功能，但不提供音频数据）
-                        # enqueue_asr_report(conn, "嘿，你好呀", [])
-                        # await startToChat(conn, "嘿，你好呀")
-                        raise NotImplementedError("is_wakeup_words is not implemented")
-                    else:
-                        self.just_woken_up = True
-                        # 上报纯文字数据（复用ASR上报功能，但不提供音频数据）
-                        enqueue_asr_report(conn, original_text, [])
-                        # 否则需要LLM对文字内容进行答复
-                        await startToChat(conn, original_text)
+        if msg_type != TextMessageType.LISTEN.value:
+            logger.warning("Received unknown message type: {}", msg_type)
             return
 
-        # Extract message fields
-        message_id = msg_data.get("message_id") or str(hash(str(msg_data)))
-        sender_id = self.session_id
-        chat_id = msg_data.get("chat_id", client_info["client_id"])
-        content = msg_data.get("content", "")
-        media = msg_data.get("media", [])
-        metadata = msg_data.get("metadata", {})
-
-        # Deduplication check
-        if message_id in self._processed_message_ids:
+        # Handle state
+        if "mode" in msg_data:
+            self.client_listen_mode = msg_data["mode"]
+            logger.debug(f"客户端拾音模式：{self.client_listen_mode}")
+        if msg_data["state"] == "start":
+            # 设备从播放模式切回录音模式,清除所有音频状态和缓冲区
+            # conn.reset_audio_states()
+            raise NotImplementedError("start record is not implemented")
             return
-        self._processed_message_ids[message_id] = None
+        if msg_data["state"] == "stop":
+            """
+            conn.client_voice_stop = True
+            if conn.asr.interface_type == InterfaceType.STREAM:
+                # 流式模式下，发送结束请求
+                asyncio.create_task(conn.asr._send_stop_request())
+            else:
+                # 非流式模式：直接触发ASR识别
+                if len(conn.asr_audio) > 0:
+                    asr_audio_task = conn.asr_audio.copy()
+                    conn.reset_audio_states()
 
-        # Trim cache
-        while len(self._processed_message_ids) > 1000:
-            self._processed_message_ids.popitem(last=False)
-
-        # Skip empty messages (unless it's a media message)
-        if not content and not media and not metadata:
+                    if len(asr_audio_task) > 0:
+                        await conn.asr.handle_voice_stop(conn, asr_audio_task)
+            """
+            raise NotImplementedError("Stop record is not implemented")
             return
-        # Handle base64-encoded media (images, audio, files)
-        # Convert base64 data to temporary files
-        content_parts = []
-        media_paths = []
-        if content:
-            content_parts.append(content)
-        elif media:
-            content_parts.append("Just save the following files, do nothing else: ")
-        if media:
-            media_dir = Path.home() / ".nanobot" / "media"
-            media_dir.mkdir(parents=True, exist_ok=True)
-            for media_item in media:
-                media_data, filename = media_item["data"], media_item.get("file_name", "")
-                # Check if media is base64 data (data URL format: data:<mime>;base64,<data>)
-                if isinstance(media_data, str) and media_data.startswith("data:"):
-                    try:
-                        file_path, filename = save_media(media_data, media_dir, filename)
-                        media_paths.append(str(file_path))
-                        content_parts.append(f"{filename}({msg_type}) saved to {file_path}")
-                    except Exception as e:
-                        logger.error("Failed to process base64 media: {}", e)
-                else:
-                    # Already a file path
-                    media_paths.append(media_item)
-        content = "\n".join(content_parts) if content_parts else ""
-        # Forward to message bus
-        await self._handle_message(
-            sender_id=sender_id,
-            chat_id=chat_id,
-            content=content,
-            media=media_paths,
-            metadata=metadata,
-        )
+        if msg_data["state"] != "detect":
+            logger.warning("Received unknown state type: {}", msg_data["state"])
+            return
+
+        if "text" in msg_data:
+            content = msg_data["text"]
+            if content in self.config.wakeup_words:
+                self.just_woken_up = True
+                msg_data["text"] = "嘿，你好呀"
+                await self._start_to_chat(msg_data, client_info)
+            else:
+                self.just_woken_up = True
+                await self._start_to_chat(msg_data, client_info)
+        return
 
     async def _handle_hello_message(self, msg_data: dict):
         """处理hello消息"""
@@ -567,6 +517,32 @@ class XiaoZhiChannel(BaseChannel):
             logger.debug(f"成功发送MCP消息: {message}")
         except Exception as e:
             logger.error(f"发送MCP消息失败: {e}")
+
+    async def _start_to_chat(self, msg_data, client_info):
+        content = msg_data["text"]
+        stt_text = textUtils.get_string_no_punctuation_or_emoji(content)
+        await self._ws.send(
+            json.dumps({"type": "stt", "text": stt_text, "session_id": self.session_id})
+        )
+        await self._send_tts_message("start")
+        await self._handle_message(
+            sender_id=self.session_id,
+            chat_id=msg_data.get("chat_id", client_info["client_id"]),
+            content=content,
+        )
+
+    async def _send_tts_message(self, state, text=None):
+        """发送 TTS 状态消息"""
+        if text is None and state == "sentence_start":
+            return
+        message = {"type": "tts", "state": state, "session_id": self.session_id}
+        if text is not None:
+            message["text"] = textUtils.check_emoji(text)
+        # TTS播放结束
+        if state == "stop":
+            logger.info("Stop tts message")
+        # 发送消息到客户端
+        await self._ws.send(json.dumps(message))
 
     async def send(self, msg: OutboundMessage) -> None:
         """

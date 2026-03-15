@@ -130,8 +130,8 @@ const stopRecording = () => {
 
     <!-- Voice Recording -->
     <button @click="isRecording ? stopRecording() : startRecording()" :disabled="props.disabled || isMicrophoneOn"
-      class="nes-btn disabled:opacity-50 disabled:cursor-not-allowed" :class="isRecording ? 'is-danger' : 'is-primary'"
-      :title="isRecording ? 'Stop Recording' : 'Start Recording'">
+      class="nes-btn p-2 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+      :class="isRecording ? 'is-danger' : 'is-primary'" :title="isRecording ? 'Stop Recording' : 'Start Recording'">
       {{ isRecording ? '⏹️' : '🎙️' }}
     </button>
   </div>
