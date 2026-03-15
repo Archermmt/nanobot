@@ -308,7 +308,6 @@ class WebSocketChannel(BaseChannel):
             return
 
         if not content and msg_type == "audio":
-            print("[TMINFO] send raw audio data")
             await self._handle_message(
                 sender_id=sender_id,
                 chat_id=chat_id,

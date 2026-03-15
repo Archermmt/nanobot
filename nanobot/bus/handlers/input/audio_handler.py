@@ -93,7 +93,6 @@ class BaseAudioHandler(InputHandler):
             if isinstance(media_data, dict):
                 media_data = media_data.get("data", "")
             elif isinstance(media_data, str) and media_data.startswith("data:"):
-                print("[TMINFO] get raw data!!")
                 media_data = base64.b64decode(media_data.split(",", 1)[1])
 
             # Recognize speech from audio

@@ -220,7 +220,7 @@ defineExpose({
       <!-- Action Buttons -->
       <div class="flex items-center space-x-2">
         <button type="submit" form="message-form"
-          class="nes-btn is-primary px-4 py-2 rounded text-xs font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed uppercase"
+          class="nes-btn is-primary text-xs px-3 py-2 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           :disabled="isLoading || (!input.trim() && pendingImages.length === 0 && pendingFiles.length === 0) || props.disabled">
           SEND
         </button>
