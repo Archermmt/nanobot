@@ -524,7 +524,7 @@ class XiaoZhiChannel(BaseChannel):
         await self._ws.send(
             json.dumps({"type": "stt", "text": stt_text, "session_id": self.session_id})
         )
-        await self._send_tts_message("start")
+        # await self._send_tts_message("start")
         await self._handle_message(
             sender_id=self.session_id,
             chat_id=msg_data.get("chat_id", client_info["client_id"]),

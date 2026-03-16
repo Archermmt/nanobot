@@ -250,8 +250,9 @@ class TextHandlerConfig(Base):
     handler_type: str = "edge_tts"  # edge_tts or custom
     voice: str = "zh-CN-XiaoxiaoNeural"
     encoder_type: str = "opus"
-    audio_format: str = "wav"
+    audio_format: str = "mp3"  # Edge TTS returns mp3 format
     sample_rate: int = 16000
+    output_dir: str = "~/.nanobot/media"
 
 
 class InputHandlerConfig(Base):

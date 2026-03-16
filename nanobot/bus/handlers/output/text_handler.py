@@ -1,8 +1,9 @@
 """Text to TTS handler for converting text messages to audio messages."""
 
+import os
 import traceback
-from io import BytesIO
-from typing import Any, Callable, Optional
+from pathlib import Path
+from typing import Optional
 
 import numpy as np
 from botpy import Type as BotType
@@ -211,6 +212,8 @@ class EdgeTTSHandler(BaseTextHandler):
         self.audio_format = config.audio_format
         self.sample_rate = config.sample_rate
         self.encoder_type, self.encoder = config.encoder_type, None
+        # Expand ~ to home directory and convert to absolute path
+        self.output_dir = Path(config.output_dir).expanduser().resolve()
         if self.encoder_type == "opus":
             self.encoder = OpusEncoderUtils(
                 sample_rate=self.sample_rate, channels=1, frame_size_ms=60
@@ -264,9 +267,6 @@ class EdgeTTSHandler(BaseTextHandler):
         """
         Convert text to speech audio stream.
 
-        This method references the implementation from:
-        /Users/tongmeng/Desktop/codes/xiaozhi-esp32-server/main/xiaozhi-server/core/providers/tts/base.py::to_tts_stream
-
         Args:
             text: Text content to convert to speech
 
@@ -276,10 +276,11 @@ class EdgeTTSHandler(BaseTextHandler):
         # Clean markdown formatting from text
         text, audio_bytes = self._clean_markdown(text), None
         max_repeat_time = 5
+        output_file = str(self.output_dir / "tts.wav")
         while max_repeat_time > 0:
             try:
                 # Get raw audio bytes from TTS
-                raw_audio_bytes = await self._text_to_speak(text)
+                raw_audio_bytes = await self._text_to_speak(text, output_file)
                 if not raw_audio_bytes:
                     max_repeat_time -= 1
                     continue
@@ -287,7 +288,7 @@ class EdgeTTSHandler(BaseTextHandler):
                 if self.encoder_type == "opus":
                     # Convert to opus stream
                     opus_datas = self._audio_bytes_to_data_stream(
-                        audio_bytes, file_type=self.audio_format, is_opus=True
+                        raw_audio_bytes, file_type=self.audio_format, is_opus=True
                     )
                     # Combine all opus frames
                     audio_bytes = b"".join(opus_datas)
@@ -300,9 +301,13 @@ class EdgeTTSHandler(BaseTextHandler):
             except Exception as e:
                 logger.error(f"TTS conversion error: {e}")
                 max_repeat_time -= 1
+            finally:
+                # Clean up temp file
+                if os.path.exists(output_file):
+                    os.remove(output_file)
         return audio_bytes
 
-    async def _text_to_speak(self, text: str) -> bytes | None:
+    async def _text_to_speak(self, text: str, output_file: str) -> bytes | None:
         """
         Convert text to speech audio using Edge TTS.
 
@@ -317,13 +322,11 @@ class EdgeTTSHandler(BaseTextHandler):
             import edge_tts
 
             communicate = edge_tts.Communicate(text, voice=self.voice)
-            # Return audio binary data
-            audio_bytes = b""
-            async for chunk in communicate.stream():
-                if chunk["type"] == "audio":
-                    audio_bytes += chunk["data"]
+            await communicate.save(output_file)
+            # Read the complete file
+            with open(output_file, "rb") as f:
+                audio_bytes = f.read()
             return audio_bytes
-
         except ImportError:
             error_msg = "edge-tts not installed. Install with: pip install edge-tts"
             raise ImportError(error_msg)
@@ -331,16 +334,98 @@ class EdgeTTSHandler(BaseTextHandler):
             error_msg = f"Edge TTS request failed: {e}"
             raise Exception(error_msg)
 
+    def _audio_to_data(self, audio_file_path, is_opus: bool = True):
+        from pydub import AudioSegment
+
+        # 获取文件后缀名
+        file_type = os.path.splitext(audio_file_path)[1]
+        if file_type:
+            file_type = file_type.lstrip(".")
+        # 读取音频文件，-nostdin 参数：不要从标准输入读取数据，否则FFmpeg会阻塞
+        audio = AudioSegment.from_file(audio_file_path, format=file_type, parameters=["-nostdin"])
+
+        # 转换为单声道/16kHz采样率/16位小端编码（确保与编码器匹配）
+        audio = audio.set_channels(1).set_frame_rate(16000).set_sample_width(2)
+
+        # 获取原始PCM数据（16位小端）
+        raw_data = audio.raw_data
+
+        # 初始化Opus编码器
+        # encoder = opuslib_next.Encoder(16000, 1, opuslib_next.APPLICATION_AUDIO)
+
+        # 编码参数
+        frame_duration = 60  # 60ms per frame
+        frame_size = int(16000 * frame_duration / 1000)  # 960 samples/frame
+
+        datas = []
+        # 按帧处理所有音频数据（包括最后一帧可能补零）
+        for i in range(0, len(raw_data), frame_size * 2):  # 16bit=2bytes/sample
+            # 获取当前帧的二进制数据
+            chunk = raw_data[i : i + frame_size * 2]
+
+            # 如果最后一帧不足，补零
+            if len(chunk) < frame_size * 2:
+                chunk += b"\x00" * (frame_size * 2 - len(chunk))
+
+            if is_opus:
+                # 转换为numpy数组处理
+                np_frame = np.frombuffer(chunk, dtype=np.int16)
+                # 编码Opus数据
+                frame_data = self.encoder.encode(np_frame.tobytes(), frame_size)
+            else:
+                frame_data = chunk if isinstance(chunk, bytes) else bytes(chunk)
+
+            datas.append(frame_data)
+
+        return datas
+
     def _audio_bytes_to_data_stream(self, audio_bytes, file_type, is_opus) -> None:
         """
-        直接用音频二进制数据转为opus/pcm数据，支持wav、mp3、p3
+        直接用音频二进制数据转为 opus/pcm 数据，支持 wav、mp3、p3
+
+        Args:
+            audio_bytes: 音频二进制数据
+            file_type: 音频格式 (wav, mp3 等)
+            is_opus: 是否需要编码为 opus
         """
+
+        import os
+        import tempfile
 
         from pydub import AudioSegment
 
-        audio = AudioSegment.from_file(
-            BytesIO(audio_bytes), format=file_type, parameters=["-nostdin"]
-        )
+        # Use temp file instead of BytesIO to avoid ffmpeg stream parsing issues
+        # This is more reliable for MP3 and other formats
+        with tempfile.NamedTemporaryFile(suffix=f".{file_type}", delete=False) as tmp_file:
+            tmp_file.write(audio_bytes)
+            tmp_path = tmp_file.name
+
+        try:
+            # Load audio from temp file
+            audio = AudioSegment.from_file(tmp_path, format=file_type)
+        except Exception as e:
+            # If specified format fails, try auto-detection
+            logger.warning(
+                f"Failed to load audio with specified format '{file_type}': {e}. "
+                "Trying auto-detection..."
+            )
+            try:
+                # Try without specifying format
+                audio = AudioSegment.from_file(tmp_path)
+                logger.info(f"Auto-detected audio format successful")
+            except Exception as auto_detect_error:
+                logger.error(
+                    f"Audio format auto-detection also failed. "
+                    f"Original error: {e}, Auto-detect error: {auto_detect_error}"
+                )
+                raise RuntimeError(
+                    f"Failed to parse audio data. Format may be invalid or corrupted."
+                ) from auto_detect_error
+        finally:
+            # Clean up temp file
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+
         audio = audio.set_channels(1).set_frame_rate(self.sample_rate).set_sample_width(2)
         raw_data = audio.raw_data
         return self._pcm_to_data_stream(raw_data, is_opus)
