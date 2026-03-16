@@ -4,6 +4,7 @@ import os
 import uuid
 
 from botpy import Type as BotType
+from loguru import logger
 
 from nanobot.bus.events import OutboundMessage
 from nanobot.bus.handlers.output.output_handler import OutputHandler
@@ -58,24 +59,13 @@ class EdgeTTSHandler(BaseTextHandler):
         Args:
             config: TextHandlerConfig containing TTS settings
         """
-        if config is None:
-            from nanobot.config.schema import TextHandlerConfig
 
-            config = TextHandlerConfig()
-
-        self.delete_audio_file = config.delete_audio_file
-        self.output_file = config.output_dir
-        self.audio_file_type = config.format
-
-        # Edge TTS specific config
-        if config.private_voice:
-            self.voice = config.private_voice
-        else:
-            self.voice = config.voice
-
-        # Ensure output directory exists
-        if not os.path.exists(self.output_file):
-            os.makedirs(self.output_file)
+        try:
+            import edge_tts
+        except ImportError:
+            error_msg = "edge-tts not installed. Install with: pip install edge-tts"
+            raise ImportError(error_msg)
+        self.voice = config.voice
 
     def can_handle(self, msg: OutboundMessage) -> bool:
         """
@@ -121,13 +111,6 @@ class EdgeTTSHandler(BaseTextHandler):
 
         return msg
 
-    def _generate_filename(self, extension: str = ".wav") -> str:
-        """Generate a unique filename for TTS audio file."""
-        return os.path.join(
-            self.output_file,
-            f"tts-{uuid.uuid4().hex}{extension}",
-        )
-
     async def _to_tts_stream(self, text: str) -> str | None:
         """
         Convert text to speech audio stream.
@@ -142,53 +125,20 @@ class EdgeTTSHandler(BaseTextHandler):
             Path to generated audio file or None if failed
         """
         # Clean markdown formatting from text
-        text = self._clean_markdown(text)
-
+        text, audio_bytes = self._clean_markdown(text), None
         max_repeat_time = 5
-        tmp_file = None
-
-        if self.delete_audio_file:
-            # Don't save file, directly convert to audio data
-            while max_repeat_time > 0:
-                try:
-                    audio_bytes = await self._text_to_speak(text, None)
-                    if audio_bytes:
-                        # Save temporarily to return path
-                        tmp_file = self._generate_filename()
-                        with open(tmp_file, "wb") as f:
-                            f.write(audio_bytes)
-                        break
-                    else:
-                        max_repeat_time -= 1
-                except Exception as e:
-                    max_repeat_time -= 1
-
-            # Clean up if we're supposed to delete files
-            if self.delete_audio_file and tmp_file and os.path.exists(tmp_file):
-                os.remove(tmp_file)
-                return None
-            return tmp_file
-        else:
-            # Save to file
-            tmp_file = self._generate_filename()
+        while max_repeat_time > 0:
             try:
-                while not os.path.exists(tmp_file) and max_repeat_time > 0:
-                    try:
-                        await self._text_to_speak(text, tmp_file)
-                    except Exception as e:
-                        # Delete file if creation failed
-                        if os.path.exists(tmp_file):
-                            os.remove(tmp_file)
-                        max_repeat_time -= 1
-
-                if max_repeat_time > 0 and os.path.exists(tmp_file):
-                    return tmp_file
+                audio_bytes = await self._text_to_speak(text)
+                if audio_bytes:
+                    break
                 else:
-                    return None
-            except Exception:
-                return None
+                    max_repeat_time -= 1
+            except Exception as e:
+                max_repeat_time -= 1
+        return audio_bytes
 
-    async def _text_to_speak(self, text: str, output_file: str | None) -> bytes | None:
+    async def _text_to_speak(self, text: str) -> bytes | None:
         """
         Convert text to speech audio using Edge TTS.
 
@@ -203,26 +153,12 @@ class EdgeTTSHandler(BaseTextHandler):
             import edge_tts
 
             communicate = edge_tts.Communicate(text, voice=self.voice)
-
-            if output_file:
-                # Ensure directory exists and create empty file
-                os.makedirs(os.path.dirname(output_file), exist_ok=True)
-                with open(output_file, "wb") as f:
-                    pass
-
-                # Stream audio data to file
-                with open(output_file, "ab") as f:  # Append mode to avoid overwriting
-                    async for chunk in communicate.stream():
-                        if chunk["type"] == "audio":  # Only process audio chunks
-                            f.write(chunk["data"])
-                return None
-            else:
-                # Return audio binary data
-                audio_bytes = b""
-                async for chunk in communicate.stream():
-                    if chunk["type"] == "audio":
-                        audio_bytes += chunk["data"]
-                return audio_bytes
+            # Return audio binary data
+            audio_bytes = b""
+            async for chunk in communicate.stream():
+                if chunk["type"] == "audio":
+                    audio_bytes += chunk["data"]
+            return audio_bytes
 
         except ImportError:
             error_msg = "edge-tts not installed. Install with: pip install edge-tts"

@@ -241,8 +241,6 @@ class AudioHandlerConfig(Base):
     enabled: bool = False
     handler_type: str = "funasr"  # vosk or custom
     model: str = "paraformer-zh"
-    # For custom handlers, specify the module path
-    custom_handler_path: str | None = None
 
 
 class TextHandlerConfig(Base):
@@ -251,12 +249,6 @@ class TextHandlerConfig(Base):
     enabled: bool = False
     handler_type: str = "edge_tts"  # edge_tts or custom
     voice: str = "zh-CN-XiaoxiaoNeural"
-    private_voice: str | None = None
-    format: str = "mp3"
-    delete_audio_file: bool = True
-    output_dir: str = "tmp/"
-    # For custom handlers, specify the module path
-    custom_handler_path: str | None = None
 
 
 class InputHandlerConfig(Base):

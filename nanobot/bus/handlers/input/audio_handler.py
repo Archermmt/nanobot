@@ -195,8 +195,16 @@ class FunasrHandler(BaseAudioHandler):
     """FunASR-based speech recognition handler."""
 
     def __init__(self, config: AudioHandlerConfig):
-        import psutil
-        from funasr import AutoModel
+        try:
+            import psutil
+            import torch
+            import torchaudio
+            from funasr import AutoModel
+        except ImportError:
+            logger.error(
+                "FunASR not installed. Install with: pip install funasr, psutil, torch, torchaudio"
+            )
+            return
 
         model = config.model
         # 内存检测，要求大于 2G
@@ -376,43 +384,3 @@ class VoskHandler(BaseAudioHandler):
         except Exception as e:
             logger.error(f"Speech recognition error: {e}")
             return ""
-
-
-def load_audio_handler(config: "AudioHandlerConfig") -> BaseAudioHandler | None:
-    """
-    Load audio handler based on configuration.
-
-    Args:
-        config: AudioHandlerConfig instance
-
-    Returns:
-        Audio handler instance or None if disabled/invalid
-    """
-    if not config or not config.enabled:
-        return None
-
-    handler_type = config.handler_type
-    if handler_type == "vosk":
-        return VoskHandler(model=config.model)
-    elif handler_type == "funasr":
-        return FunasrHandler(model=config.model)
-    elif handler_type == "custom":
-        # Load custom handler from module path
-        if config.custom_handler_path:
-            import importlib
-            from pathlib import Path
-
-            handler_path = Path(config.custom_handler_path).expanduser()
-            spec = importlib.util.spec_from_file_location("custom_handler", handler_path)
-            if spec and spec.loader:
-                module = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(module)
-                # Assume the module has a CustomHandler class
-                if hasattr(module, "CustomHandler"):
-                    return module.CustomHandler()
-                else:
-                    logger.error(f"Custom handler module does not have CustomHandler class")
-        return None
-    else:
-        logger.warning(f"Unknown audio handler type: {handler_type}")
-        return None
