@@ -245,6 +245,20 @@ class AudioHandlerConfig(Base):
     custom_handler_path: str | None = None
 
 
+class TextHandlerConfig(Base):
+    """Configuration for text handler (TTS)."""
+
+    enabled: bool = False
+    handler_type: str = "edge_tts"  # edge_tts or custom
+    voice: str = "zh-CN-XiaoxiaoNeural"
+    private_voice: str | None = None
+    format: str = "mp3"
+    delete_audio_file: bool = True
+    output_dir: str = "tmp/"
+    # For custom handlers, specify the module path
+    custom_handler_path: str | None = None
+
+
 class InputHandlerConfig(Base):
     """Configuration for input handlers."""
 
@@ -258,7 +272,11 @@ class InputHandlerConfig(Base):
 class OutputHandlerConfig(Base):
     """Configuration for output handlers."""
 
-    pass
+    text: TextHandlerConfig | None = None
+
+    def model_post_init(self, __context):
+        if self.text is None:
+            self.text = TextHandlerConfig()
 
 
 class BusConfig(Base):

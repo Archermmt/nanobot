@@ -1,15 +1,15 @@
-"""Base handler for message processing."""
+"""Base handler for outbound message processing."""
 
 from abc import ABC, abstractmethod
 from typing import Dict, List, Type
 
-from nanobot.bus.events import InboundMessage
+from nanobot.bus.events import OutboundMessage
 
 
-class InputHandler(ABC):
-    """Base class for all message handlers."""
+class OutputHandler(ABC):
+    """Base class for all outbound message handlers."""
 
-    _registry: Dict[str, Type["InputHandler"]] = {}
+    _registry: Dict[str, Type["OutputHandler"]] = {}
 
     @classmethod
     def register_type(cls, msg_type: str, handler_type: str) -> None:
@@ -23,7 +23,7 @@ class InputHandler(ABC):
         cls._registry[msg_type + "." + handler_type] = cls
 
     @classmethod
-    def get_registered_type(cls, msg_type: str, handler_type: str) -> Type["InputHandler"] | None:
+    def get_registered_type(cls, msg_type: str, handler_type: str) -> Type["OutputHandler"] | None:
         """
         Get a registered handler class by message type.
 
@@ -37,25 +37,24 @@ class InputHandler(ABC):
         return cls._registry.get(msg_type + "." + handler_type)
 
     @abstractmethod
-    async def handle(self, msg: InboundMessage) -> InboundMessage:
+    async def handle(self, msg: OutboundMessage) -> OutboundMessage:
         """
-        Process an inbound message.
+        Process an outbound message.
 
         Args:
-            msg: The inbound message to process
+            msg: The outbound message to process
 
         Returns:
-            The processed inbound message (may be modified or the same instance)
+            The processed outbound message (may be modified or the same instance)
         """
         return msg
 
-    @abstractmethod
-    def can_handle(self, msg: InboundMessage) -> bool:
+    def can_handle(self, msg: OutboundMessage) -> bool:
         """
         Check if this handler can process the given message.
 
         Args:
-            msg: The inbound message to check
+            msg: The outbound message to check
 
         Returns:
             True if the message type is supported, False otherwise

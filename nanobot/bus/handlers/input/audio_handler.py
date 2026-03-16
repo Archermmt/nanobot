@@ -22,11 +22,6 @@ from nanobot.utils.log import CaptureOutput
 class BaseAudioHandler(InputHandler):
     """Base class for audio processing handlers."""
 
-    @property
-    def supported_msg_types(self) -> list[str]:
-        """Audio handler can process 'audio' type messages."""
-        return ["audio"]
-
     @classmethod
     def register(cls, handler_type: str):
         """
@@ -59,6 +54,20 @@ class BaseAudioHandler(InputHandler):
             The registered handler class, or None if not found
         """
         return InputHandler.get_registered_type("audio", handler_type)
+
+    def can_handle(self, msg: InboundMessage) -> bool:
+        """
+        Check if this handler can process the given message.
+
+        Args:
+            msg: The inbound message to check
+
+        Returns:
+            True if the message type is supported, False otherwise
+        """
+
+        msg_type = msg.metadata.get("msg_type", "text")
+        return msg_type == "audio" and not msg.content
 
     async def _process_audio(self, media_data: str) -> str:
         """

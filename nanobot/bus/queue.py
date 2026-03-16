@@ -8,7 +8,8 @@ from loguru import logger
 from nanobot.bus.events import InboundMessage, OutboundMessage
 from nanobot.bus.handlers.input.audio_handler import BaseAudioHandler
 from nanobot.bus.handlers.input.input_handler import InputHandler
-from nanobot.config.schema import BusConfig, InputHandlerConfig
+from nanobot.bus.handlers.output.text_handler import BaseTextHandler
+from nanobot.config.schema import BusConfig, InputHandlerConfig, OutputHandlerConfig
 
 
 class MessageBus:
@@ -29,6 +30,10 @@ class MessageBus:
         if input_handler.audio and input_handler.audio.enabled:
             handler_cls = BaseAudioHandler.get_registered_type(input_handler.audio.handler_type)
             self._input_handlers["audio"] = handler_cls(input_handler.audio)
+        output_handler: OutputHandlerConfig = self.config.output_handler
+        if output_handler.text and output_handler.text.enabled:
+            handler_cls = BaseTextHandler.get_registered_type(output_handler.text.handler_type)
+            self._output_handlers["text"] = handler_cls(output_handler.text)
 
     async def publish_inbound(self, msg: InboundMessage) -> None:
         """
