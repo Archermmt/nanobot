@@ -529,6 +529,7 @@ class XiaoZhiChannel(BaseChannel):
             sender_id=self.session_id,
             chat_id=msg_data.get("chat_id", client_info["client_id"]),
             content=content,
+            metadata={"need_tts": True},
         )
 
     async def _send_tts_message(self, state, text=None):
@@ -570,6 +571,7 @@ class XiaoZhiChannel(BaseChannel):
             logger.warning("No connected client found for chat_id: {}", msg.chat_id)
             return
 
+        print("[TMINFO] should send " + str(msg))
         try:
             # Prepare message
             message_data = {

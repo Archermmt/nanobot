@@ -249,6 +249,9 @@ class TextHandlerConfig(Base):
     enabled: bool = False
     handler_type: str = "edge_tts"  # edge_tts or custom
     voice: str = "zh-CN-XiaoxiaoNeural"
+    encoder_type: str = "opus"
+    audio_format: str = "wav"
+    sample_rate: int = 16000
 
 
 class InputHandlerConfig(Base):
