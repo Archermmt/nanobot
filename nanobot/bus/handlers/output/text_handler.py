@@ -284,7 +284,7 @@ class EdgeTTSHandler(BaseTextHandler):
 
                 if self.encoder_type == "opus":
                     return audio_to_data(
-                        raw_audio_bytes,
+                        output_file,
                         encoder=self.encoder,
                         sample_rate=self.sample_rate,
                         is_opus=True,
