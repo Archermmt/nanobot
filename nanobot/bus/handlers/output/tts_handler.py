@@ -8,12 +8,12 @@ from loguru import logger
 
 from nanobot.bus.events import OutboundMessage
 from nanobot.bus.handlers.output.output_handler import OutputHandler
-from nanobot.config.schema import TextHandlerConfig
+from nanobot.config.schema import TTSHandlerConfig
 from nanobot.utils.media import audio_bytes_to_data_stream
 
 
-class BaseTextHandler(OutputHandler):
-    """Base class for text message handlers."""
+class BaseTTSHandler(OutputHandler):
+    """Base class for text-to-speech message handlers."""
 
     @classmethod
     def register(cls, handler_type: str):
@@ -24,19 +24,19 @@ class BaseTextHandler(OutputHandler):
             handler_type: The handler type to register (e.g., "edge_tts", "azure_tts")
 
         Usage:
-            @BaseTextHandler.register("edge_tts")
-            class EdgeTTSHanlder(BaseTextHandler):
+            @BaseTTSHandler.register("edge_tts")
+            class EdgeTTSHanlder(BaseTTSHandler):
                 pass
         """
 
-        def decorator(subclass: BotType["BaseTextHandler"]) -> BotType["BaseTextHandler"]:
-            OutputHandler._registry[f"text.{handler_type}"] = subclass
+        def decorator(subclass: BotType["BaseTTSHandler"]) -> BotType["BaseTTSHandler"]:
+            OutputHandler._registry[f"tts.{handler_type}"] = subclass
             return subclass
 
         return decorator
 
     @classmethod
-    def get_registered_type(cls, handler_type: str) -> BotType["BaseTextHandler"] | None:
+    def get_registered_type(cls, handler_type: str) -> BotType["BaseTTSHandler"] | None:
         """
         Get a registered handler class by handler type.
 
@@ -46,19 +46,19 @@ class BaseTextHandler(OutputHandler):
         Returns:
             The registered handler class, or None if not found
         """
-        return OutputHandler.get_registered_type("text", handler_type)
+        return OutputHandler.get_registered_type("tts", handler_type)
 
 
-@BaseTextHandler.register("edge_tts")
-class EdgeTTSHandler(BaseTextHandler):
+@BaseTTSHandler.register("edge_tts")
+class EdgeTTSHandler(BaseTTSHandler):
     """Handler that converts text messages to speech using TTS."""
 
-    def __init__(self, config: TextHandlerConfig | None = None):
+    def __init__(self, config: TTSHandlerConfig | None = None):
         """
         Initialize the TTS handler.
 
         Args:
-            config: TextHandlerConfig containing TTS settings
+            config: TTSHandlerConfig containing TTS settings
         """
 
         try:

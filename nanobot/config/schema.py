@@ -236,16 +236,16 @@ class XiaoZhiConfig(Base):
     frame_duration: int = 60  # Frame duration in milliseconds
 
 
-class AudioHandlerConfig(Base):
-    """Configuration for audio handler."""
+class ASRHandlerConfig(Base):
+    """Configuration for ASR (Automatic Speech Recognition) handler."""
 
     enabled: bool = False
     handler_type: str = "funasr"  # vosk or custom
     model: str = "paraformer-zh"
 
 
-class TextHandlerConfig(Base):
-    """Configuration for text handler (TTS)."""
+class TTSHandlerConfig(Base):
+    """Configuration for TTS (Text-to-Speech) handler."""
 
     enabled: bool = False
     handler_type: str = "edge_tts"  # edge_tts or custom
@@ -259,21 +259,21 @@ class TextHandlerConfig(Base):
 class InputHandlerConfig(Base):
     """Configuration for input handlers."""
 
-    audio: AudioHandlerConfig | None = None
+    asr: ASRHandlerConfig | None = None
 
     def model_post_init(self, __context):
-        if self.audio is None:
-            self.audio = AudioHandlerConfig()
+        if self.asr is None:
+            self.asr = ASRHandlerConfig()
 
 
 class OutputHandlerConfig(Base):
     """Configuration for output handlers."""
 
-    text: TextHandlerConfig | None = None
+    tts: TTSHandlerConfig | None = None
 
     def model_post_init(self, __context):
-        if self.text is None:
-            self.text = TextHandlerConfig()
+        if self.tts is None:
+            self.tts = TTSHandlerConfig()
 
 
 class BusConfig(Base):

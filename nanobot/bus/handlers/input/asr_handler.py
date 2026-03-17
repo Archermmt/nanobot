@@ -1,4 +1,4 @@
-"""Audio handlers for speech recognition."""
+"""ASR (Automatic Speech Recognition) handlers for speech recognition."""
 
 import asyncio
 import base64
@@ -15,12 +15,12 @@ from loguru import logger
 
 from nanobot.bus.events import InboundMessage
 from nanobot.bus.handlers.input.input_handler import InputHandler
-from nanobot.config.schema import AudioHandlerConfig
+from nanobot.config.schema import ASRHandlerConfig
 from nanobot.utils.log import CaptureOutput
 
 
-class BaseAudioHandler(InputHandler):
-    """Base class for audio processing handlers."""
+class BaseASRHandler(InputHandler):
+    """Base class for automatic speech recognition handlers."""
 
     @classmethod
     def register(cls, handler_type: str):
@@ -31,19 +31,19 @@ class BaseAudioHandler(InputHandler):
             handler_type: The handler type to register (e.g., "vosk", "funasr")
 
         Usage:
-            @BaseAudioHandler.register_type("funasr")
-            class FunasrHandler(BaseAudioHandler):
+            @BaseASRHandler.register_type("funasr")
+            class FunasrHandler(BaseASRHandler):
                 pass
         """
 
-        def decorator(subclass: Type["BaseAudioHandler"]) -> Type["BaseAudioHandler"]:
-            InputHandler._registry[f"audio.{handler_type}"] = subclass
+        def decorator(subclass: Type["BaseASRHandler"]) -> Type["BaseASRHandler"]:
+            InputHandler._registry[f"asr.{handler_type}"] = subclass
             return subclass
 
         return decorator
 
     @classmethod
-    def get_registered_type(cls, handler_type: str) -> Type["BaseAudioHandler"] | None:
+    def get_registered_type(cls, handler_type: str) -> Type["BaseASRHandler"] | None:
         """
         Get a registered handler class by message type.
 
@@ -53,7 +53,7 @@ class BaseAudioHandler(InputHandler):
         Returns:
             The registered handler class, or None if not found
         """
-        return InputHandler.get_registered_type("audio", handler_type)
+        return InputHandler.get_registered_type("asr", handler_type)
 
     def can_handle(self, msg: InboundMessage) -> bool:
         """
@@ -190,11 +190,11 @@ class BaseAudioHandler(InputHandler):
             return None
 
 
-@BaseAudioHandler.register("funasr")
-class FunasrHandler(BaseAudioHandler):
+@BaseASRHandler.register("funasr")
+class FunasrHandler(BaseASRHandler):
     """FunASR-based speech recognition handler."""
 
-    def __init__(self, config: AudioHandlerConfig):
+    def __init__(self, config: ASRHandlerConfig):
         try:
             import psutil
             import torch
@@ -293,11 +293,11 @@ class FunasrHandler(BaseAudioHandler):
             return ""
 
 
-@BaseAudioHandler.register("vosk")
-class VoskHandler(BaseAudioHandler):
+@BaseASRHandler.register("vosk")
+class VoskHandler(BaseASRHandler):
     """Vosk-based speech recognition handler."""
 
-    def __init__(self, config: AudioHandlerConfig):
+    def __init__(self, config: ASRHandlerConfig):
         from vosk import Model
 
         model = config.model

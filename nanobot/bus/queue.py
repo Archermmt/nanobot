@@ -6,9 +6,9 @@ from typing import Dict
 from loguru import logger
 
 from nanobot.bus.events import InboundMessage, OutboundMessage
-from nanobot.bus.handlers.input.audio_handler import BaseAudioHandler
+from nanobot.bus.handlers.input.asr_handler import BaseASRHandler
 from nanobot.bus.handlers.input.input_handler import InputHandler
-from nanobot.bus.handlers.output.text_handler import BaseTextHandler
+from nanobot.bus.handlers.output.tts_handler import BaseTTSHandler
 from nanobot.config.schema import BusConfig, InputHandlerConfig, OutputHandlerConfig
 
 
@@ -27,13 +27,13 @@ class MessageBus:
         self.input_handlers: Dict[str, InputHandler] = {}
         self.output_handlers: Dict[str, InputHandler] = {}
         input_handler: InputHandlerConfig = self.config.input_handler
-        if input_handler.audio and input_handler.audio.enabled:
-            handler_cls = BaseAudioHandler.get_registered_type(input_handler.audio.handler_type)
-            self.input_handlers["audio"] = handler_cls(input_handler.audio)
+        if input_handler.asr and input_handler.asr.enabled:
+            handler_cls = BaseASRHandler.get_registered_type(input_handler.asr.handler_type)
+            self.input_handlers["audio"] = handler_cls(input_handler.asr)
         output_handler: OutputHandlerConfig = self.config.output_handler
-        if output_handler.text and output_handler.text.enabled:
-            handler_cls = BaseTextHandler.get_registered_type(output_handler.text.handler_type)
-            self.output_handlers["text"] = handler_cls(output_handler.text)
+        if output_handler.tts and output_handler.tts.enabled:
+            handler_cls = BaseTTSHandler.get_registered_type(output_handler.tts.handler_type)
+            self.output_handlers["text"] = handler_cls(output_handler.tts)
         logger.info(f"InputHandlers: {list(self.input_handlers.keys())}")
         logger.info(f"OutputHandlers: {list(self.output_handlers.keys())}")
 
