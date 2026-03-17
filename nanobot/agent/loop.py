@@ -391,7 +391,6 @@ class AgentLoop:
     ) -> OutboundMessage | None:
         """Process a single inbound message and return the response."""
         # System messages: parse origin from chat_id ("channel:chat_id")
-        print("[TMINFO] get msg " + str(msg))
         if msg.channel == "system":
             channel, chat_id = (
                 msg.chat_id.split(":", 1) if ":" in msg.chat_id else ("cli", msg.chat_id)
