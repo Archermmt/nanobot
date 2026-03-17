@@ -105,8 +105,8 @@ class XiaoZhiChannel(BaseChannel):
         self.config_lock = asyncio.Lock()
         self.session_id = str(uuid.uuid4())[:8]
         self.audio_format = "opus"
+        self.frame_duration = config.frame_duration
         self.client_listen_mode = "auto"
-        self.just_woken_up = False
         self.features = {}
 
     async def start(self) -> None:
@@ -384,22 +384,24 @@ class XiaoZhiChannel(BaseChannel):
             """
             raise NotImplementedError("Stop record is not implemented")
             return
+
         if msg_data["state"] != "detect":
             logger.warning("Received unknown state type: {}", msg_data["state"])
             return
 
-        if "text" in msg_data:
-            content = msg_data["text"]
-            self.just_woken_up = True
-            if content in self.config.wakeup_words:
-                await self._handle_message(
-                    sender_id=self.session_id,
-                    chat_id=msg_data.get("chat_id", client_info["client_id"]),
-                    content=random.choice(WAKEUP_RESPONSE),
-                    metadata={"need_tts": True, "passby": True},
-                )
-                return
-            await self._start_to_chat(msg_data, client_info)
+        if "text" not in msg_data:
+            logger.warning("No text in msg_data, nothing to response")
+            return
+
+        if msg_data["text"] in self.config.wakeup_words:
+            await self._handle_message(
+                sender_id=self.session_id,
+                chat_id=msg_data.get("chat_id", client_info["client_id"]),
+                content=random.choice(WAKEUP_RESPONSE),
+                metadata={"need_tts": True, "passby": True},
+            )
+            return
+        await self._start_to_chat(msg_data, client_info)
         return
 
     async def _handle_hello_message(self, msg_data: dict):
@@ -414,7 +416,7 @@ class XiaoZhiChannel(BaseChannel):
                 "format": "opus",
                 "sample_rate": 24000,
                 "channels": 1,
-                "frame_duration": 60,
+                "frame_duration": self.frame_duration,
             },
         }
         audio_params = msg_data.get("audio_params")
@@ -422,9 +424,8 @@ class XiaoZhiChannel(BaseChannel):
             self.audio_format = audio_params.get("format")
             response["audio_params"] = audio_params
         self.features = msg_data.get("features", {})
-        if self.features:
-            if self.features.get("mcp"):
-                asyncio.create_task(self._send_mcp_initialize_message())
+        if self.features.get("mcp"):
+            asyncio.create_task(self._send_mcp_initialize_message())
         try:
             await self._ws.send(json.dumps(response, ensure_ascii=False))
         except Exception as e:
@@ -585,9 +586,16 @@ class XiaoZhiChannel(BaseChannel):
             logger.warning("No connected client found for chat_id: {}", msg.chat_id)
             return
 
-        print("[TMINFO] should send " + str(msg))
-        await self._send_tts_message("start", websocket=target_ws)
-        await self._send_tts_message("sentence_start", msg.content, websocket=target_ws)
-        for media in msg.media:
-            await target_ws.send(media)
-        # await self._send_tts_message("stop", websocket=target_ws)
+        msg_type = msg.metadata.get("type", "tts")
+        if msg_type == "tts":
+            await self._send_tts_message("start", websocket=target_ws)
+            await self._send_tts_message("sentence_start", msg.content, websocket=target_ws)
+            for media in msg.media:
+                await target_ws.send(media)
+            play_time = len(msg.media) * self.frame_duration / 1000.0
+            await asyncio.sleep(play_time)
+            await self._send_tts_message("stop", websocket=target_ws)
+        elif "mode_hint" not in msg.metadata:
+            target_ws.send(
+                json.dumps({"type": "stt", "text": msg.content, "session_id": self.session_id})
+            )

@@ -233,6 +233,7 @@ class XiaoZhiConfig(Base):
     read_config_from_api: bool = False
     depends_folder: str = "~/.nanobot/depends/xiaozhi"
     wakeup_words: list[str] = Field(default_factory=lambda: ["你好小智"])  # Wakeup words list
+    frame_duration: int = 60  # Frame duration in milliseconds
 
 
 class AudioHandlerConfig(Base):
