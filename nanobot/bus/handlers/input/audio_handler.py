@@ -110,7 +110,7 @@ class BaseAudioHandler(InputHandler):
             if transcribed_text:
                 logger.info(f"Recognized speech from audio: '{transcribed_text}'")
                 msg.content = transcribed_text
-                msg.media, keep_keys = [], ("source", "timestamp", "session_id")
+                msg.media, keep_keys = [], ("source", "timestamp", "session_id", "need_tts")
                 keep_meta = {k: v for k, v in msg.metadata.items() if k in keep_keys}
                 msg.metadata = {
                     **keep_meta,
@@ -270,11 +270,9 @@ class FunasrHandler(BaseAudioHandler):
 
             # Read WAV file and extract PCM data
             with wave.open(wav_io, "rb") as wf:
-                sample_rate = wf.getframerate()
                 audio_data = wf.readframes(wf.getnframes())
 
             # Use thread pool to avoid blocking event loop
-            start_time = asyncio.get_event_loop().time()
             result = await asyncio.to_thread(
                 self._model.generate,
                 input=audio_data,
@@ -286,12 +284,7 @@ class FunasrHandler(BaseAudioHandler):
 
             # Extract text from result
             text = result[0]["text"] if result else ""
-
-            logger.info(
-                f"Speech recognized: '{text}' (FunASR latency: {asyncio.get_event_loop().time() - start_time:.3f}s)"
-            )
             return text
-
         except ImportError:
             logger.error("FunASR not installed. Install with: pip install funasr")
             return ""

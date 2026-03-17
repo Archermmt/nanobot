@@ -47,7 +47,7 @@ class MessageBus:
         msg_type = msg.metadata.get("msg_type", "text")
         handler = self.input_handlers.get(msg_type)
         if handler and handler.can_handle(msg):
-            logger.info("Processing {} input with {}", msg_type, handler.__class__.__name__)
+            logger.debug("Processing input({}) : {}", msg_type, handler.__class__.__name__)
             msg = await handler.handle(msg)
         await self.inbound.put(msg)
 
@@ -60,7 +60,7 @@ class MessageBus:
         msg_type = msg.metadata.get("msg_type", "text")
         handler = self.output_handlers.get(msg_type)
         if handler and handler.can_handle(msg):
-            logger.info("Processing {} output with {}", msg_type, handler.__class__.__name__)
+            logger.debug("Processing output({}) : {}", msg_type, handler.__class__.__name__)
             msg = await handler.handle(msg)
         await self.outbound.put(msg)
 

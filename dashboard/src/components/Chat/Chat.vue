@@ -365,7 +365,7 @@ const handleFileUpload = async (fileData: { data: string; type: string; name: st
   console.log('File queued for upload:', fileData.name)
 }
 
-const handleAudioUpload = async (audioData: { data: string; type: string; isRecording?: boolean }) => {
+const handleAudioUpload = async (audioData: { data: string; type: string; isRecording?: boolean; needTts?: boolean }) => {
   // Add audio to messages
   messages.value.push({
     role: 'user',
@@ -392,7 +392,8 @@ const handleAudioUpload = async (audioData: { data: string; type: string; isReco
         session_id: sessionId.value,
         msg_type: 'audio',  // Indicate this is an audio message
         file_type: audioData.type,
-        is_recording: audioData.isRecording
+        is_recording: audioData.isRecording,
+        need_tts: audioData.needTts || false  // Add need_tts flag
       }
     }
 

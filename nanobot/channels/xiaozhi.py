@@ -324,7 +324,6 @@ class XiaoZhiChannel(BaseChannel):
         async for message in websocket:
             if not self._running:
                 break
-            print("\n\n[TMINFO] message " + str(message))
 
             try:
                 if isinstance(message, str):

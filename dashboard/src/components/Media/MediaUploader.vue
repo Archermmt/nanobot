@@ -5,6 +5,7 @@ interface Props {
   disabled?: boolean
   isMicrophoneOn?: boolean
   enableAudio?: boolean // Track if audio input handler is enabled
+  enableSpeak?: boolean // Track if speech output is enabled
 }
 
 const props = defineProps<Props>()
@@ -86,7 +87,8 @@ const startRecording = async () => {
           data: e.target?.result as string,
           type: 'audio/webm',
           name: `recording_${Date.now()}.webm`,
-          isRecording: true
+          isRecording: true,
+          needTts: props.enableSpeak // Add need_tts flag based on enableSpeak
         })
       }
       reader.readAsDataURL(audioBlob)
