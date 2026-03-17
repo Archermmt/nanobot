@@ -7,6 +7,7 @@ interface Props {
   isLoading: boolean
   disabled?: boolean
   isMicrophoneOn?: boolean
+  enableSpeak?: boolean
   messages?: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>
 }
 
@@ -191,7 +192,8 @@ defineExpose({
     <div class="flex items-center space-x-3">
       <!-- Media Upload Buttons on the left of input -->
       <MediaUploader :disabled="props.disabled || isLoading" :is-microphone-on="props.isMicrophoneOn"
-        @upload-image="handleImageUpload" @upload-audio="handleAudioUpload" @upload-file="handleFileUpload" />
+        :enable-speak="props.enableSpeak" @upload-image="handleImageUpload" @upload-audio="handleAudioUpload"
+        @upload-file="handleFileUpload" />
 
       <!-- Text Input -->
       <form id="message-form" @submit.prevent="sendMessage" class="flex-1 flex flex-col space-y-2">
