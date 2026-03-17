@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@mdi/js": "^7.4.47",
     "@vueuse/core": "^11.0.0",
     "marked": "^12.0.0",
     "pinia": "^2.1.7",

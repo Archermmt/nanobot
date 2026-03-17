@@ -3,6 +3,7 @@ import { ref, getCurrentInstance, onUnmounted, onMounted } from 'vue'
 import Sidebar from './components/Sidebar/Sidebar.vue'
 import StatusBar from './components/StatusBar/StatusBar.vue'
 import Chat from './components/Chat/Chat.vue'
+import { mdiPhone, mdiPhoneHangup, mdiWebcam, mdiMicrophone, mdiVolumeHigh, mdiEyeOff } from '@mdi/js'
 
 // WebSocket connection state
 const wsUrl = ref('ws://localhost:8765')
@@ -22,7 +23,7 @@ const sidebarExpanded = ref(true)
 const currentSection = ref('chat')
 const chatComponentRef = ref<any>(null)
 const statusBarComponentRef = ref<any>(null)
-const showProgressMessages = ref(true)
+const hideProgress = ref(false)
 const isCameraOn = ref(false)
 const isMicrophoneOn = ref(false)
 const enableAudio = ref(false) // Track if audio input handler is enabled
@@ -312,23 +313,20 @@ document.addEventListener('mouseup', stopDragCamera)
           <button v-if="!isConnected" @click="connectWebSocket" :disabled="isConnecting || !wsUrl.trim()"
             class="nes-btn" title="连接">
             <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
-              <path
-                d="M6.62,10.79C8.06,13.62 10.38,15.94 13.21,17.38L15.41,15.18C15.69,14.9 16.08,14.82 16.43,14.93C17.55,15.3 18.75,15.5 20,15.5A1,1 0 0,1 21,16.5V20A1,1 0 0,1 20,21A17,17 0 0,1 3,4A1,1 0 0,1 4,3H7.5A1,1 0 0,1 8.5,4C8.5,5.25 8.7,6.45 9.07,7.57C9.18,7.92 9.1,8.31 8.82,8.59L6.62,10.79Z" />
+              <path :d="mdiPhone" />
             </svg>
           </button>
 
           <button v-if="isConnected" @click="disconnectWebSocket" class="nes-btn is-success" title="断开连接">
             <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
-              <path
-                d="M6.62,10.79C8.06,13.62 10.38,15.94 13.21,17.38L15.41,15.18C15.69,14.9 16.08,14.82 16.43,14.93C17.55,15.3 18.75,15.5 20,15.5A1,1 0 0,1 21,16.5V20A1,1 0 0,1 20,21A17,17 0 0,1 3,4A1,1 0 0,1 4,3H7.5A1,1 0 0,1 8.5,4C8.5,5.25 8.7,6.45 9.07,7.57C9.18,7.92 9.1,8.31 8.82,8.59L6.62,10.79Z" />
+              <path :d="mdiPhoneHangup" />
             </svg>
           </button>
 
           <button @click="toggleCamera" class="nes-btn"
             :class="{ 'is-success': isCameraOn, 'is-disabled': !isConnected }" :title="isCameraOn ? '关闭摄像头' : '开启摄像头'">
             <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
-              <path
-                d="M17,10.5V7A1,1 0 0,0 16,6H4A1,1 0 0,0 3,7V17A1,1 0 0,0 4,18H16A1,1 0 0,0 17,17V13.5L21,17.5V6.5L17,10.5Z" />
+              <path :d="mdiWebcam" />
             </svg>
           </button>
 
@@ -336,8 +334,7 @@ document.addEventListener('mouseup', stopDragCamera)
             :class="{ 'is-success': isMicrophoneOn, 'is-disabled': !isConnected || !enableAudio }"
             :title="isMicrophoneOn ? '关闭麦克风' : '开启麦克风'">
             <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
-              <path
-                d="M12,2A3,3 0 0,1 15,5V11A3,3 0 0,1 12,14A3,3 0 0,1 9,11V5A3,3 0 0,1 12,2M19,11C19,14.53 16.39,17.44 13,17.93V21H11V17.93C7.61,17.44 5,14.53 5,11H7A5,5 0 0,0 12,16A5,5 0 0,0 17,11H19Z" />
+              <path :d="mdiMicrophone" />
             </svg>
           </button>
 
@@ -345,17 +342,15 @@ document.addEventListener('mouseup', stopDragCamera)
             :class="{ 'is-success': enableSpeak, 'is-disabled': !isConnected || !enableTts }"
             :title="enableSpeak ? '关闭语音输出' : '开启语音输出'">
             <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
-              <path
-                d="M12,2C12.5,2 13,2.19 13.31,2.56L16.94,8.88C18.3,8.81 19.55,9.24 20.56,10C21.63,10.81 22.31,12.09 22.31,13.5C22.31,14.8 21.75,15.97 20.94,16.84L20.19,17.59C20.07,17.71 19.91,17.78 19.75,17.78H17.5C17.29,17.78 17.11,17.67 17,17.53C16.34,18.72 15.22,19.66 13.81,20.06L13.19,21.16C12.88,21.69 12.31,22 11.75,22H10.25C9.75,22 9.31,21.75 9.06,21.34L4.25,13H2V11H4.25L9.06,2.66C9.31,2.25 9.75,2 10.25,2H12M12,4.19L7.81,11.5L12,18.81V16H14A2,2 0 0,0 16,14V11A2,2 0 0,0 14,9H12V4.19M20.31,11.25C20.06,11.06 19.75,10.94 19.44,10.88L20.31,12.41V13.5C20.31,13.61 20.3,13.72 20.28,13.83L21.09,13C21.27,12.81 21.38,12.56 21.38,12.28C21.38,11.94 21.22,11.63 21,11.41L20.31,11.25M19.44,15.13L18.53,16.03C18.59,15.97 18.66,15.91 18.72,15.84L19.44,15.13Z" />
+              <path :d="mdiVolumeHigh" />
             </svg>
           </button>
 
-          <button @click="showProgressMessages = !showProgressMessages" class="nes-btn"
-            :class="{ 'is-success': showProgressMessages, 'is-disabled': !isConnected }"
-            :title="showProgressMessages ? '关闭思考模式' : '开启思考模式'">
+          <button @click="hideProgress = !hideProgress" class="nes-btn"
+            :class="{ 'is-success': hideProgress, 'is-disabled': !isConnected }"
+            :title="hideProgress ? '开启思考模式' : '关闭思考模式'">
             <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
-              <path
-                d="M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9M12,17A5,5 0 0,1 7,12A5,5 0 0,1 12,7A5,5 0 0,1 17,12A5,5 0 0,1 12,17M12,4.5C7,4.5 2.73,7.61 1,12C2.73,16.39 7,19.5 12,19.5C17,19.5 21.27,16.39 23,12C21.27,7.61 17,4.5 12,4.5Z" />
+              <path :d="mdiEyeOff" />
             </svg>
           </button>
         </div>
@@ -368,7 +363,7 @@ document.addEventListener('mouseup', stopDragCamera)
       <!-- Content Area -->
       <main class="flex-1 overflow-hidden bg-gray-900">
         <Chat ref="chatComponentRef" v-show="currentSection === 'chat'" @status-update="handleStatusUpdate"
-          @ws-status-change="handleWsStatusChange" :show-progress-messages="showProgressMessages"
+          @ws-status-change="handleWsStatusChange" :show-progress-messages="!hideProgress"
           :is-microphone-on="isMicrophoneOn" :enable-audio="enableAudio" :enable-tts="enableTts"
           :enable-speak="enableSpeak" />
         <div v-show="currentSection !== 'chat'" class="p-6 text-gray-500 text-center">
