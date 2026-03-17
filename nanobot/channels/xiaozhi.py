@@ -2,10 +2,10 @@
 
 import asyncio
 import json
+import random
 import uuid
 from collections import OrderedDict
 from enum import Enum
-from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 import websockets
@@ -16,7 +16,6 @@ from nanobot.bus.queue import MessageBus
 from nanobot.channels.base import BaseChannel
 from nanobot.channels.xiaozhi_server.core.http_server import SimpleHttpServer
 from nanobot.config.schema import XiaoZhiConfig
-from nanobot.utils.media import save_media
 
 from .xiaozhi_server.core.utils import textUtils
 
@@ -31,6 +30,19 @@ class TextMessageType(Enum):
     MCP = "mcp"
     SERVER = "server"
     PING = "ping"
+
+
+WAKEUP_RESPONSE = [
+    "我一直都在呢，您请说。",
+    "在的呢，请随时吩咐我。",
+    "来啦来啦，请告诉我吧。",
+    "您请说，我正听着。",
+    "请您讲话，我准备好了。",
+    "请您说出指令吧。",
+    "我认真听着呢，请讲。",
+    "请问您需要什么帮助？",
+    "我在这里，等候您的指令。",
+]
 
 
 class AuthenticationError(Exception):
@@ -379,13 +391,16 @@ class XiaoZhiChannel(BaseChannel):
 
         if "text" in msg_data:
             content = msg_data["text"]
+            self.just_woken_up = True
             if content in self.config.wakeup_words:
-                self.just_woken_up = True
-                msg_data["text"] = "嘿，你好呀"
-                await self._start_to_chat(msg_data, client_info)
-            else:
-                self.just_woken_up = True
-                await self._start_to_chat(msg_data, client_info)
+                await self._handle_message(
+                    sender_id=self.session_id,
+                    chat_id=msg_data.get("chat_id", client_info["client_id"]),
+                    content=random.choice(WAKEUP_RESPONSE["responses"]),
+                    metadata={"need_tts": True, "passby": True},
+                )
+                return
+            await self._start_to_chat(msg_data, client_info)
         return
 
     async def _handle_hello_message(self, msg_data: dict):
@@ -532,7 +547,7 @@ class XiaoZhiChannel(BaseChannel):
             metadata={"need_tts": True},
         )
 
-    async def _send_tts_message(self, state, text=None):
+    async def _send_tts_message(self, state, text=None, websocket=None):
         """发送 TTS 状态消息"""
         if text is None and state == "sentence_start":
             return
@@ -543,7 +558,8 @@ class XiaoZhiChannel(BaseChannel):
         if state == "stop":
             logger.info("Stop tts message")
         # 发送消息到客户端
-        await self._ws.send(json.dumps(message))
+        websocket = websocket or self._ws
+        await websocket.send(json.dumps(message))
 
     async def send(self, msg: OutboundMessage) -> None:
         """
@@ -572,28 +588,8 @@ class XiaoZhiChannel(BaseChannel):
             return
 
         print("[TMINFO] should send " + str(msg))
-        try:
-            # Prepare message
-            message_data = {
-                "type": "message",
-                "content": msg.content,
-                "sender_id": "bot",
-                "chat_id": msg.chat_id,
-                "media": msg.media,
-                "metadata": msg.metadata,
-                "reply_to": msg.reply_to,
-                "timestamp": asyncio.get_event_loop().time(),
-            }
-
-            # Send message
-            await target_ws.send(json.dumps(message_data, ensure_ascii=False))
-            logger.debug(
-                "Sent message to device {}: {}",
-                client_info["device_id"],
-                msg.content[:100] if msg.content else "<no content>",
-            )
-
-        except Exception as e:
-            logger.error("Error sending message to {}: {}", client_info["device_id"], e)
-            if target_ws in self._connected_clients:
-                del self._connected_clients[target_ws]
+        await self._send_tts_message("start", websocket=target_ws)
+        await self._send_tts_message("sentence_start", msg.content, websocket=target_ws)
+        for media in msg.media:
+            await target_ws.send(media)
+        await self._send_tts_message("stop", websocket=target_ws)

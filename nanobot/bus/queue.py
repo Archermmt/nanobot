@@ -24,18 +24,18 @@ class MessageBus:
         self.config = config or BusConfig()
         self.inbound: asyncio.Queue[InboundMessage] = asyncio.Queue()
         self.outbound: asyncio.Queue[OutboundMessage] = asyncio.Queue()
-        self._input_handlers: Dict[str, InputHandler] = {}
-        self._output_handlers: Dict[str, InputHandler] = {}
+        self.input_handlers: Dict[str, InputHandler] = {}
+        self.output_handlers: Dict[str, InputHandler] = {}
         input_handler: InputHandlerConfig = self.config.input_handler
         if input_handler.audio and input_handler.audio.enabled:
             handler_cls = BaseAudioHandler.get_registered_type(input_handler.audio.handler_type)
-            self._input_handlers["audio"] = handler_cls(input_handler.audio)
+            self.input_handlers["audio"] = handler_cls(input_handler.audio)
         output_handler: OutputHandlerConfig = self.config.output_handler
         if output_handler.text and output_handler.text.enabled:
             handler_cls = BaseTextHandler.get_registered_type(output_handler.text.handler_type)
-            self._output_handlers["text"] = handler_cls(output_handler.text)
-        logger.info(f"InputHandlers: {self._input_handlers}")
-        logger.info(f"OutputHandlers: {self._output_handlers}")
+            self.output_handlers["text"] = handler_cls(output_handler.text)
+        logger.info(f"InputHandlers: {self.input_handlers}")
+        logger.info(f"OutputHandlers: {self.output_handlers}")
 
     async def publish_inbound(self, msg: InboundMessage) -> None:
         """
@@ -45,7 +45,7 @@ class MessageBus:
         transcribed to text before being published.
         """
         msg_type = msg.metadata.get("msg_type", "text")
-        handler = self._input_handlers.get(msg_type)
+        handler = self.input_handlers.get(msg_type)
         if handler and handler.can_handle(msg):
             logger.info("Processing {} input with {}", msg_type, handler.__class__.__name__)
             msg = await handler.handle(msg)
@@ -58,7 +58,7 @@ class MessageBus:
     async def publish_outbound(self, msg: OutboundMessage) -> None:
         """Publish a response from the agent to channels."""
         msg_type = msg.metadata.get("msg_type", "text")
-        handler = self._output_handlers.get(msg_type)
+        handler = self.output_handlers.get(msg_type)
         if handler and handler.can_handle(msg):
             logger.info("Processing {} output with {}", msg_type, handler.__class__.__name__)
             msg = await handler.handle(msg)

@@ -4,8 +4,9 @@ import base64
 import os
 import subprocess
 import tempfile
+from io import BytesIO
 from pathlib import Path
-from typing import Optional
+from typing import Any, Callable, Optional
 
 import numpy as np
 from loguru import logger
@@ -90,6 +91,82 @@ def save_media(media_data: str, media_dir: Path, filename: str | None = None) ->
         file_path.write_bytes(file_data)
     logger.debug("Saved base64 media to {}", file_path)
     return file_path, filename
+
+
+def pcm_to_data_stream(
+    raw_data,
+    is_opus=True,
+    callback: Callable[[Any], Any] = None,
+    sample_rate=16000,
+    opus_encoder=None,
+):
+    """
+    将PCM数据流式编码为Opus或直接输出PCM
+
+    Args:
+        raw_data: PCM原始数据
+        is_opus: 是否编码为Opus
+        callback: 回调函数
+        sample_rate: 采样率
+        opus_encoder: OpusEncoderUtils对象(推荐提供以保持编码器状态连续)
+    """
+
+    import opuslib_next
+
+    using_temp_encoder = False
+    if is_opus and opus_encoder is None:
+        encoder = opuslib_next.Encoder(sample_rate, 1, opuslib_next.APPLICATION_AUDIO)
+        using_temp_encoder = True
+
+    # 编码参数
+    frame_duration = 60  # 60ms per frame
+    frame_size = int(sample_rate * frame_duration / 1000)  # samples/frame
+
+    # 按帧处理所有音频数据（包括最后一帧可能补零）
+    for i in range(0, len(raw_data), frame_size * 2):  # 16bit=2bytes/sample
+        # 获取当前帧的二进制数据
+        chunk = raw_data[i : i + frame_size * 2]
+
+        # 如果最后一帧不足，补零
+        if len(chunk) < frame_size * 2:
+            chunk += b"\x00" * (frame_size * 2 - len(chunk))
+
+        if is_opus:
+            if using_temp_encoder:
+                # 使用临时编码器（仅用于独立音频场景）
+                np_frame = np.frombuffer(chunk, dtype=np.int16)
+                frame_data = encoder.encode(np_frame.tobytes(), frame_size)
+                callback(frame_data)
+            else:
+                # 使用外部编码器（TTS流式场景,保持状态连续）
+                is_last = i + frame_size * 2 >= len(raw_data)
+                opus_encoder.encode_pcm_to_opus_stream(
+                    chunk, end_of_stream=is_last, callback=callback
+                )
+        else:
+            # PCM模式,直接输出
+            frame_data = chunk if isinstance(chunk, bytes) else bytes(chunk)
+            callback(frame_data)
+
+
+def audio_bytes_to_data_stream(
+    audio_bytes,
+    file_type,
+    is_opus,
+    callback: Callable[[Any], Any],
+    sample_rate=16000,
+    opus_encoder=None,
+) -> None:
+    """
+    直接用音频二进制数据转为opus/pcm数据，支持wav、mp3、p3
+    """
+
+    from pydub import AudioSegment
+
+    audio = AudioSegment.from_file(BytesIO(audio_bytes), format=file_type, parameters=["-nostdin"])
+    audio = audio.set_channels(1).set_frame_rate(sample_rate).set_sample_width(2)
+    raw_data = audio.raw_data
+    pcm_to_data_stream(raw_data, is_opus, callback, sample_rate, opus_encoder)
 
 
 def audio_to_data(

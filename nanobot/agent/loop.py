@@ -508,6 +508,8 @@ class AgentLoop:
                 "history": len(session.messages),
                 "skills": len(self.context.skills.list_skills()),
                 "tools": len(self.tools),
+                "enable_audio": "audio" in self.bus.input_handlers,
+                "enable_tts": "text" in self.bus.output_handlers,
             }
             metadata = {"_response_for": "status"}
             if msg.metadata.get("_hide_from_ui", False):
@@ -551,6 +553,11 @@ class AgentLoop:
                 chat_id=msg.chat_id,
                 content="Registered extern tools: " + ",".join(tools),
                 metadata={"_response_for": "register_extern_tools"},
+            )
+        if msg.metadata and msg.metadata.get("passby", False):
+            msg.metadata.pop("passby")
+            return OutboundMessage(
+                channel=msg.channel, chat_id=msg.chat_id, content=msg.content, metadata=msg.metadata
             )
 
         unconsolidated = len(session.messages) - session.last_consolidated
