@@ -244,12 +244,11 @@ const handleWebSocketMessage = (event: MessageEvent) => {
   }
 }
 
-const sendMessage = async (data: string | { text: string; images: Array<{ data: string; type: string; name: string }>; files: Array<{ data: string; type: string; name: string }>; needTts?: boolean }) => {
+const sendMessage = async (data: string | { text: string; images: Array<{ data: string; type: string; name: string }>; files: Array<{ data: string; type: string; name: string }> }) => {
   // Handle both old string format and new object format
   let text = ''
   let images: Array<{ data: string; type: string; name: string }> = []
   let files: Array<{ data: string; type: string; name: string }> = []
-  let needTts = false
 
   if (typeof data === 'string') {
     text = data
@@ -257,7 +256,6 @@ const sendMessage = async (data: string | { text: string; images: Array<{ data: 
     text = data.text || ''
     images = data.images || []
     files = data.files || []
-    needTts = data.needTts || false
   }
 
   const userMessage: Message = {
@@ -317,7 +315,7 @@ const sendMessage = async (data: string | { text: string; images: Array<{ data: 
         source: 'web_dashboard',
         timestamp: Date.now(),
         session_id: sessionId.value,
-        need_tts: needTts  // Add need_tts flag to metadata
+        need_tts: props.enableSpeak  // Add need_tts flag based on global enableSpeak
       }
     }
 
