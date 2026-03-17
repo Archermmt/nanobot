@@ -324,13 +324,12 @@ class XiaoZhiChannel(BaseChannel):
         async for message in websocket:
             if not self._running:
                 break
+            print("\n\n[TMINFO] message " + str(message))
 
             try:
                 if isinstance(message, str):
-                    logger.info("\n\n[TMINFO] text message " + str(message))
                     msg_data = json.loads(message)
                 elif isinstance(message, bytes):
-                    logger.info("\n\n[TMINFO] bytes message " + str(message))
                     raise Exception("not implemented!!")
                 else:
                     return
@@ -396,7 +395,7 @@ class XiaoZhiChannel(BaseChannel):
                 await self._handle_message(
                     sender_id=self.session_id,
                     chat_id=msg_data.get("chat_id", client_info["client_id"]),
-                    content=random.choice(WAKEUP_RESPONSE["responses"]),
+                    content=random.choice(WAKEUP_RESPONSE),
                     metadata={"need_tts": True, "passby": True},
                 )
                 return
@@ -539,7 +538,6 @@ class XiaoZhiChannel(BaseChannel):
         await self._ws.send(
             json.dumps({"type": "stt", "text": stt_text, "session_id": self.session_id})
         )
-        # await self._send_tts_message("start")
         await self._handle_message(
             sender_id=self.session_id,
             chat_id=msg_data.get("chat_id", client_info["client_id"]),
@@ -592,4 +590,4 @@ class XiaoZhiChannel(BaseChannel):
         await self._send_tts_message("sentence_start", msg.content, websocket=target_ws)
         for media in msg.media:
             await target_ws.send(media)
-        await self._send_tts_message("stop", websocket=target_ws)
+        # await self._send_tts_message("stop", websocket=target_ws)

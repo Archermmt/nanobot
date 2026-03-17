@@ -34,8 +34,8 @@ class MessageBus:
         if output_handler.text and output_handler.text.enabled:
             handler_cls = BaseTextHandler.get_registered_type(output_handler.text.handler_type)
             self.output_handlers["text"] = handler_cls(output_handler.text)
-        logger.info(f"InputHandlers: {self.input_handlers}")
-        logger.info(f"OutputHandlers: {self.output_handlers}")
+        logger.info(f"InputHandlers: {list(self.input_handlers.keys())}")
+        logger.info(f"OutputHandlers: {list(self.output_handlers.keys())}")
 
     async def publish_inbound(self, msg: InboundMessage) -> None:
         """

@@ -26,6 +26,8 @@ const showProgressMessages = ref(true)
 const isCameraOn = ref(false)
 const isMicrophoneOn = ref(false)
 const enableAudio = ref(false) // Track if audio input handler is enabled
+const enableSpeak = ref(false) // Track if speech output is enabled
+const enableTts = ref(false) // Track if TTS is available
 const videoStream = ref<MediaStream | null>(null)
 const audioStream = ref<MediaStream | null>(null)
 const videoElement = ref<HTMLVideoElement | null>(null)
@@ -174,9 +176,12 @@ const handleSendStatus = () => {
 // Handle status update from Chat component
 const handleStatusUpdate = (data: any) => {
   console.log('📊 Status update received in App.vue:', data)
-  // Update global enable_audio state
+  // Update global enable_audio and enable_tts state
   if (data.enable_audio !== undefined) {
     enableAudio.value = data.enable_audio
+  }
+  if (data.enable_tts !== undefined) {
+    enableTts.value = data.enable_tts
   }
   // Pass the status data to StatusBar via a custom event or prop
   // We'll use a ref to call StatusBar's method
@@ -336,6 +341,15 @@ document.addEventListener('mouseup', stopDragCamera)
             </svg>
           </button>
 
+          <button @click="enableSpeak = !enableSpeak" class="nes-btn"
+            :class="{ 'is-success': enableSpeak, 'is-disabled': !isConnected || !enableTts }"
+            :title="enableSpeak ? '关闭语音输出' : '开启语音输出'">
+            <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
+              <path
+                d="M12,2C12.5,2 13,2.19 13.31,2.56L16.94,8.88C18.3,8.81 19.55,9.24 20.56,10C21.63,10.81 22.31,12.09 22.31,13.5C22.31,14.8 21.75,15.97 20.94,16.84L20.19,17.59C20.07,17.71 19.91,17.78 19.75,17.78H17.5C17.29,17.78 17.11,17.67 17,17.53C16.34,18.72 15.22,19.66 13.81,20.06L13.19,21.16C12.88,21.69 12.31,22 11.75,22H10.25C9.75,22 9.31,21.75 9.06,21.34L4.25,13H2V11H4.25L9.06,2.66C9.31,2.25 9.75,2 10.25,2H12M12,4.19L7.81,11.5L12,18.81V16H14A2,2 0 0,0 16,14V11A2,2 0 0,0 14,9H12V4.19M20.31,11.25C20.06,11.06 19.75,10.94 19.44,10.88L20.31,12.41V13.5C20.31,13.61 20.3,13.72 20.28,13.83L21.09,13C21.27,12.81 21.38,12.56 21.38,12.28C21.38,11.94 21.22,11.63 21,11.41L20.31,11.25M19.44,15.13L18.53,16.03C18.59,15.97 18.66,15.91 18.72,15.84L19.44,15.13Z" />
+            </svg>
+          </button>
+
           <button @click="showProgressMessages = !showProgressMessages" class="nes-btn"
             :class="{ 'is-success': showProgressMessages, 'is-disabled': !isConnected }"
             :title="showProgressMessages ? '关闭思考模式' : '开启思考模式'">
@@ -355,7 +369,7 @@ document.addEventListener('mouseup', stopDragCamera)
       <main class="flex-1 overflow-hidden bg-gray-900">
         <Chat ref="chatComponentRef" v-show="currentSection === 'chat'" @status-update="handleStatusUpdate"
           @ws-status-change="handleWsStatusChange" :show-progress-messages="showProgressMessages"
-          :is-microphone-on="isMicrophoneOn" :enable-audio="enableAudio" />
+          :is-microphone-on="isMicrophoneOn" :enable-audio="enableAudio" :enable-tts="enableTts" />
         <div v-show="currentSection !== 'chat'" class="p-6 text-gray-500 text-center">
           <p class="text-lg">Section under construction</p>
           <p class="text-sm mt-2">{{ currentSection }} view coming soon...</p>
