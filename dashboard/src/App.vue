@@ -25,6 +25,7 @@ const statusBarComponentRef = ref<any>(null)
 const showProgressMessages = ref(true)
 const isCameraOn = ref(false)
 const isMicrophoneOn = ref(false)
+const enableAudio = ref(false) // Track if audio input handler is enabled
 const videoStream = ref<MediaStream | null>(null)
 const audioStream = ref<MediaStream | null>(null)
 const videoElement = ref<HTMLVideoElement | null>(null)
@@ -173,6 +174,10 @@ const handleSendStatus = () => {
 // Handle status update from Chat component
 const handleStatusUpdate = (data: any) => {
   console.log('📊 Status update received in App.vue:', data)
+  // Update global enable_audio state
+  if (data.enable_audio !== undefined) {
+    enableAudio.value = data.enable_audio
+  }
   // Pass the status data to StatusBar via a custom event or prop
   // We'll use a ref to call StatusBar's method
   if (statusBarComponentRef.value && statusBarComponentRef.value.handleStatusUpdate) {
@@ -307,15 +312,15 @@ document.addEventListener('mouseup', stopDragCamera)
             </svg>
           </button>
 
-          <button v-if="isConnected" @click="disconnectWebSocket" class="nes-btn is-error" title="断开连接">
+          <button v-if="isConnected" @click="disconnectWebSocket" class="nes-btn is-success" title="断开连接">
             <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
               <path
                 d="M6.62,10.79C8.06,13.62 10.38,15.94 13.21,17.38L15.41,15.18C15.69,14.9 16.08,14.82 16.43,14.93C17.55,15.3 18.75,15.5 20,15.5A1,1 0 0,1 21,16.5V20A1,1 0 0,1 20,21A17,17 0 0,1 3,4A1,1 0 0,1 4,3H7.5A1,1 0 0,1 8.5,4C8.5,5.25 8.7,6.45 9.07,7.57C9.18,7.92 9.1,8.31 8.82,8.59L6.62,10.79Z" />
             </svg>
           </button>
 
-          <button @click="toggleCamera" class="nes-btn" :class="{ 'is-error': isCameraOn, 'is-disabled': !isConnected }"
-            :title="isCameraOn ? '关闭摄像头' : '开启摄像头'">
+          <button @click="toggleCamera" class="nes-btn"
+            :class="{ 'is-success': isCameraOn, 'is-disabled': !isConnected }" :title="isCameraOn ? '关闭摄像头' : '开启摄像头'">
             <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
               <path
                 d="M17,10.5V7A1,1 0 0,0 16,6H4A1,1 0 0,0 3,7V17A1,1 0 0,0 4,18H16A1,1 0 0,0 17,17V13.5L21,17.5V6.5L17,10.5Z" />
@@ -323,7 +328,7 @@ document.addEventListener('mouseup', stopDragCamera)
           </button>
 
           <button @click="toggleMicrophone" class="nes-btn"
-            :class="{ 'is-error': isMicrophoneOn, 'is-disabled': !isConnected }"
+            :class="{ 'is-success': isMicrophoneOn, 'is-disabled': !isConnected || !enableAudio }"
             :title="isMicrophoneOn ? '关闭麦克风' : '开启麦克风'">
             <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
               <path
@@ -332,7 +337,7 @@ document.addEventListener('mouseup', stopDragCamera)
           </button>
 
           <button @click="showProgressMessages = !showProgressMessages" class="nes-btn"
-            :class="{ 'is-error': showProgressMessages, 'is-disabled': !isConnected }"
+            :class="{ 'is-success': showProgressMessages, 'is-disabled': !isConnected }"
             :title="showProgressMessages ? '关闭思考模式' : '开启思考模式'">
             <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
               <path
@@ -350,7 +355,7 @@ document.addEventListener('mouseup', stopDragCamera)
       <main class="flex-1 overflow-hidden bg-gray-900">
         <Chat ref="chatComponentRef" v-show="currentSection === 'chat'" @status-update="handleStatusUpdate"
           @ws-status-change="handleWsStatusChange" :show-progress-messages="showProgressMessages"
-          :is-microphone-on="isMicrophoneOn" />
+          :is-microphone-on="isMicrophoneOn" :enable-audio="enableAudio" />
         <div v-show="currentSection !== 'chat'" class="p-6 text-gray-500 text-center">
           <p class="text-lg">Section under construction</p>
           <p class="text-sm mt-2">{{ currentSection }} view coming soon...</p>

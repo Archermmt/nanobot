@@ -3,22 +3,24 @@ import { ref, onMounted, watch } from 'vue'
 
 interface Status {
   mode: string
-  price: string
   model: string
   history: number
   skills: number
   tools: number
   connected: boolean
+  enable_audio: boolean
+  enable_tts: boolean
 }
 
 const status = ref<Status>({
   mode: 'N/A',
-  price: 'N/A',
   model: 'N/A',
   history: 0,
   skills: 0,
   tools: 0,
-  connected: false
+  connected: false,
+  enable_audio: false,
+  enable_tts: false
 })
 
 const emit = defineEmits(['send-status'])
@@ -52,12 +54,13 @@ const handleStatusUpdate = (data: any) => {
 
     status.value = {
       mode: parsedData.mode || 'N/A',
-      price: parsedData.price || 'N/A',
       model: parsedData.model || 'N/A',
       history: parsedData.history || 0,
       skills: parsedData.skills || 0,
       tools: parsedData.tools || 0,
-      connected: true
+      connected: true,
+      enable_audio: parsedData.enable_audio || false,
+      enable_tts: parsedData.enable_tts || false
     }
   } catch (error) {
     console.error('Failed to parse status data:', error)

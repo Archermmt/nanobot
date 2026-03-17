@@ -25,6 +25,7 @@ interface Message {
 const props = defineProps<{
   showProgressMessages?: boolean
   isMicrophoneOn?: boolean
+  enableAudio?: boolean
 }>()
 
 const emit = defineEmits(['send', 'new-chat', 'clear-chat', 'upload-image', 'upload-audio', 'upload-file', 'ws-status-change', 'send-status', 'status-update'])
@@ -35,6 +36,8 @@ const sessionId = ref(`session_${Date.now()}`)
 const currentAudio = ref<HTMLAudioElement | null>(null)
 const currentTimeoutId = ref<number | null>(null)
 const chatInputRef = ref<InstanceType<typeof ChatInput> | null>(null)
+const enableAudio = ref(false)
+const enableTts = ref(false)
 
 // WebSocket instance (managed by App.vue)
 let ws: WebSocket | null = null
@@ -64,6 +67,14 @@ const handleWebSocketMessage = (event: MessageEvent) => {
         // This is a status update, emit it for StatusBar
         try {
           const statusData = JSON.parse(data.content)
+          // Update global audio/tts state
+          if (statusData.enable_audio !== undefined) {
+            enableAudio.value = statusData.enable_audio
+          }
+          if (statusData.enable_tts !== undefined) {
+            enableTts.value = statusData.enable_tts
+          }
+          console.log('🔊 Audio enabled:', enableAudio.value, 'TTS enabled:', enableTts.value)
           emit('status-update', statusData)
         } catch (e) {
           console.log('Status message content:', data.content)
@@ -577,8 +588,8 @@ defineExpose({
 
     <!-- Input -->
     <ChatInput ref="chatInputRef" :isLoading="isLoading" :disabled="!isConnected"
-      :is-microphone-on="props.isMicrophoneOn" :messages="messages" @send="sendMessage" @new-chat="handleNewChat"
-      @clear-chat="handleClearChat" @upload-image="handleImageUpload" @upload-audio="handleAudioUpload"
-      @upload-file="handleFileUpload" @send-status="handleSendStatus" />
+      :is-microphone-on="props.isMicrophoneOn" :enable-audio="props.enableAudio" :messages="messages"
+      @send="sendMessage" @new-chat="handleNewChat" @clear-chat="handleClearChat" @upload-image="handleImageUpload"
+      @upload-audio="handleAudioUpload" @upload-file="handleFileUpload" @send-status="handleSendStatus" />
   </div>
 </template>

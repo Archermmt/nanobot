@@ -4,6 +4,7 @@ import { ref } from 'vue'
 interface Props {
   disabled?: boolean
   isMicrophoneOn?: boolean
+  enableAudio?: boolean // Track if audio input handler is enabled
 }
 
 const props = defineProps<Props>()
@@ -129,7 +130,8 @@ const stopRecording = () => {
     </button>
 
     <!-- Voice Recording -->
-    <button @click="isRecording ? stopRecording() : startRecording()" :disabled="props.disabled || isMicrophoneOn"
+    <button @click="isRecording ? stopRecording() : startRecording()"
+      :disabled="props.disabled || isMicrophoneOn || !props.enableAudio"
       class="nes-btn p-2 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
       :class="isRecording ? 'is-danger' : 'is-primary'" :title="isRecording ? 'Stop Recording' : 'Start Recording'">
       {{ isRecording ? '⏹️' : '🎙️' }}

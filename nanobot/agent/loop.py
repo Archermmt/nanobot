@@ -503,7 +503,6 @@ class AgentLoop:
                 ]
             status = {
                 "mode": self.provider.get_default_mode(),
-                "price": "free",
                 "model": "\n".join(modes),
                 "history": len(session.messages),
                 "skills": len(self.context.skills.list_skills()),
