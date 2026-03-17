@@ -274,6 +274,11 @@ class EdgeTTSHandler(BaseTextHandler):
         text, audio_bytes = self._clean_markdown(text), None
         max_repeat_time = 5
         output_file = str(self.output_dir / "tts.wav")
+        raw_audio_bytes = await self._text_to_speak(text, output_file)
+        audio_bytes = audio_to_data(output_file, encoder=self.encoder, is_opus=True)
+        print("[TMINFO] audio_bytes " + str(audio_bytes))
+        raise Exception("stop here!!")
+
         while max_repeat_time > 0:
             try:
                 # Get raw audio bytes from TTS
@@ -283,12 +288,7 @@ class EdgeTTSHandler(BaseTextHandler):
                     continue
 
                 if self.encoder_type == "opus":
-                    return audio_to_data(
-                        output_file,
-                        encoder=self.encoder,
-                        sample_rate=self.sample_rate,
-                        is_opus=True,
-                    )
+                    audio_bytes = audio_to_data(output_file, encoder=self.encoder, is_opus=True)
                 else:
                     audio_bytes = [raw_audio_bytes]
                 if audio_bytes:

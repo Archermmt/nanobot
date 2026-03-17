@@ -62,6 +62,11 @@ const showThinking = computed(() => {
 const currentAudio = ref<HTMLAudioElement | null>(null)
 const expandedImages = ref<string[]>([])
 const currentModeHint = ref<string | null>(null)
+const imageZoomLevels = ref<Record<string, number>>({})
+const imagePositions = ref<Record<string, { x: number; y: number }>>({})
+const isDragging = ref(false)
+const dragStart = ref<{ x: number; y: number } | null>(null)
+const lastTouchDistance = ref<number | null>(null)
 
 // Extract image URL from media data
 const getImageUrlFromMessage = (msg: Message): string | null => {
@@ -82,9 +87,134 @@ const toggleImageExpand = (imageUrl: string) => {
   const index = expandedImages.value.indexOf(imageUrl)
   if (index > -1) {
     expandedImages.value.splice(index, 1)
+    // Reset zoom level when collapsing
+    delete imageZoomLevels.value[imageUrl]
   } else {
     expandedImages.value.push(imageUrl)
+    // Initialize zoom level to 1 when expanding
+    imageZoomLevels.value[imageUrl] = 1
   }
+}
+
+const zoomImageIn = (imageUrl: string, event: Event) => {
+  event.stopPropagation()
+  if (!imageZoomLevels.value[imageUrl]) {
+    imageZoomLevels.value[imageUrl] = 1
+  }
+  imageZoomLevels.value[imageUrl] = Math.min(imageZoomLevels.value[imageUrl] + 0.25, 3)
+}
+
+const zoomImageOut = (imageUrl: string, event: Event) => {
+  event.stopPropagation()
+  if (!imageZoomLevels.value[imageUrl]) {
+    imageZoomLevels.value[imageUrl] = 1
+  }
+  imageZoomLevels.value[imageUrl] = Math.max(imageZoomLevels.value[imageUrl] - 0.25, 0.5)
+}
+
+const resetImageZoom = (imageUrl: string, event: Event) => {
+  event.stopPropagation()
+  imageZoomLevels.value[imageUrl] = 1
+}
+
+const getImageZoom = (imageUrl: string) => {
+  return imageZoomLevels.value[imageUrl] || 1
+}
+
+const getImagePosition = (imageUrl: string) => {
+  return imagePositions.value[imageUrl] || { x: 0, y: 0 }
+}
+
+// Mouse wheel zoom
+const handleWheel = (imageUrl: string, event: WheelEvent) => {
+  event.stopPropagation()
+  event.preventDefault()
+
+  if (!imageZoomLevels.value[imageUrl]) {
+    imageZoomLevels.value[imageUrl] = 1
+  }
+
+  const delta = event.deltaY > 0 ? -0.1 : 0.1
+  const newZoom = Math.min(Math.max(imageZoomLevels.value[imageUrl] + delta, 0.5), 3)
+  imageZoomLevels.value[imageUrl] = newZoom
+}
+
+// Mouse drag start
+const handleDragStart = (imageUrl: string, event: MouseEvent) => {
+  if (event.button !== 0) return // Only left click
+  event.stopPropagation()
+  event.preventDefault()
+
+  isDragging.value = true
+  dragStart.value = { x: event.clientX, y: event.clientY }
+
+  if (!imagePositions.value[imageUrl]) {
+    imagePositions.value[imageUrl] = { x: 0, y: 0 }
+  }
+
+  document.addEventListener('mousemove', handleDragMove)
+  document.addEventListener('mouseup', handleDragEnd)
+}
+
+// Mouse drag move
+const handleDragMove = (event: MouseEvent) => {
+  if (!isDragging.value || !dragStart.value) return
+
+  const dx = event.clientX - dragStart.value.x
+  const dy = event.clientY - dragStart.value.y
+
+  const imageUrl = expandedImages.value[expandedImages.value.length - 1]
+  if (imageUrl && imagePositions.value[imageUrl]) {
+    imagePositions.value[imageUrl].x += dx
+    imagePositions.value[imageUrl].y += dy
+  }
+
+  dragStart.value = { x: event.clientX, y: event.clientY }
+}
+
+// Mouse drag end
+const handleDragEnd = () => {
+  isDragging.value = false
+  dragStart.value = null
+  document.removeEventListener('mousemove', handleDragMove)
+  document.removeEventListener('mouseup', handleDragEnd)
+}
+
+// Touch events for pinch-to-zoom
+const handleTouchStart = (imageUrl: string, event: TouchEvent) => {
+  if (event.touches.length === 2) {
+    event.stopPropagation()
+    lastTouchDistance.value = getTouchDistance(event.touches)
+  }
+}
+
+const handleTouchMove = (imageUrl: string, event: TouchEvent) => {
+  if (event.touches.length === 2 && lastTouchDistance.value !== null) {
+    event.stopPropagation()
+    event.preventDefault()
+
+    const distance = getTouchDistance(event.touches)
+    const delta = distance - lastTouchDistance.value
+
+    if (!imageZoomLevels.value[imageUrl]) {
+      imageZoomLevels.value[imageUrl] = 1
+    }
+
+    const zoomSensitivity = 0.005
+    const newZoom = Math.min(Math.max(imageZoomLevels.value[imageUrl] + delta * zoomSensitivity, 0.5), 3)
+    imageZoomLevels.value[imageUrl] = newZoom
+    lastTouchDistance.value = distance
+  }
+}
+
+const handleTouchEnd = (imageUrl: string, event: TouchEvent) => {
+  lastTouchDistance.value = null
+}
+
+const getTouchDistance = (touches: TouchList) => {
+  const dx = touches[0].clientX - touches[1].clientX
+  const dy = touches[0].clientY - touches[1].clientY
+  return Math.sqrt(dx * dx + dy * dy)
 }
 
 const playAudio = (audioUrl: string) => {
@@ -190,13 +320,43 @@ watch(() => props.showProgressMessages, scrollToBottom)
               点击查看原图
             </div>
           </div>
-          <!-- Expanded state: full screen overlay -->
+          <!-- Expanded state: full screen overlay with zoom controls -->
           <div v-else class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-90 p-8"
-            @click="toggleImageExpand(getImageUrlFromMessage(msg)!)">
-            <img :src="getImageUrlFromMessage(msg)!" alt="Image"
-              class="max-w-full max-h-full object-contain cursor-pointer rounded" />
-            <div class="absolute top-4 right-4 text-white text-sm bg-black bg-opacity-50 px-3 py-2 rounded">
-              点击关闭
+            @click="toggleImageExpand(getImageUrlFromMessage(msg)!)"
+            @wheel="handleWheel(getImageUrlFromMessage(msg)!, $event)">
+            <div class="relative flex items-center justify-center max-w-full max-h-full">
+              <img :src="getImageUrlFromMessage(msg)!" alt="Image"
+                class="max-w-full max-h-full cursor-grab rounded transition-transform duration-200 ease-out"
+                :class="{ 'cursor-grabbing': isDragging }" :style="{
+                  transform: `scale(${getImageZoom(getImageUrlFromMessage(msg)!)}) translate(${getImagePosition(getImageUrlFromMessage(msg)!).x}px, ${getImagePosition(getImageUrlFromMessage(msg)!).y}px)`
+                }" @mousedown="handleDragStart(getImageUrlFromMessage(msg)!, $event)"
+                @touchstart="handleTouchStart(getImageUrlFromMessage(msg)!, $event)"
+                @touchmove="handleTouchMove(getImageUrlFromMessage(msg)!, $event)"
+                @touchend="handleTouchEnd(getImageUrlFromMessage(msg)!, $event)" @click.stop />
+              <!-- Zoom controls -->
+              <div
+                class="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex items-center space-x-2 bg-black bg-opacity-70 px-4 py-2 rounded-lg"
+                @click.stop>
+                <button @click="zoomImageOut(getImageUrlFromMessage(msg)!, $event)"
+                  class="nes-btn is-primary text-white bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded" title="缩小 (-)">
+                  🔍−
+                </button>
+                <span class="text-white text-sm min-w-[60px] text-center">
+                  {{ Math.round(getImageZoom(getImageUrlFromMessage(msg)!) * 100) }}%
+                </span>
+                <button @click="zoomImageIn(getImageUrlFromMessage(msg)!, $event)"
+                  class="nes-btn is-primary text-white bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded" title="放大 (+)">
+                  🔍+
+                </button>
+                <button @click="resetImageZoom(getImageUrlFromMessage(msg)!, $event)"
+                  class="nes-btn text-white bg-gray-600 hover:bg-gray-700 px-3 py-1 rounded ml-2" title="重置 (R)">
+                  🔄
+                </button>
+              </div>
+              <!-- Close hint -->
+              <div class="absolute top-4 right-4 text-white text-sm bg-black bg-opacity-50 px-3 py-2 rounded">
+                点击背景关闭 · 滚轮/双指缩放 · 拖拽移动
+              </div>
             </div>
           </div>
         </div>
