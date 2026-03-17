@@ -166,8 +166,8 @@ const handleWebSocketMessage = (event: MessageEvent) => {
         if (msgType === 'image' || (fileType && fileType.startsWith('image/'))) {
           // Extract image from media data
           const mediaItem = data.media[0]
-          if (mediaItem && mediaItem.data) {
-            imageUrl = mediaItem.data
+          if (mediaItem && typeof mediaItem === 'string') {
+            imageUrl = mediaItem
           }
         }
 
@@ -175,9 +175,9 @@ const handleWebSocketMessage = (event: MessageEvent) => {
         if (msgType === 'audio' || (fileType && fileType.startsWith('audio/'))) {
           // Extract audio from media data
           const mediaItem = data.media[0]
-          if (mediaItem && mediaItem.data) {
+          if (mediaItem && typeof mediaItem === 'string') {
             // Convert base64 to blob URL for playback
-            const base64Data = mediaItem.data
+            const base64Data = mediaItem
             const byteCharacters = atob(base64Data)
             const byteNumbers = new Array(byteCharacters.length)
             for (let i = 0; i < byteCharacters.length; i++) {

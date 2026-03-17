@@ -383,16 +383,25 @@ class WebSocketChannel(BaseChannel):
             logger.warning("WebSocket not connected, cannot send message")
             return
 
-        print("[TMINFO] send msg " + str(msg))
         try:
-            # Prepare message data
+            # Convert media bytes to base64 for JSON serialization
+            media_items = []
+            if msg.media:
+                for media_item in msg.media:
+                    if isinstance(media_item, bytes):
+                        import base64
+
+                        media_items.append(base64.b64encode(media_item).decode("utf-8"))
+                    else:
+                        media_items.append(media_item)
+
             message_data = {
                 "type": "message",
                 "message_id": f"msg_{hash(msg.content)}",
                 "sender_id": "bot",
                 "chat_id": msg.chat_id,
                 "content": msg.content,
-                "media": msg.media,
+                "media": media_items,
                 "metadata": msg.metadata,
                 "timestamp": asyncio.get_event_loop().time(),
             }
