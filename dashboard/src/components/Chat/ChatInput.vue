@@ -7,11 +7,13 @@ interface Props {
   disabled?: boolean
   isMicrophoneOn?: boolean
   enableAudio?: boolean // Track if audio input handler is enabled
+  enableSpeak?: boolean // Track if speech output is enabled
   messages?: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>
 }
 
 const props = withDefaults(defineProps<Props>(), {
   enableAudio: true, // Default to true for backward compatibility
+  enableSpeak: false, // Default to false
   messages: () => []
 })
 
@@ -110,7 +112,8 @@ const sendMessage = () => {
   emit('send', {
     text: input.value,
     images: pendingImages.value,
-    files: pendingFiles.value
+    files: pendingFiles.value,
+    needTts: props.enableSpeak // Add need_tts flag based on enableSpeak
   })
 
   // Clear inputs

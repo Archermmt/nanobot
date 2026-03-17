@@ -368,7 +368,7 @@ watch(() => props.showProgressMessages, scrollToBottom)
               class="nes-btn is-primary">
               {{ isPlaying(msg.audioUrl!) ? '⏹️' : '▶️' }}
             </button>
-            <span class="text-xs opacity-70">Voice message</span>
+            <span class="text-xs opacity-70">{{ isPlaying(msg.audioUrl!) ? '播放中...' : '语音消息' }}</span>
           </div>
         </div>
 

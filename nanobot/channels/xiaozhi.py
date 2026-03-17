@@ -586,8 +586,8 @@ class XiaoZhiChannel(BaseChannel):
             logger.warning("No connected client found for chat_id: {}", msg.chat_id)
             return
 
-        msg_type = msg.metadata.get("type", "tts")
-        if msg_type == "tts":
+        msg_type = msg.metadata.get("type", "audio")
+        if msg_type == "audio":
             await self._send_tts_message("start", websocket=target_ws)
             await self._send_tts_message("sentence_start", msg.content, websocket=target_ws)
             for media in msg.media:

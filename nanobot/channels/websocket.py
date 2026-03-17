@@ -383,6 +383,7 @@ class WebSocketChannel(BaseChannel):
             logger.warning("WebSocket not connected, cannot send message")
             return
 
+        print("[TMINFO] send msg " + str(msg))
         try:
             # Prepare message data
             message_data = {

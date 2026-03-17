@@ -117,7 +117,7 @@ class EdgeTTSHandler(BaseTextHandler):
                 # Add audio data to message
                 msg.media.extend(audio_datas)
                 # Update message type to indicate it now contains audio
-                msg.metadata["msg_type"] = "tts"
+                msg.metadata["msg_type"] = "audio"
                 msg.metadata.pop("need_tts")
         except Exception as e:
             # If TTS fails, keep original text message

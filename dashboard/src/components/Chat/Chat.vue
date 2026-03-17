@@ -19,6 +19,7 @@ interface Message {
     _response_for?: string
     _hide_from_ui?: boolean
     _progress?: boolean
+    need_tts?: boolean
   }
 }
 
@@ -26,6 +27,7 @@ const props = defineProps<{
   showProgressMessages?: boolean
   isMicrophoneOn?: boolean
   enableAudio?: boolean
+  enableSpeak?: boolean
 }>()
 
 const emit = defineEmits(['send', 'new-chat', 'clear-chat', 'upload-image', 'upload-audio', 'upload-file', 'ws-status-change', 'send-status', 'status-update'])
@@ -152,8 +154,10 @@ const handleWebSocketMessage = (event: MessageEvent) => {
         return  // Don't create duplicate message entry
       }
 
-      // Handle image messages from media
+      // Handle image and audio messages from media
       let imageUrl: string | undefined
+      let audioUrl: string | undefined
+
       if (data.media && data.media.length > 0) {
         const msgType = data.metadata?.msg_type
         const fileType = data.metadata?.file_type
@@ -166,21 +170,46 @@ const handleWebSocketMessage = (event: MessageEvent) => {
             imageUrl = mediaItem.data
           }
         }
+
+        // Check if this is an audio message
+        if (msgType === 'audio' || (fileType && fileType.startsWith('audio/'))) {
+          // Extract audio from media data
+          const mediaItem = data.media[0]
+          if (mediaItem && mediaItem.data) {
+            // Convert base64 to blob URL for playback
+            const base64Data = mediaItem.data
+            const byteCharacters = atob(base64Data)
+            const byteNumbers = new Array(byteCharacters.length)
+            for (let i = 0; i < byteCharacters.length; i++) {
+              byteNumbers[i] = byteCharacters.charCodeAt(i)
+            }
+            const byteArray = new Uint8Array(byteNumbers)
+            const blob = new Blob([byteArray], { type: 'audio/mpeg' })
+            audioUrl = URL.createObjectURL(blob)
+          }
+        }
       }
 
       // Don't display messages marked as hidden (like /history command)
       if (!data.metadata?._hide_from_ui) {
-        messages.value.push({
+        const newMessage: Message = {
           role: 'assistant',
           content: data.content || 'Message received',
           timestamp: Date.now(),
           imageUrl: imageUrl,
+          audioUrl: audioUrl,
           media: data.media,
           metadata: {
             ...data.metadata,
             _progress: data.metadata?._progress
           }
-        })
+        }
+        messages.value.push(newMessage)
+
+        // Auto-play audio if it's an audio message and TTS is enabled
+        if (audioUrl && enableTts.value) {
+          playAudio(audioUrl)
+        }
       }
 
       // Check if message contains mode_hint and is not a progress message
@@ -215,11 +244,12 @@ const handleWebSocketMessage = (event: MessageEvent) => {
   }
 }
 
-const sendMessage = async (data: string | { text: string; images: Array<{ data: string; type: string; name: string }>; files: Array<{ data: string; type: string; name: string }> }) => {
+const sendMessage = async (data: string | { text: string; images: Array<{ data: string; type: string; name: string }>; files: Array<{ data: string; type: string; name: string }>; needTts?: boolean }) => {
   // Handle both old string format and new object format
   let text = ''
   let images: Array<{ data: string; type: string; name: string }> = []
   let files: Array<{ data: string; type: string; name: string }> = []
+  let needTts = false
 
   if (typeof data === 'string') {
     text = data
@@ -227,6 +257,7 @@ const sendMessage = async (data: string | { text: string; images: Array<{ data: 
     text = data.text || ''
     images = data.images || []
     files = data.files || []
+    needTts = data.needTts || false
   }
 
   const userMessage: Message = {
@@ -260,7 +291,22 @@ const sendMessage = async (data: string | { text: string; images: Array<{ data: 
       ...files.map(file => ({ data: file.data, file_name: file.name }))
     ]
 
-    const messageData = {
+    const messageData: {
+      type: string
+      message_id: string
+      sender_id: string
+      chat_id: string
+      content: string
+      media: Array<{ data: string; file_name: string }>
+      metadata: {
+        source: string
+        timestamp: number
+        session_id: string
+        need_tts?: boolean
+        msg_type?: string
+        file_type?: string
+      }
+    } = {
       type: 'message',
       message_id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       sender_id: 'web_user',
@@ -270,7 +316,8 @@ const sendMessage = async (data: string | { text: string; images: Array<{ data: 
       metadata: {
         source: 'web_dashboard',
         timestamp: Date.now(),
-        session_id: sessionId.value
+        session_id: sessionId.value,
+        need_tts: needTts  // Add need_tts flag to metadata
       }
     }
 
@@ -588,8 +635,9 @@ defineExpose({
 
     <!-- Input -->
     <ChatInput ref="chatInputRef" :isLoading="isLoading" :disabled="!isConnected"
-      :is-microphone-on="props.isMicrophoneOn" :enable-audio="props.enableAudio" :messages="messages"
-      @send="sendMessage" @new-chat="handleNewChat" @clear-chat="handleClearChat" @upload-image="handleImageUpload"
-      @upload-audio="handleAudioUpload" @upload-file="handleFileUpload" @send-status="handleSendStatus" />
+      :is-microphone-on="props.isMicrophoneOn" :enable-audio="props.enableAudio" :enable-speak="props.enableSpeak"
+      :messages="messages" @send="sendMessage" @new-chat="handleNewChat" @clear-chat="handleClearChat"
+      @upload-image="handleImageUpload" @upload-audio="handleAudioUpload" @upload-file="handleFileUpload"
+      @send-status="handleSendStatus" />
   </div>
 </template>
