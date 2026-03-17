@@ -639,6 +639,6 @@ defineExpose({
       :is-microphone-on="props.isMicrophoneOn" :enable-audio="props.enableAudio" :enable-speak="props.enableSpeak"
       :messages="messages" @send="sendMessage" @new-chat="handleNewChat" @clear-chat="handleClearChat"
       @upload-image="handleImageUpload" @upload-audio="handleAudioUpload" @upload-file="handleFileUpload"
-      @send-status="handleSendStatus" />
+      @send-status="handleSendStatus" @stop-audio="stopAudio" />
   </div>
 </template>

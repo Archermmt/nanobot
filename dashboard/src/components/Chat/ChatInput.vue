@@ -17,7 +17,7 @@ const props = withDefaults(defineProps<Props>(), {
   messages: () => []
 })
 
-const emit = defineEmits(['send', 'new-chat', 'clear-chat', 'upload-image', 'upload-audio', 'upload-file'])
+const emit = defineEmits(['send', 'new-chat', 'clear-chat', 'upload-image', 'upload-audio', 'upload-file', 'stop-audio'])
 
 interface PendingMedia {
   data: string
@@ -107,6 +107,9 @@ const handleKeydown = (event: KeyboardEvent) => {
 
 const sendMessage = () => {
   if ((!input.value.trim() && pendingImages.value.length === 0 && pendingFiles.value.length === 0) || props.isLoading || props.disabled) return
+
+  // Stop audio playback before sending message
+  emit('stop-audio')
 
   // Send text, images and files together
   emit('send', {
