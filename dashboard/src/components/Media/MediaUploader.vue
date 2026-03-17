@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { mdiImage, mdiFileUploadOutline, mdiChat, mdiStop } from '@mdi/js'
 
 interface Props {
   disabled?: boolean
@@ -120,7 +121,9 @@ const stopRecording = () => {
     <button @click="triggerImageUpload" :disabled="props.disabled"
       class="nes-btn is-primary p-2 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
       title="Upload Image">
-      📷
+      <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
+        <path :d="mdiImage" />
+      </svg>
     </button>
 
     <!-- File Upload -->
@@ -128,15 +131,18 @@ const stopRecording = () => {
     <button @click="triggerFileUpload" :disabled="props.disabled"
       class="nes-btn is-primary p-2 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
       title="Upload File">
-      📎
+      <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
+        <path :d="mdiFileUploadOutline" />
+      </svg>
     </button>
 
     <!-- Voice Recording -->
-    <button @click="isRecording ? stopRecording() : startRecording()"
-      :disabled="props.disabled || isMicrophoneOn || !props.enableAudio"
+    <button @click="isRecording ? stopRecording() : startRecording()" :disabled="props.disabled || isMicrophoneOn"
       class="nes-btn p-2 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-      :class="isRecording ? 'is-danger' : 'is-primary'" :title="isRecording ? 'Stop Recording' : 'Start Recording'">
-      {{ isRecording ? '⏹️' : '🎙️' }}
+      :class="isRecording ? 'is-danger' : 'is-primary'" :title="isRecording ? '停止录音' : '开始录音'">
+      <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
+        <path :d="isRecording ? mdiStop : mdiChat" />
+      </svg>
     </button>
   </div>
 </template>

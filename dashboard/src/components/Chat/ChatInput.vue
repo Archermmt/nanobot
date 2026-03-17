@@ -1,23 +1,20 @@
 <script setup lang="ts">
 import { ref, computed, nextTick } from 'vue'
 import MediaUploader from '../Media/MediaUploader.vue'
+import { mdiSend, mdiMessagePlus, mdiDeleteSweep, mdiStopCircle } from '@mdi/js'
 
 interface Props {
   isLoading: boolean
   disabled?: boolean
   isMicrophoneOn?: boolean
-  enableAudio?: boolean // Track if audio input handler is enabled
-  enableSpeak?: boolean // Track if speech output is enabled
   messages?: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  enableAudio: true, // Default to true for backward compatibility
-  enableSpeak: false, // Default to false
   messages: () => []
 })
 
-const emit = defineEmits(['send', 'new-chat', 'clear-chat', 'upload-image', 'upload-audio', 'upload-file', 'stop-audio'])
+const emit = defineEmits(['send', 'new-chat', 'clear-chat', 'stop-chat', 'upload-image', 'upload-audio', 'upload-file'])
 
 interface PendingMedia {
   data: string
@@ -108,15 +105,11 @@ const handleKeydown = (event: KeyboardEvent) => {
 const sendMessage = () => {
   if ((!input.value.trim() && pendingImages.value.length === 0 && pendingFiles.value.length === 0) || props.isLoading || props.disabled) return
 
-  // Stop audio playback before sending message
-  emit('stop-audio')
-
   // Send text, images and files together
   emit('send', {
     text: input.value,
     images: pendingImages.value,
-    files: pendingFiles.value,
-    needTts: props.enableSpeak // Add need_tts flag based on enableSpeak
+    files: pendingFiles.value
   })
 
   // Clear inputs
@@ -150,6 +143,15 @@ const handleClearChat = () => {
   historyIndex.value = -1
   originalInput.value = ''
   resetTextareaHeight()
+}
+
+const handleStopChat = () => {
+  // Send /stop command to backend
+  emit('send', {
+    text: '/stop',
+    images: [],
+    files: []
+  })
 }
 
 const handleImageUpload = (imageData: { data: string; type: string; name: string }) => {
@@ -189,8 +191,7 @@ defineExpose({
     <div class="flex items-center space-x-3">
       <!-- Media Upload Buttons on the left of input -->
       <MediaUploader :disabled="props.disabled || isLoading" :is-microphone-on="props.isMicrophoneOn"
-        :enable-audio="props.enableAudio" :enable-speak="props.enableSpeak" @upload-image="handleImageUpload"
-        @upload-audio="handleAudioUpload" @upload-file="handleFileUpload" />
+        @upload-image="handleImageUpload" @upload-audio="handleAudioUpload" @upload-file="handleFileUpload" />
 
       <!-- Text Input -->
       <form id="message-form" @submit.prevent="sendMessage" class="flex-1 flex flex-col space-y-2">
@@ -229,19 +230,32 @@ defineExpose({
       <!-- Action Buttons -->
       <div class="flex items-center space-x-2">
         <button type="submit" form="message-form"
-          class="nes-btn is-primary text-xs px-3 py-2 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          class="nes-btn is-primary p-2 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           :disabled="isLoading || (!input.trim() && pendingImages.length === 0 && pendingFiles.length === 0) || props.disabled">
-          SEND
+          <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
+            <path :d="mdiSend" />
+          </svg>
         </button>
         <button @click="handleNewChat"
-          class="nes-btn is-success text-xs px-3 py-2 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          class="nes-btn is-success p-2 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           :disabled="props.disabled || isLoading" title="Start New Chat">
-          NEW
+          <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
+            <path :d="mdiMessagePlus" />
+          </svg>
         </button>
         <button @click="handleClearChat"
-          class="nes-btn is-warning text-xs px-3 py-2 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          class="nes-btn is-warning p-2 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           :disabled="props.disabled || isLoading" title="Clear Chat History">
-          CLEAR
+          <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
+            <path :d="mdiDeleteSweep" />
+          </svg>
+        </button>
+        <button @click="handleStopChat"
+          class="nes-btn is-error p-2 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          :disabled="props.disabled || !isLoading" title="Stop Current Chat">
+          <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
+            <path :d="mdiStopCircle" />
+          </svg>
         </button>
       </div>
     </div>

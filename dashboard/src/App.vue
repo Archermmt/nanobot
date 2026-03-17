@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { ref, getCurrentInstance, onUnmounted, onMounted } from 'vue'
+import { ref, onUnmounted } from 'vue'
 import Sidebar from './components/Sidebar/Sidebar.vue'
 import StatusBar from './components/StatusBar/StatusBar.vue'
 import Chat from './components/Chat/Chat.vue'
-import { mdiPhone, mdiPhoneHangup, mdiWebcam, mdiMicrophone, mdiVolumeHigh, mdiEyeOff } from '@mdi/js'
+import { mdiPhone, mdiWebcam, mdiMicrophone, mdiVolumeHigh, mdiEyeOff } from '@mdi/js'
 
 // WebSocket connection state
 const wsUrl = ref('ws://localhost:8765')
@@ -25,7 +25,7 @@ const chatComponentRef = ref<any>(null)
 const statusBarComponentRef = ref<any>(null)
 const hideProgress = ref(false)
 const isCameraOn = ref(false)
-const isMicrophoneOn = ref(false)
+const isOnlineChatOn = ref(false)
 const enableAudio = ref(false) // Track if audio input handler is enabled
 const enableSpeak = ref(false) // Track if speech output is enabled
 const enableTts = ref(false) // Track if TTS is available
@@ -235,17 +235,17 @@ const toggleCamera = async () => {
   }
 }
 
-const toggleMicrophone = async () => {
-  if (isMicrophoneOn.value) {
-    // Turn off microphone
+const startOnlineChat = async () => {
+  if (isOnlineChatOn.value) {
+    // Turn off online chat
     if (audioStream.value) {
       audioStream.value.getTracks().forEach(track => track.stop())
       audioStream.value = null
     }
-    isMicrophoneOn.value = false
-    console.log('Microphone disabled')
+    isOnlineChatOn.value = false
+    console.log('Online chat disabled')
   } else {
-    // Turn on microphone
+    // Turn on online chat
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -256,8 +256,8 @@ const toggleMicrophone = async () => {
         }
       })
       audioStream.value = stream
-      isMicrophoneOn.value = true
-      console.log('Microphone enabled')
+      isOnlineChatOn.value = true
+      console.log('Online chat enabled')
     } catch (error) {
       console.error('Error accessing microphone:', error)
       alert('无法访问麦克风，请确保已授予权限')
@@ -319,7 +319,7 @@ document.addEventListener('mouseup', stopDragCamera)
 
           <button v-if="isConnected" @click="disconnectWebSocket" class="nes-btn is-success" title="断开连接">
             <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
-              <path :d="mdiPhoneHangup" />
+              <path :d="mdiPhone" />
             </svg>
           </button>
 
@@ -330,9 +330,9 @@ document.addEventListener('mouseup', stopDragCamera)
             </svg>
           </button>
 
-          <button @click="toggleMicrophone" class="nes-btn"
-            :class="{ 'is-success': isMicrophoneOn, 'is-disabled': !isConnected || !enableAudio }"
-            :title="isMicrophoneOn ? '关闭麦克风' : '开启麦克风'">
+          <button @click="startOnlineChat" class="nes-btn"
+            :class="{ 'is-success': isOnlineChatOn, 'is-disabled': !isConnected }"
+            :title="isOnlineChatOn ? '关闭在线聊天' : '开启在线聊天'">
             <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
               <path :d="mdiMicrophone" />
             </svg>
@@ -364,7 +364,7 @@ document.addEventListener('mouseup', stopDragCamera)
       <main class="flex-1 overflow-hidden bg-gray-900">
         <Chat ref="chatComponentRef" v-show="currentSection === 'chat'" @status-update="handleStatusUpdate"
           @ws-status-change="handleWsStatusChange" :show-progress-messages="!hideProgress"
-          :is-microphone-on="isMicrophoneOn" :enable-audio="enableAudio" :enable-tts="enableTts"
+          :is-online-chat-on="isOnlineChatOn" :enable-audio="enableAudio" :enable-tts="enableTts"
           :enable-speak="enableSpeak" />
         <div v-show="currentSection !== 'chat'" class="p-6 text-gray-500 text-center">
           <p class="text-lg">Section under construction</p>
