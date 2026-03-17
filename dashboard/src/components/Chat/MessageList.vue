@@ -33,6 +33,7 @@ interface Props {
   messages: Message[]
   isLoading: boolean
   showProgressMessages?: boolean
+  playingAudioUrl?: string | null
 }
 
 const props = defineProps<Props>()
@@ -245,7 +246,7 @@ const stopAudio = () => {
 }
 
 const isPlaying = (audioUrl: string) => {
-  return currentAudio.value?.src === audioUrl && !currentAudio.value?.paused
+  return props.playingAudioUrl === audioUrl
 }
 
 const isChineseContent = (content: string) => {

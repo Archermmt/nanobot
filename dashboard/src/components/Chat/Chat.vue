@@ -41,6 +41,9 @@ const chatInputRef = ref<InstanceType<typeof ChatInput> | null>(null)
 const enableAudio = ref(false)
 const enableTts = ref(false)
 
+// Global audio playing state shared across components
+const playingAudioUrl = ref<string | null>(null)
+
 // WebSocket instance (managed by App.vue)
 let ws: WebSocket | null = null
 const isConnected = ref(false)
@@ -593,13 +596,28 @@ const handleClearChat = () => {
 }
 
 const playAudio = (audioUrl: string) => {
+  if (currentAudio.value) {
+    if (currentAudio.value.src === audioUrl && !currentAudio.value.paused) {
+      currentAudio.value.pause()
+      playingAudioUrl.value = null
+      return
+    }
+    currentAudio.value.pause()
+  }
+
   currentAudio.value = new Audio(audioUrl)
   currentAudio.value.play()
+  playingAudioUrl.value = audioUrl
+
+  currentAudio.value.onended = () => {
+    playingAudioUrl.value = null
+  }
 }
 
 const stopAudio = () => {
   if (currentAudio.value) {
     currentAudio.value.pause()
+    playingAudioUrl.value = null
     currentAudio.value = null
   }
 }
@@ -630,7 +648,7 @@ defineExpose({
   <div class="flex flex-col h-full chat-container">
     <!-- Messages -->
     <MessageList :messages="messages" :isLoading="isLoading" @play-audio="playAudio" @stop-audio="stopAudio"
-      :show-progress-messages="props.showProgressMessages" />
+      :show-progress-messages="props.showProgressMessages" :playing-audio-url="playingAudioUrl" />
 
     <!-- Input -->
     <ChatInput ref="chatInputRef" :isLoading="isLoading" :disabled="!isConnected"
