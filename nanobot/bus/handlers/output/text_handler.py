@@ -12,6 +12,7 @@ from loguru import logger
 from nanobot.bus.events import OutboundMessage
 from nanobot.bus.handlers.output.output_handler import OutputHandler
 from nanobot.config.schema import TextHandlerConfig
+from nanobot.utils.media import audio_to_data
 
 
 class BaseTextHandler(OutputHandler):
@@ -215,9 +216,7 @@ class EdgeTTSHandler(BaseTextHandler):
         # Expand ~ to home directory and convert to absolute path
         self.output_dir = Path(config.output_dir).expanduser().resolve()
         if self.encoder_type == "opus":
-            self.encoder = OpusEncoderUtils(
-                sample_rate=self.sample_rate, channels=1, frame_size_ms=60
-            )
+            self.encoder = opuslib_next.Encoder(self.sample_rate, 1, opuslib_next.APPLICATION_AUDIO)
 
     def can_handle(self, msg: OutboundMessage) -> bool:
         """
@@ -248,22 +247,20 @@ class EdgeTTSHandler(BaseTextHandler):
 
         try:
             # Generate TTS audio from text
-            audio_data = await self._to_tts_stream(msg.content)
-
-            if audio_data:
+            audio_datas = await self._to_tts_datas(msg.content)
+            if audio_datas:
                 # Add audio data to message
-                msg.media.append(audio_data)
+                msg.media.extend(audio_datas)
                 # Update message type to indicate it now contains audio
                 msg.metadata["msg_type"] = "audio"
                 msg.metadata["tts_processed"] = True
-
         except Exception as e:
             # If TTS fails, keep original text message
             msg.metadata["tts_error"] = str(e)
 
         return msg
 
-    async def _to_tts_stream(self, text: str) -> bytes | None:
+    async def _to_tts_datas(self, text: str) -> bytes | None:
         """
         Convert text to speech audio stream.
 
@@ -286,14 +283,14 @@ class EdgeTTSHandler(BaseTextHandler):
                     continue
 
                 if self.encoder_type == "opus":
-                    # Convert to opus stream
-                    opus_datas = self._audio_bytes_to_data_stream(
-                        raw_audio_bytes, file_type=self.audio_format, is_opus=True
+                    return audio_to_data(
+                        raw_audio_bytes,
+                        encoder=self.encoder,
+                        sample_rate=self.sample_rate,
+                        is_opus=True,
                     )
-                    # Combine all opus frames
-                    audio_bytes = b"".join(opus_datas)
                 else:
-                    audio_bytes = raw_audio_bytes
+                    audio_bytes = [raw_audio_bytes]
                 if audio_bytes:
                     break
                 else:
