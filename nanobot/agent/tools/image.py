@@ -355,6 +355,7 @@ class ImageTool(Tool):
                 content=text or "Image display",
                 media=[media_data],
                 metadata={
+                    "_progress": True,
                     "msg_type": "image",  # Indicate this is an image message
                     "file_type": self._get_mime_type(image_path),
                 },

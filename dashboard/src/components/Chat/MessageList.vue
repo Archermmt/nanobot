@@ -141,7 +141,8 @@ const handleWheel = (imageUrl: string, event: WheelEvent) => {
     imageZoomLevels.value[imageUrl] = 1
   }
 
-  const delta = event.deltaY > 0 ? -0.1 : 0.1
+  // Scroll up (negative deltaY) zooms in, scroll down (positive deltaY) zooms out
+  const delta = event.deltaY > 0 ? 0.05 : -0.05
   const newZoom = Math.min(Math.max(imageZoomLevels.value[imageUrl] + delta, 0.5), 3)
   imageZoomLevels.value[imageUrl] = newZoom
 }
@@ -207,7 +208,8 @@ const handleTouchMove = (imageUrl: string, event: TouchEvent) => {
       imageZoomLevels.value[imageUrl] = 1
     }
 
-    const zoomSensitivity = 0.003
+    // Pinch out (increasing distance) zooms in, pinch in (decreasing distance) zooms out
+    const zoomSensitivity = 0.005
     const newZoom = Math.min(Math.max(imageZoomLevels.value[imageUrl] + delta * zoomSensitivity, 0.5), 3)
     imageZoomLevels.value[imageUrl] = newZoom
     lastTouchDistance.value = distance
