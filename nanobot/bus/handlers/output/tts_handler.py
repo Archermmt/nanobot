@@ -3,7 +3,6 @@
 import os
 from pathlib import Path
 
-from botpy import Type as BotType
 from loguru import logger
 
 from nanobot.bus.events import OutboundMessage
@@ -16,42 +15,17 @@ class BaseTTSHandler(OutputHandler):
     """Base class for text-to-speech message handlers."""
 
     @classmethod
-    def register(cls, handler_type: str):
-        """
-        Decorator to register a subclass with a specific handler type.
-
-        Args:
-            handler_type: The handler type to register (e.g., "edge_tts", "azure_tts")
-
-        Usage:
-            @BaseTTSHandler.register("edge_tts")
-            class EdgeTTSHanlder(BaseTTSHandler):
-                pass
-        """
-
-        def decorator(subclass: BotType["BaseTTSHandler"]) -> BotType["BaseTTSHandler"]:
-            OutputHandler._registry[f"tts.{handler_type}"] = subclass
-            return subclass
-
-        return decorator
-
-    @classmethod
-    def get_registered_type(cls, handler_type: str) -> BotType["BaseTTSHandler"] | None:
-        """
-        Get a registered handler class by handler type.
-
-        Args:
-            handler_type: The handler type to look up
-
-        Returns:
-            The registered handler class, or None if not found
-        """
-        return OutputHandler.get_registered_type("tts", handler_type)
+    def msg_type(cls) -> str:
+        return "text"
 
 
-@BaseTTSHandler.register("edge_tts")
+@BaseTTSHandler.register()
 class EdgeTTSHandler(BaseTTSHandler):
     """Handler that converts text messages to speech using TTS."""
+
+    @classmethod
+    def handler_type(cls) -> str:
+        return "edge_tts"
 
     def __init__(self, config: TTSHandlerConfig | None = None):
         """

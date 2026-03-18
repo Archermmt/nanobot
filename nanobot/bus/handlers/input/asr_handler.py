@@ -23,37 +23,8 @@ class BaseASRHandler(InputHandler):
     """Base class for automatic speech recognition handlers."""
 
     @classmethod
-    def register(cls, handler_type: str):
-        """
-        Decorator to register a subclass with a specific handler type.
-
-        Args:
-            handler_type: The handler type to register (e.g., "vosk", "funasr")
-
-        Usage:
-            @BaseASRHandler.register_type("funasr")
-            class FunasrHandler(BaseASRHandler):
-                pass
-        """
-
-        def decorator(subclass: Type["BaseASRHandler"]) -> Type["BaseASRHandler"]:
-            InputHandler._registry[f"asr.{handler_type}"] = subclass
-            return subclass
-
-        return decorator
-
-    @classmethod
-    def get_registered_type(cls, handler_type: str) -> Type["BaseASRHandler"] | None:
-        """
-        Get a registered handler class by message type.
-
-        Args:
-            msg_type: The message type to look up
-
-        Returns:
-            The registered handler class, or None if not found
-        """
-        return InputHandler.get_registered_type("asr", handler_type)
+    def msg_type(cls) -> str:
+        return "audio"
 
     def can_handle(self, msg: InboundMessage) -> bool:
         """
@@ -190,9 +161,13 @@ class BaseASRHandler(InputHandler):
             return None
 
 
-@BaseASRHandler.register("funasr")
+@BaseASRHandler.register()
 class FunasrHandler(BaseASRHandler):
     """FunASR-based speech recognition handler."""
+
+    @classmethod
+    def handler_type(cls) -> str:
+        return "funasr"
 
     def __init__(self, config: ASRHandlerConfig):
         try:
@@ -293,9 +268,13 @@ class FunasrHandler(BaseASRHandler):
             return ""
 
 
-@BaseASRHandler.register("vosk")
+@BaseASRHandler.register()
 class VoskHandler(BaseASRHandler):
     """Vosk-based speech recognition handler."""
+
+    @classmethod
+    def handler_type(cls) -> str:
+        return "vosk"
 
     def __init__(self, config: ASRHandlerConfig):
         from vosk import Model

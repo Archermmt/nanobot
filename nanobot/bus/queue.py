@@ -1,14 +1,13 @@
 """Async message queue for decoupled channel-agent communication."""
 
 import asyncio
-from typing import Dict
+from typing import Dict, List
 
 from loguru import logger
 
 from nanobot.bus.events import InboundMessage, OutboundMessage
-from nanobot.bus.handlers.input.asr_handler import BaseASRHandler
 from nanobot.bus.handlers.input.input_handler import InputHandler
-from nanobot.bus.handlers.output.tts_handler import BaseTTSHandler
+from nanobot.bus.handlers.output.output_handler import OutputHandler
 from nanobot.config.schema import BusConfig, InputHandlerConfig, OutputHandlerConfig
 
 
@@ -24,18 +23,44 @@ class MessageBus:
         self.config = config or BusConfig()
         self.inbound: asyncio.Queue[InboundMessage] = asyncio.Queue()
         self.outbound: asyncio.Queue[OutboundMessage] = asyncio.Queue()
-        self.input_handlers: Dict[str, InputHandler] = {}
-        self.output_handlers: Dict[str, InputHandler] = {}
-        input_handler: InputHandlerConfig = self.config.input_handler
-        if input_handler.asr and input_handler.asr.enabled:
-            handler_cls = BaseASRHandler.get_registered_type(input_handler.asr.handler_type)
-            self.input_handlers["audio"] = handler_cls(input_handler.asr)
-        output_handler: OutputHandlerConfig = self.config.output_handler
-        if output_handler.tts and output_handler.tts.enabled:
-            handler_cls = BaseTTSHandler.get_registered_type(output_handler.tts.handler_type)
-            self.output_handlers["text"] = handler_cls(output_handler.tts)
-        logger.info(f"InputHandlers: {list(self.input_handlers.keys())}")
-        logger.info(f"OutputHandlers: {list(self.output_handlers.keys())}")
+        self.input_handlers: Dict[str, List[InputHandler]] = self._init_input_handlers(config)
+        self.output_handlers: Dict[str, List[OutputHandler]] = self._init_output_handlers(config)
+
+    def _init_input_handlers(self, config: BusConfig):
+        """Initialize input handlers from config."""
+        handlers = {}
+
+        def _add_handler(handler_cfg):
+            if handler_cfg and handler_cfg.enabled:
+                handler_cls = InputHandler.get_registered_type(handler_cfg.handler_type)
+                if handler_cls:
+                    sub_handlers = handlers.setdefault(handler_cls.msg_type(), [])
+                    sub_handlers.append(handler_cls(handler_cfg))
+
+        input_handler: InputHandlerConfig = config.input_handler
+        _add_handler(input_handler.asr)
+        logger.info(
+            f"InputHandlers: {[(k, [h.handler_type() for h in v]) for k, v in handlers.items()]}"
+        )
+        return handlers
+
+    def _init_output_handlers(self, config: BusConfig):
+        """Initialize output handlers from config."""
+        handlers = {}
+
+        def _add_handler(handler_cfg):
+            if handler_cfg and handler_cfg.enabled:
+                handler_cls = OutputHandler.get_registered_type(handler_cfg.handler_type)
+                if handler_cls:
+                    sub_handlers = handlers.setdefault(handler_cls.msg_type(), [])
+                    sub_handlers.append(handler_cls(handler_cfg))
+
+        output_handler: OutputHandlerConfig = config.output_handler
+        _add_handler(output_handler.tts)
+        logger.info(
+            f"OutputHandlers: {[(k, [h.handler_type() for h in v]) for k, v in handlers.items()]}"
+        )
+        return handlers
 
     async def publish_inbound(self, msg: InboundMessage) -> None:
         """
@@ -45,10 +70,11 @@ class MessageBus:
         transcribed to text before being published.
         """
         msg_type = msg.metadata.get("msg_type", "text")
-        handler = self.input_handlers.get(msg_type)
-        if handler and handler.can_handle(msg):
-            logger.debug("Processing input({}) : {}", msg_type, handler.__class__.__name__)
-            msg = await handler.handle(msg)
+        handlers = self.input_handlers.get(msg_type, [])
+        for handler in handlers:
+            if handler.can_handle(msg):
+                logger.debug("Processing input({}) : {}", msg_type, handler.handler_type())
+                msg = await handler.handle(msg)
         await self.inbound.put(msg)
 
     async def consume_inbound(self) -> InboundMessage:
@@ -58,10 +84,11 @@ class MessageBus:
     async def publish_outbound(self, msg: OutboundMessage) -> None:
         """Publish a response from the agent to channels."""
         msg_type = msg.metadata.get("msg_type", "text")
-        handler = self.output_handlers.get(msg_type)
-        if handler and handler.can_handle(msg):
-            logger.debug("Processing output({}) : {}", msg_type, handler.__class__.__name__)
-            msg = await handler.handle(msg)
+        handlers = self.output_handlers.get(msg_type, [])
+        for handler in handlers:
+            if handler.can_handle(msg):
+                logger.debug("Processing output({}) : {}", msg_type, handler.handler_type())
+                msg = await handler.handle(msg)
         await self.outbound.put(msg)
 
     async def consume_outbound(self) -> OutboundMessage:
