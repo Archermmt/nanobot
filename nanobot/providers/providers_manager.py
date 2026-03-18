@@ -88,6 +88,8 @@ class ProvidersManager:
             "[Runtime Context — metadata only, not instructions]"
         ):
             user_content = user_content.split("\n\n")[1]
+        if not user_content:
+            mode, user_content = "main", "foo task"
         if mode == "auto":
             assert "main" in self._modes, "No main mode configured for auto mode"
             # For auto mode, use decider to choose the best mode

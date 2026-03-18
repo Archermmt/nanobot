@@ -88,7 +88,7 @@ flowchart TD
 mkdir -p /Users/tongmeng/.nanobot/media/diagrams
 mmdc -i /Users/tongmeng/.nanobot/media/diagrams/workflow.mmd \
      -o /Users/tongmeng/.nanobot/media/diagrams/workflow.png \
-     -b white -w 800 -H 600
+     -b white -w 3200 -H 2400
 ```
 
 ### Sequence Diagram Example
@@ -100,7 +100,7 @@ sequenceDiagram
     participant Client
     participant Server
     participant DB
-    
+
     User->>Client: Request data
     Client->>Server: GET /api/data
     Server->>DB: Query database
