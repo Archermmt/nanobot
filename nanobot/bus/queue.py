@@ -39,6 +39,7 @@ class MessageBus:
 
         input_handler: InputHandlerConfig = config.input_handler
         _add_handler(input_handler.asr)
+        _add_handler(input_handler.vad)
         logger.info(
             f"InputHandlers: {[(k, [h.handler_type() for h in v]) for k, v in handlers.items()]}"
         )

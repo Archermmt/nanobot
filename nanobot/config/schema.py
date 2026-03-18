@@ -244,6 +244,17 @@ class ASRHandlerConfig(Base):
     model: str = "paraformer-zh"
 
 
+class VADHandlerConfig(Base):
+    """Configuration for VAD (Voice Activity Detection) handler."""
+
+    enabled: bool = False
+    handler_type: str = "silero"  # silero or custom
+    model: str = "~/.nanobot/models/silero_vad"  # Path to Silero VAD model directory
+    threshold: float = 0.5  # High threshold for voice detection
+    threshold_low: float = 0.2  # Low threshold for voice detection
+    min_silence_duration_ms: int = 1000  # Silence duration in ms to consider speech ended
+
+
 class TTSHandlerConfig(Base):
     """Configuration for TTS (Text-to-Speech) handler."""
 
@@ -260,10 +271,13 @@ class InputHandlerConfig(Base):
     """Configuration for input handlers."""
 
     asr: ASRHandlerConfig | None = None
+    vad: VADHandlerConfig | None = None
 
     def model_post_init(self, __context):
         if self.asr is None:
             self.asr = ASRHandlerConfig()
+        if self.vad is None:
+            self.vad = VADHandlerConfig()
 
 
 class OutputHandlerConfig(Base):

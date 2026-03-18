@@ -177,7 +177,7 @@ class FunasrHandler(BaseASRHandler):
             from funasr import AutoModel
         except ImportError:
             logger.error(
-                "Init FunasrHandler. Install with: pip install funasr psutil torch torchaudio"
+                "Init FunasrHandler failed. Install with: pip install funasr psutil torch torchaudio"
             )
             return
 
