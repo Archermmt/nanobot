@@ -394,7 +394,6 @@ class WebSocketChannel(BaseChannel):
                         media_items.append(base64.b64encode(media_item).decode("utf-8"))
                     else:
                         media_items.append(media_item)
-
             message_data = {
                 "type": "message",
                 "message_id": f"msg_{hash(msg.content)}",
@@ -405,10 +404,7 @@ class WebSocketChannel(BaseChannel):
                 "metadata": msg.metadata,
                 "timestamp": asyncio.get_event_loop().time(),
             }
-
             # Send message (works for both client and server mode)
             await self._ws.send(json.dumps(message_data, ensure_ascii=False))
-            logger.debug("Sent message to chat_id: {}", msg.chat_id)
-
         except Exception as e:
             logger.error("Error sending WebSocket message: {}", e)
