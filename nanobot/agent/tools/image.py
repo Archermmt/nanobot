@@ -340,20 +340,14 @@ class ImageTool(Tool):
 
         try:
             # Check if it's an SVG file and convert to PNG for display
-            actual_image_path = image_path
             if Path(image_path).suffix.lower() == ".svg":
-                try:
-                    actual_image_path = self._convert_svg_to_png(image_path)
-                except ImportError as e:
-                    return f"Error: {str(e)}"
-                except Exception as e:
-                    return f"Error converting SVG to PNG: {str(e)}"
-
-            # Prepare media data for the message
-            media_data = {
-                "data": self._get_image_data(actual_image_path),
-                "file_name": Path(actual_image_path).name,
-            }
+                media_data = {"data": "", "file_path": image_path}
+            else:
+                # Prepare media data for the message
+                media_data = {
+                    "data": self._get_image_data(image_path),
+                    "file_name": Path(image_path).name,
+                }
             # Create outbound message with image as media
             msg = OutboundMessage(
                 channel=self._default_channel,
@@ -362,14 +356,13 @@ class ImageTool(Tool):
                 media=[media_data],
                 metadata={
                     "msg_type": "image",  # Indicate this is an image message
-                    "file_type": self._get_mime_type(actual_image_path),
+                    "file_type": self._get_mime_type(image_path),
                 },
             )
 
             # Send the message through the callback
             await self._send_callback(msg)
-
-            return f"Image displayed successfully: {Path(actual_image_path).name}"
+            return f"Image displayed successfully: {Path(image_path).name}"
 
         except FileNotFoundError as e:
             return f"Error: {str(e)}"

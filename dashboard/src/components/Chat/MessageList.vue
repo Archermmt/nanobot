@@ -9,8 +9,9 @@ marked.setOptions({
 })
 
 interface MediaData {
-  data: string
-  file_name: string
+  data?: string
+  file_name?: string
+  file_path?: string
 }
 
 interface Message {
@@ -78,6 +79,11 @@ const getImageUrlFromMessage = (msg: Message): string | null => {
     // Check if this is an image message based on metadata
     const msgType = msg.metadata?.msg_type
     if (msgType === 'image' || msg.metadata?.file_type?.startsWith('image/')) {
+      // For SVG files, use file_path directly
+      if ('file_path' in msg.media[0] && msg.media[0].file_path) {
+        return msg.media[0].file_path as string
+      }
+      // For other images, use data
       return msg.media[0]?.data || null
     }
   }
@@ -201,7 +207,7 @@ const handleTouchMove = (imageUrl: string, event: TouchEvent) => {
       imageZoomLevels.value[imageUrl] = 1
     }
 
-    const zoomSensitivity = 0.005
+    const zoomSensitivity = 0.003
     const newZoom = Math.min(Math.max(imageZoomLevels.value[imageUrl] + delta * zoomSensitivity, 0.5), 3)
     imageZoomLevels.value[imageUrl] = newZoom
     lastTouchDistance.value = distance
