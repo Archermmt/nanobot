@@ -99,7 +99,7 @@ class SileroVADHandler(BaseVADHandler):
             )
             return
 
-        model_path = Path(config.model).expanduser() / "silero_vad.onnx"
+        model_path = Path(config.model).expanduser()
 
         if not model_path.exists():
             logger.warning(f"Silero VAD model not found at {model_path}")
@@ -108,14 +108,12 @@ class SileroVADHandler(BaseVADHandler):
         opts = onnxruntime.SessionOptions()
         opts.inter_op_num_threads = 1
         opts.intra_op_num_threads = 1
-
         self.session = onnxruntime.InferenceSession(
             str(model_path), providers=["CPUExecutionProvider"], sess_options=opts
         )
-
-        self.vad_threshold = float(config.get("threshold", 0.5))
-        self.vad_threshold_low = float(config.get("threshold_low", 0.2))
-        self.silence_threshold_ms = int(config.get("min_silence_duration_ms", 1000))
+        self.vad_threshold = config.threshold
+        self.vad_threshold_low = config.threshold_low
+        self.silence_threshold_ms = config.min_silence_duration_ms
         self.frame_window_threshold = 3
 
     def _init_connection_state(self, conn: Any) -> None:
