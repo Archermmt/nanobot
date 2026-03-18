@@ -83,7 +83,11 @@ class ProvidersManager:
 
         mode = mode or self._default_mode
         decide_mode = mode
-        user_content = messages[-1]["content"].split("\n\n")[1]
+        user_content = messages[-1]["content"]
+        if isinstance(user_content, str) and user_content.startswith(
+            "[Runtime Context — metadata only, not instructions]"
+        ):
+            user_content = user_content.split("\n\n")[1]
         if mode == "auto":
             assert "main" in self._modes, "No main mode configured for auto mode"
             # For auto mode, use decider to choose the best mode

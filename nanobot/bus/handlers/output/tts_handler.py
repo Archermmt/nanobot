@@ -15,19 +15,6 @@ from nanobot.utils.text_utils import check_emoji, clean_markdown
 class BaseTTSHandler(OutputHandler):
     """Base class for text-to-speech message handlers."""
 
-    @classmethod
-    def msg_type(cls) -> str:
-        return "text"
-
-
-@BaseTTSHandler.register()
-class EdgeTTSHandler(BaseTTSHandler):
-    """Handler that converts text messages to speech using TTS."""
-
-    @classmethod
-    def handler_type(cls) -> str:
-        return "edge_tts"
-
     def __init__(self, config: TTSHandlerConfig | None = None):
         """
         Initialize the TTS handler.
@@ -37,13 +24,10 @@ class EdgeTTSHandler(BaseTTSHandler):
         """
 
         try:
-            import edge_tts
             import opuslib_next
             import pydub
         except ImportError:
-            error_msg = (
-                "Init EdgeTTSHandler failed. Install: pip install edge-tts opuslib_next pydub"
-            )
+            error_msg = "Init EdgeTTSHandler failed. Install: pip install opuslib_next pydub"
             raise ImportError(error_msg)
         self.voice = config.voice
         self.audio_format = config.audio_format
@@ -53,6 +37,10 @@ class EdgeTTSHandler(BaseTTSHandler):
         self.output_dir = Path(config.output_dir).expanduser().resolve()
         if self.encoder_type == "opus":
             self.encoder = opuslib_next.Encoder(self.sample_rate, 1, opuslib_next.APPLICATION_AUDIO)
+
+    @classmethod
+    def msg_type(cls) -> str:
+        return "text"
 
     def can_handle(self, msg: OutboundMessage) -> bool:
         """
@@ -139,6 +127,28 @@ class EdgeTTSHandler(BaseTTSHandler):
         return audio_bytes
 
     async def _text_to_speak(self, text, output_file):
+        """
+        Convert text to speech using TTS service. To be implemented by subclasses.
+
+        Args:
+            text: Text content to convert
+            output_file: Optional output file path (can be None)
+
+        Returns:
+            Audio bytes or None if output_file is provided
+        """
+        raise NotImplementedError("Subclasses must implement _text_to_speak method")
+
+
+@BaseTTSHandler.register()
+class EdgeTTSHandler(BaseTTSHandler):
+    """Handler that converts text messages to speech using Edge TTS."""
+
+    @classmethod
+    def handler_type(cls) -> str:
+        return "edge_tts"
+
+    async def _text_to_speak(self, text, output_file):
         import edge_tts
 
         try:
@@ -162,5 +172,5 @@ class EdgeTTSHandler(BaseTTSHandler):
                         audio_bytes += chunk["data"]
                 return audio_bytes
         except Exception as e:
-            error_msg = f"Edge TTS请求失败: {e}"
+            error_msg = f"Edge TTS 请求失败：{e}"
             raise Exception(error_msg)  # 抛出异常，让调用方捕获
