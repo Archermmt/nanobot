@@ -13,7 +13,7 @@ Unified tool for analyzing and displaying images. Supports four modes: vision an
 - Analyze images using multimodal LLM models (OCR, description, visual QA)
 - Display images to users by sending them to the frontend
 - Generate images from text prompts using AI models
-- Support multiple image formats: PNG, JPG, JPEG, GIF, WEBP, BMP
+- Support multiple image formats: PNG, JPG, JPEG, GIF, WEBP, BMP, SVG
 - Base64 encoding for image processing and transmission
 
 ## Tools
@@ -36,7 +36,7 @@ Unified tool for image analysis, display, and generation.
   - In edit mode: Description of how to modify the reference image (e.g., "Add a hat to the cat", "Change the background to beach")
 - `ref_image` (string, required in edit mode):
   - In edit mode: Absolute path to the reference image file that will be modified according to the text prompt. Must exist locally.
-  - Supported formats: PNG, JPG, JPEG, GIF, WEBP
+  - Supported formats: PNG, JPG, JPEG, GIF, WEBP, SVG
 
 ## Examples
 

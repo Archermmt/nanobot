@@ -166,7 +166,7 @@ class ImageTool(Tool):
             raise FileNotFoundError(f"Image file not found: {image_path}")
 
         # Check file extension
-        valid_extensions = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
+        valid_extensions = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg"}
         if path.suffix.lower() not in valid_extensions:
             raise ValueError(
                 f"Unsupported image format: {path.suffix}. "
@@ -189,6 +189,7 @@ class ImageTool(Tool):
             ".gif": "image/gif",
             ".webp": "image/webp",
             ".bmp": "image/bmp",
+            ".svg": "image/svg+xml",
         }
         return mime_types.get(ext, "image/png")
 
@@ -338,10 +339,20 @@ class ImageTool(Tool):
             return "Error: Message sending not configured"
 
         try:
+            # Check if it's an SVG file and convert to PNG for display
+            actual_image_path = image_path
+            if Path(image_path).suffix.lower() == ".svg":
+                try:
+                    actual_image_path = self._convert_svg_to_png(image_path)
+                except ImportError as e:
+                    return f"Error: {str(e)}"
+                except Exception as e:
+                    return f"Error converting SVG to PNG: {str(e)}"
+
             # Prepare media data for the message
             media_data = {
-                "data": self._get_image_data(image_path),
-                "file_name": Path(image_path).name,
+                "data": self._get_image_data(actual_image_path),
+                "file_name": Path(actual_image_path).name,
             }
             # Create outbound message with image as media
             msg = OutboundMessage(
@@ -351,14 +362,14 @@ class ImageTool(Tool):
                 media=[media_data],
                 metadata={
                     "msg_type": "image",  # Indicate this is an image message
-                    "file_type": self._get_mime_type(image_path),
+                    "file_type": self._get_mime_type(actual_image_path),
                 },
             )
 
             # Send the message through the callback
             await self._send_callback(msg)
 
-            return f"Image displayed successfully: {Path(image_path).name}"
+            return f"Image displayed successfully: {Path(actual_image_path).name}"
 
         except FileNotFoundError as e:
             return f"Error: {str(e)}"
@@ -435,6 +446,39 @@ class ImageTool(Tool):
         for img_path in image_paths:
             await self._execute_display(f"Generated image:\n{os.path.basename(img_path)}", img_path)
         return f"Generated {len(image_paths)} images by {provider} successfully."
+
+    def _convert_svg_to_png(self, svg_path: str) -> str:
+        """
+        Convert SVG file to PNG format.
+
+        Args:
+            svg_path: Absolute path to the SVG file.
+
+        Returns:
+            Absolute path to the converted PNG file.
+
+        Raises:
+            ImportError: If required libraries are not installed.
+            Exception: If conversion fails.
+        """
+        try:
+            import cairosvg
+            from PIL import Image
+        except ImportError:
+            raise ImportError(
+                "SVG to PNG conversion requires cairosvg and Pillow. "
+                "Install with: pip install cairosvg pillow"
+            )
+
+        # Generate PNG path
+        svg_path_obj = Path(svg_path)
+        png_path = svg_path_obj.with_suffix(".png")
+
+        # Convert SVG to PNG using cairosvg
+        cairosvg.svg2png(url=str(svg_path), write_to=str(png_path))
+
+        logger.info(f"Converted SVG to PNG: {svg_path} -> {png_path}")
+        return str(png_path)
 
     async def _dashscope_generate(
         self,
