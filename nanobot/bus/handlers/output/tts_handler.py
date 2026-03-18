@@ -9,6 +9,7 @@ from nanobot.bus.events import OutboundMessage
 from nanobot.bus.handlers.output.output_handler import OutputHandler
 from nanobot.config.schema import TTSHandlerConfig
 from nanobot.utils.media import audio_bytes_to_data_stream
+from nanobot.utils.text_utils import check_emoji, clean_markdown
 
 
 class BaseTTSHandler(OutputHandler):
@@ -110,8 +111,9 @@ class EdgeTTSHandler(BaseTTSHandler):
             Opus encoded audio bytes or None if failed
         """
         # Clean markdown formatting from text
-        text, audio_bytes = self._clean_markdown(text), None
-        max_repeat_time = 5
+        text = clean_markdown(text)
+        text = check_emoji(text)
+        max_repeat_time, audio_bytes = 5, None
 
         while max_repeat_time > 0:
             try:
@@ -162,37 +164,3 @@ class EdgeTTSHandler(BaseTTSHandler):
         except Exception as e:
             error_msg = f"Edge TTS请求失败: {e}"
             raise Exception(error_msg)  # 抛出异常，让调用方捕获
-
-    def _clean_markdown(self, text: str) -> str:
-        """
-        Clean markdown formatting from text.
-
-        References: MarkdownCleaner.clean_markdown from xiaozhi TTS base
-
-        Args:
-            text: Text with potential markdown formatting
-
-        Returns:
-            Cleaned text without markdown
-        """
-        import re
-
-        # Remove common markdown patterns
-        # Bold: **text** or __text__
-        text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
-        text = re.sub(r"__(.+?)__", r"\1", text)
-
-        # Italic: *text* or _text_
-        text = re.sub(r"\*(.+?)\*", r"\1", text)
-        text = re.sub(r"_(.+?)_", r"\1", text)
-
-        # Code: `code`
-        text = re.sub(r"`(.+?)`", r"\1", text)
-
-        # Links: [text](url)
-        text = re.sub(r"\[(.+?)\]\(.+?\)", r"\1", text)
-
-        # Headers: # text
-        text = re.sub(r"^#+\s+", "", text, flags=re.MULTILINE)
-
-        return text

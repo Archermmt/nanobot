@@ -552,9 +552,6 @@ class XiaoZhiChannel(BaseChannel):
         message = {"type": "tts", "state": state, "session_id": self.session_id}
         if text is not None:
             message["text"] = textUtils.check_emoji(text)
-        # TTS播放结束
-        if state == "stop":
-            logger.info("Stop tts message")
         # 发送消息到客户端
         websocket = websocket or self._ws
         await websocket.send(json.dumps(message))
