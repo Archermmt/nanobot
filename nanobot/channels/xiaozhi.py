@@ -329,7 +329,7 @@ class XiaoZhiChannel(BaseChannel):
                 if isinstance(message, str):
                     msg_data = json.loads(message)
                 elif isinstance(message, bytes):
-                    raise Exception("not implemented!!")
+                    msg_data = {"type": "audio_clip", "bytes": message}
                 else:
                     return
                 # Parse message
@@ -347,6 +347,14 @@ class XiaoZhiChannel(BaseChannel):
 
         msg_type = msg_data.get("type", TextMessageType.LISTEN)
         # Handle msg_type handler
+        if msg_type == "audio_clip":
+            await self._handle_message(
+                sender_id=self.session_id,
+                chat_id=client_info["client_id"],
+                content=msg_data["bytes"],
+                metadata={"msg_type": "audio_clip"},
+            )
+            return
         if msg_type == TextMessageType.HELLO.value:
             await self._handle_hello_message(msg_data)
             return

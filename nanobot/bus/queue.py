@@ -40,9 +40,8 @@ class MessageBus:
         input_handler: InputHandlerConfig = config.input_handler
         _add_handler(input_handler.asr)
         _add_handler(input_handler.vad)
-        logger.info(
-            f"InputHandlers: {[(k, [h.handler_type() for h in v]) for k, v in handlers.items()]}"
-        )
+        info = {k: [h.handler_type() for h in v] for k, v in handlers.items()}
+        logger.info(f"InputHandlers: {info}")
         return handlers
 
     def _init_output_handlers(self, config: BusConfig):
@@ -58,9 +57,8 @@ class MessageBus:
 
         output_handler: OutputHandlerConfig = config.output_handler
         _add_handler(output_handler.tts)
-        logger.info(
-            f"OutputHandlers: {[(k, [h.handler_type() for h in v]) for k, v in handlers.items()]}"
-        )
+        info = {k: [h.handler_type() for h in v] for k, v in handlers.items()}
+        logger.info(f"OutputHandlers: {info}")
         return handlers
 
     async def publish_inbound(self, msg: InboundMessage) -> None:

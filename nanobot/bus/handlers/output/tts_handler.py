@@ -174,3 +174,89 @@ class EdgeTTSHandler(BaseTTSHandler):
         except Exception as e:
             error_msg = f"Edge TTS 请求失败：{e}"
             raise Exception(error_msg)  # 抛出异常，让调用方捕获
+
+
+@BaseTTSHandler.register()
+class LocalTTSHandler(BaseTTSHandler):
+    """Local TTS handler using pyttsx3 for offline text-to-speech."""
+
+    @classmethod
+    def handler_type(cls) -> str:
+        return "local_tts"
+
+    def __init__(self, config: TTSHandlerConfig | None = None):
+        """
+        Initialize the local TTS handler.
+
+        Args:
+            config: TTSHandlerConfig containing TTS settings
+        """
+        try:
+            import pyttsx3
+        except ImportError:
+            error_msg = "Init LocalTTSHandler failed. Install: pip install pyttsx3"
+            raise ImportError(error_msg)
+
+        super().__init__(config)
+        self.engine = pyttsx3.init()
+
+        # Set voice properties
+        voices = self.engine.getProperty("voices")
+        if voices:
+            # Try to find Chinese voice first, otherwise use first available voice
+            chinese_voice = next(
+                (v for v in voices if "zh" in v.id.lower() or "chinese" in v.name.lower()), None
+            )
+            self.engine.setProperty("voice", chinese_voice.id if chinese_voice else voices[0].id)
+
+        self.engine.setProperty("rate", 150)  # Speed
+        self.engine.setProperty("volume", 1.0)  # Volume (0.0 to 1.0)
+
+    async def _text_to_speak(self, text, output_file):
+        """
+        Convert text to speech using pyttsx3.
+
+        Args:
+            text: Text content to convert
+            output_file: Optional output file path (can be None)
+
+        Returns:
+            Audio bytes or None if output_file is provided
+        """
+        import tempfile
+
+        try:
+            # Create temporary WAV file
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_file:
+                tmp_path = tmp_file.name
+
+            try:
+                # Save speech to file
+                self.engine.save_to_file(text, tmp_path)
+                self.engine.runAndWait()
+
+                # Read the generated WAV file directly as PCM data
+                with open(tmp_path, "rb") as f:
+                    # Skip WAV header (44 bytes typically)
+                    f.seek(44)
+                    pcm_data = f.read()
+
+                if output_file:
+                    # Save to output file
+                    os.makedirs(os.path.dirname(output_file), exist_ok=True)
+                    with open(output_file, "wb") as f:
+                        f.write(pcm_data)
+                    return None
+                else:
+                    # Return raw PCM bytes
+                    return pcm_data
+
+            finally:
+                # Cleanup temporary file
+                if os.path.exists(tmp_path):
+                    os.unlink(tmp_path)
+
+        except Exception as e:
+            error_msg = f"Local TTS conversion failed: {str(e)}"
+            logger.error(error_msg)
+            raise Exception(error_msg)

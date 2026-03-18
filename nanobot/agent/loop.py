@@ -555,6 +555,8 @@ class AgentLoop:
             )
         if msg.metadata and msg.metadata.get("passby", False):
             msg.metadata.pop("passby")
+            if not msg.content:
+                return
             return OutboundMessage(
                 channel=msg.channel, chat_id=msg.chat_id, content=msg.content, metadata=msg.metadata
             )
