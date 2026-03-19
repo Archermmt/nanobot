@@ -307,13 +307,17 @@ class QwenTTSHandler(BaseTTSHandler):
         # Voice ID will be lazily initialized on first use
         # cosyvoice-v3.5-plus-nanobot-874c66864fd34610ba502d22cdaf1698
         self.voice_id = config.voice
-        self.voice_service = None
+        # self.voice_id = "cosyvoice-v3.5-plus-nanobot-874c66864fd34610ba502d22cdaf1698"
+        self.voice_service = VoiceEnrollmentService()
         # Check if API key is configured
         assert os.getenv("DASHSCOPE_API_KEY"), (
             "Qwen TTS: DASHSCOPE_API_KEY environment variable not set"
         )
         logger.info(f"✅ Qwen TTS: Initialized with model {self.model}")
-        self._clone_voice(config.ref_audio)
+        if self._check_voice(self.voice_id):
+            logger.info(f"Use registered voice id {self.voice_id}")
+        else:
+            self._clone_voice(config.ref_audio)
 
     async def _text_to_speak(self, text, output_file):
         """
@@ -349,6 +353,18 @@ class QwenTTSHandler(BaseTTSHandler):
             logger.error(error_msg)
             raise Exception(error_msg)
 
+    def _check_voice(self, voice_id):
+        """
+        Check if the voice is ready for use.
+        """
+        try:
+            voice_info = self.voice_service.query_voice(voice_id=voice_id)
+            status = voice_info.get("status")
+            return status == "OK"
+        except Exception as e:
+            logger.warning(f"Voice check failed: {str(e)}")
+            return False
+
     def _clone_voice(self, ref_audio):
         """
         Clone voice using reference audio through Alibaba Cloud CosyVoice service.
@@ -357,11 +373,6 @@ class QwenTTSHandler(BaseTTSHandler):
         base64 string and uploading to Alibaba Cloud's voice enrollment service.
         """
         try:
-            # Initialize voice enrollment service lazily
-            from dashscope.audio.tts_v2 import VoiceEnrollmentService
-
-            self.voice_service = VoiceEnrollmentService()
-
             # Convert audio file to base64 string (similar to image handling)
             audio_data_url = self._get_audio_data(ref_audio)
             logger.info(f"🎤 Qwen TTS: Starting voice cloning from {ref_audio}")
