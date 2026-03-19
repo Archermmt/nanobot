@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onUnmounted } from 'vue'
+import { ref, onUnmounted, watch } from 'vue'
 import Sidebar from './components/Sidebar/Sidebar.vue'
 import StatusBar from './components/StatusBar/StatusBar.vue'
 import Chat from './components/Chat/Chat.vue'
@@ -137,6 +137,14 @@ const disconnectWebSocket = () => {
   // Notify Chat component
   if (chatComponentRef.value && chatComponentRef.value.setWebSocket) {
     chatComponentRef.value.setWebSocket(null)
+  }
+}
+
+const handleThinkingChange = (isThinkingState: boolean) => {
+  if (isThinkingState) {
+    document.title = 'Thinking...'
+  } else {
+    document.title = 'NanoBoard'
   }
 }
 
@@ -363,9 +371,9 @@ document.addEventListener('mouseup', stopDragCamera)
       <!-- Content Area -->
       <main class="flex-1 overflow-hidden bg-gray-900">
         <Chat ref="chatComponentRef" v-show="currentSection === 'chat'" @status-update="handleStatusUpdate"
-          @ws-status-change="handleWsStatusChange" :show-progress-messages="!hideProgress"
-          :is-online-chat-on="isOnlineChatOn" :enable-audio="enableAudio" :enable-tts="enableTts"
-          :enable-speak="enableSpeak" />
+          @ws-status-change="handleWsStatusChange" @thinking-change="handleThinkingChange"
+          :show-progress-messages="!hideProgress" :is-online-chat-on="isOnlineChatOn" :enable-audio="enableAudio"
+          :enable-tts="enableTts" :enable-speak="enableSpeak" />
         <div v-show="currentSection !== 'chat'" class="p-6 text-gray-500 text-center">
           <p class="text-lg">Section under construction</p>
           <p class="text-sm mt-2">{{ currentSection }} view coming soon...</p>

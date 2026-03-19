@@ -38,7 +38,7 @@ interface Props {
 }
 
 const props = defineProps<Props>()
-const emit = defineEmits(['play-audio', 'stop-audio'])
+const emit = defineEmits(['play-audio', 'stop-audio', 'thinking-change'])
 
 const messageContainer = ref<HTMLElement | null>(null)
 
@@ -60,6 +60,10 @@ const showThinking = computed(() => {
 
   return false
 })
+
+watch(showThinking, (newValue) => {
+  emit('thinking-change', newValue)
+}, { immediate: true })
 
 const currentAudio = ref<HTMLAudioElement | null>(null)
 const expandedImages = ref<string[]>([])

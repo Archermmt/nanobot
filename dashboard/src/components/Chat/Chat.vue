@@ -30,7 +30,7 @@ const props = defineProps<{
   enableSpeak?: boolean
 }>()
 
-const emit = defineEmits(['send', 'new-chat', 'clear-chat', 'upload-image', 'upload-audio', 'upload-file', 'ws-status-change', 'send-status', 'status-update'])
+const emit = defineEmits(['send', 'new-chat', 'clear-chat', 'upload-image', 'upload-audio', 'upload-file', 'ws-status-change', 'send-status', 'status-update', 'thinking-change'])
 
 const messages = ref<Message[]>([])
 const isLoading = ref(false)
@@ -595,6 +595,10 @@ const handleClearChat = () => {
   }
 }
 
+const handleThinkingChange = (isThinking: boolean) => {
+  emit('thinking-change', isThinking)
+}
+
 const playAudio = (audioUrl: string) => {
   if (currentAudio.value) {
     if (currentAudio.value.src === audioUrl && !currentAudio.value.paused) {
@@ -648,7 +652,8 @@ defineExpose({
   <div class="flex flex-col h-full chat-container">
     <!-- Messages -->
     <MessageList :messages="messages" :isLoading="isLoading" @play-audio="playAudio" @stop-audio="stopAudio"
-      :show-progress-messages="props.showProgressMessages" :playing-audio-url="playingAudioUrl" />
+      :show-progress-messages="props.showProgressMessages" :playing-audio-url="playingAudioUrl"
+      @thinking-change="handleThinkingChange" />
 
     <!-- Input -->
     <ChatInput ref="chatInputRef" :isLoading="isLoading" :disabled="!isConnected"
