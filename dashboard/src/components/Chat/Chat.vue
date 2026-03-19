@@ -740,6 +740,7 @@ const handleTTSMessage = async (data: any) => {
       isPlayingOpus.value = false
       currentOpusText.value = ''
       pcmBuffer.length = 0
+      isLoading.value = false
     }, 500)
   }
 }

@@ -7,6 +7,8 @@ import signal
 import sys
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 # Force UTF-8 encoding for Windows console
 if sys.platform == "win32":
     import locale
@@ -310,6 +312,8 @@ def gateway(
 
     config_path = Path(config) if config else None
     config = load_config(config_path)
+    load_dotenv(dotenv_path=config.workspace_path / ".env")
+
     if workspace:
         config.agents.defaults.workspace = workspace
 
@@ -502,6 +506,7 @@ def agent(
     from nanobot.cron.service import CronService
 
     config = load_config()
+    load_dotenv(dotenv_path=config.workspace_path / ".env")
     sync_workspace_templates(config.workspace_path)
 
     bus = MessageBus(config.bus)

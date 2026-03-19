@@ -8,9 +8,8 @@ import re
 import weakref
 from contextlib import AsyncExitStack
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Awaitable, Callable
+from typing import TYPE_CHECKING, Awaitable, Callable
 
-from dotenv import load_dotenv
 from loguru import logger
 
 from nanobot.agent.context import ContextBuilder
@@ -121,7 +120,6 @@ class AgentLoop:
         self._register_default_tools()
         if isinstance(self.provider, ProvidersManager):
             self.provider.set_send_callback(send_callback=self.bus.publish_outbound)
-        load_dotenv(dotenv_path=self.workspace / ".env")
 
     def _register_default_tools(self) -> None:
         """Register the default set of tools."""

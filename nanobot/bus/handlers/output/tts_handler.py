@@ -296,11 +296,14 @@ class QwenTTSHandler(BaseTTSHandler):
         self.model = config.model
         self.voice_id = config.voice
         self.voice_service = VoiceEnrollmentService()
+        self._qwen_audio_format = self._get_audio_format()
         # Check if API key is configured
         assert os.getenv("DASHSCOPE_API_KEY"), (
             "Qwen TTS: DASHSCOPE_API_KEY environment variable not set"
         )
-        logger.info(f"✅ Qwen TTS: Initialized with model {self.model}")
+        logger.info(
+            f"✅ Qwen TTS: Initialized with model: {self.model}, format: {self._qwen_audio_format}"
+        )
         if self._check_voice(self.voice_id):
             logger.info(f"Use registered voice id {self.voice_id}")
         else:
@@ -320,8 +323,9 @@ class QwenTTSHandler(BaseTTSHandler):
         try:
             from dashscope.audio.tts_v2 import SpeechSynthesizer
 
-            # Create speech synthesizer with the model and voice
-            synthesizer = SpeechSynthesizer(model=self.model, voice=self.voice_id)
+            synthesizer = SpeechSynthesizer(
+                model=self.model, voice=self.voice_id, format=self._qwen_audio_format
+            )
             # Synthesize speech
             audio_data = synthesizer.call(text)
 
@@ -339,6 +343,26 @@ class QwenTTSHandler(BaseTTSHandler):
             error_msg = f"Qwen TTS conversion failed: {str(e)}"
             logger.error(error_msg)
             raise Exception(error_msg)
+
+    def _get_audio_format(self):
+        """Get the audio format based on the model and voice ID."""
+
+        # Create speech synthesizer with the model and voice
+        from dashscope.audio.tts_v2 import AudioFormat
+
+        if self.audio_format == "wav" and self.sample_rate == 8000:
+            return AudioFormat.WAV_8000HZ_MONO_16BIT
+        if self.audio_format == "wav" and self.sample_rate == 16000:
+            return AudioFormat.WAV_16000HZ_MONO_16BIT
+        if self.audio_format == "wav" and self.sample_rate == 24000:
+            return AudioFormat.WAV_24000HZ_MONO_16BIT
+        if self.audio_format == "mp3" and self.sample_rate == 8000:
+            return AudioFormat.MP3_8000HZ_MONO_128KBPS
+        if self.audio_format == "mp3" and self.sample_rate == 16000:
+            return AudioFormat.MP3_16000HZ_MONO_128KBPS
+        if self.audio_format == "mp3" and self.sample_rate == 24000:
+            return AudioFormat.MP3_24000HZ_MONO_256KBPS
+        return AudioFormat.DEFAULT
 
     def _check_voice(self, voice_id):
         """

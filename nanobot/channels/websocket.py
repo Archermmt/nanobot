@@ -398,7 +398,6 @@ class WebSocketChannel(BaseChannel):
             msg.metadata.get("msg_type", "text") == "audio"
             and msg.metadata.get("encoder_type", "") == "opus"
         ):
-            logger.debug("Send audio message as opus frames")
             # Send opus back for testing
             await self._ws.send(
                 json.dumps({"type": "tts", "state": "start", "session_id": msg.chat_id})
@@ -416,6 +415,7 @@ class WebSocketChannel(BaseChannel):
             for media in msg.media:
                 await self._ws.send(media)
             play_time = len(msg.media) * self.config.frame_duration / 1000.0
+            logger.debug(f"Sending audio message as opus frames, wait {play_time} ms")
             await asyncio.sleep(play_time)
             await self._ws.send(
                 json.dumps({"type": "tts", "state": "stop", "session_id": msg.chat_id})
