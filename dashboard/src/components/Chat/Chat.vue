@@ -681,24 +681,23 @@ const handleTTSMessage = async (data: any) => {
     isPlayingOpus.value = true
     await initializeOpusPlayback()
   } else if (state === 'sentence_start') {
-    // Store the text content
-    currentOpusText.value = data.text || ''
-    console.log('📝 TTS text:', currentOpusText.value)
+    // Store the text content and display it immediately
+    const text = data.text || ''
+    currentOpusText.value = text
+    console.log('📝 TTS text:', text)
+
+    // Add message to chat immediately
+    messages.value.push({
+      role: 'assistant',
+      content: text,
+      timestamp: Date.now()
+    })
   } else if (state === 'stop') {
     // Stop playback after a short delay to let remaining audio play
     setTimeout(() => {
       isPlayingOpus.value = false
       currentOpusText.value = ''
       pcmBuffer.length = 0
-
-      // Add message to chat
-      if (currentOpusText.value) {
-        messages.value.push({
-          role: 'assistant',
-          content: currentOpusText.value,
-          timestamp: Date.now()
-        })
-      }
     }, 500)
   }
 }

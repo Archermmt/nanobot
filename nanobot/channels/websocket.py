@@ -308,7 +308,20 @@ class WebSocketChannel(BaseChannel):
         if not content and not media and not metadata:
             return
 
+        media_dir = Path.home() / ".nanobot" / "media"
+        media_dir.mkdir(parents=True, exist_ok=True)
         if not content and msg_type == "audio":
+            # Save media if cache_media is enabled
+            if self.config.cache_media and media:
+                for media_item in media:
+                    media_data, filename = media_item["data"], media_item.get("file_name", "")
+                    if isinstance(media_data, str) and media_data.startswith("data:"):
+                        try:
+                            file_path, filename = save_media(media_data, media_dir, filename)
+                            logger.info("Saved audio file to: {}", file_path)
+                        except Exception as e:
+                            logger.error("Failed to save audio media: {}", e)
+            # Handle the message
             await self._handle_message(
                 sender_id=sender_id,
                 chat_id=chat_id,
@@ -327,8 +340,6 @@ class WebSocketChannel(BaseChannel):
         elif media:
             content_parts.append("Just save the following files, do nothing else: ")
         if media:
-            media_dir = Path.home() / ".nanobot" / "media"
-            media_dir.mkdir(parents=True, exist_ok=True)
             for media_item in media:
                 media_data, filename = media_item["data"], media_item.get("file_name", "")
                 # Check if media is base64 data (data URL format: data:<mime>;base64,<data>)
@@ -378,16 +389,6 @@ class WebSocketChannel(BaseChannel):
         except Exception as e:
             logger.warning("Failed to send heartbeat response: {}", e)
 
-    async def _send_tts_message(self, state, session_id, text=None):
-        """发送 TTS 状态消息"""
-        if text is None and state == "sentence_start":
-            return
-        message = {"type": "tts", "state": state, "session_id": session_id}
-        if text is not None:
-            message["text"] = check_emoji(text)
-        # 发送消息到客户端
-        await self._ws.send(json.dumps(message))
-
     async def send(self, msg: OutboundMessage) -> None:
         """Send a message through WebSocket."""
         if not self._connected or not self._ws:
@@ -400,13 +401,26 @@ class WebSocketChannel(BaseChannel):
         ):
             logger.debug("Send audio message as opus frames")
             # Send opus back for testing
-            await self._send_tts_message("start", msg.chat_id)
-            await self._send_tts_message("sentence_start", msg.chat_id, msg.content)
+            await self._ws.send(
+                json.dumps({"type": "tts", "state": "start", "session_id": msg.chat_id})
+            )
+            await self._ws.send(
+                json.dumps(
+                    {
+                        "type": "tts",
+                        "state": "sentence_start",
+                        "session_id": msg.chat_id,
+                        "text": msg.content,
+                    }
+                )
+            )
             for media in msg.media:
                 await self._ws.send(media)
             play_time = len(msg.media) * self.config.frame_duration / 1000.0
             await asyncio.sleep(play_time)
-            await self._send_tts_message("stop", msg.chat_id)
+            await self._ws.send(
+                json.dumps({"type": "tts", "state": "stop", "session_id": msg.chat_id})
+            )
 
         try:
             # Convert media bytes to base64 for JSON serialization

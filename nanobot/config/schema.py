@@ -211,6 +211,7 @@ class WebSocketConfig(Base):
     heartbeat_interval: int = 30  # Heartbeat interval in seconds
     as_server: bool = True  # If True, act as WebSocket server; if False, connect as client
     frame_duration: int = 60  # Frame duration in milliseconds
+    cache_media: bool = False  # If True, save media files locally
 
 
 class XiaoZhiConfig(Base):
