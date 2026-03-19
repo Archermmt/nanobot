@@ -16,8 +16,7 @@ from nanobot.bus.queue import MessageBus
 from nanobot.channels.base import BaseChannel
 from nanobot.channels.xiaozhi_server.core.http_server import SimpleHttpServer
 from nanobot.config.schema import XiaoZhiConfig
-
-from .xiaozhi_server.core.utils import textUtils
+from nanobot.utils.text_utils import check_emoji, get_string_no_punctuation_or_emoji
 
 
 class TextMessageType(Enum):
@@ -96,6 +95,7 @@ class XiaoZhiChannel(BaseChannel):
             bus: The message bus for communication.
         """
         super().__init__(config, bus)
+        self.config: XiaoZhiConfig = config
         self._ws = None
         self._connected_clients: dict[any, dict] = {}
         self._auth_enabled = False
@@ -105,7 +105,6 @@ class XiaoZhiChannel(BaseChannel):
         self.config_lock = asyncio.Lock()
         self.session_id = str(uuid.uuid4())[:8]
         self.audio_format = "opus"
-        self.frame_duration = config.frame_duration
         self.client_listen_mode = "auto"
         self.features = {}
 
@@ -423,7 +422,7 @@ class XiaoZhiChannel(BaseChannel):
                 "format": "opus",
                 "sample_rate": 24000,
                 "channels": 1,
-                "frame_duration": self.frame_duration,
+                "frame_duration": self.config.frame_duration,
             },
         }
         audio_params = msg_data.get("audio_params")
@@ -542,7 +541,7 @@ class XiaoZhiChannel(BaseChannel):
 
     async def _start_to_chat(self, msg_data, client_info):
         content = msg_data["text"]
-        stt_text = textUtils.get_string_no_punctuation_or_emoji(content)
+        stt_text = get_string_no_punctuation_or_emoji(content)
         await self._ws.send(
             json.dumps({"type": "stt", "text": stt_text, "session_id": self.session_id})
         )
@@ -559,7 +558,7 @@ class XiaoZhiChannel(BaseChannel):
             return
         message = {"type": "tts", "state": state, "session_id": self.session_id}
         if text is not None:
-            message["text"] = textUtils.check_emoji(text)
+            message["text"] = check_emoji(text)
         # 发送消息到客户端
         websocket = websocket or self._ws
         await websocket.send(json.dumps(message))
@@ -596,7 +595,7 @@ class XiaoZhiChannel(BaseChannel):
             await self._send_tts_message("sentence_start", msg.content, websocket=target_ws)
             for media in msg.media:
                 await target_ws.send(media)
-            play_time = len(msg.media) * self.frame_duration / 1000.0
+            play_time = len(msg.media) * self.config.frame_duration / 1000.0
             await asyncio.sleep(play_time)
             await self._send_tts_message("stop", websocket=target_ws)
         elif "mode_hint" not in msg.metadata:

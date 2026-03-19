@@ -210,6 +210,7 @@ class WebSocketConfig(Base):
     reconnect_interval: int = 5  # Reconnection interval in seconds
     heartbeat_interval: int = 30  # Heartbeat interval in seconds
     as_server: bool = True  # If True, act as WebSocket server; if False, connect as client
+    frame_duration: int = 60  # Frame duration in milliseconds
 
 
 class XiaoZhiConfig(Base):

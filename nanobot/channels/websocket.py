@@ -13,6 +13,7 @@ from nanobot.bus.queue import MessageBus
 from nanobot.channels.base import BaseChannel
 from nanobot.config.schema import WebSocketConfig
 from nanobot.utils.media import save_media
+from nanobot.utils.text_utils import check_emoji
 
 
 class WebSocketChannel(BaseChannel):
@@ -377,11 +378,34 @@ class WebSocketChannel(BaseChannel):
         except Exception as e:
             logger.warning("Failed to send heartbeat response: {}", e)
 
+    async def _send_tts_message(self, state, text=None):
+        """发送 TTS 状态消息"""
+        if text is None and state == "sentence_start":
+            return
+        message = {"type": "tts", "state": state, "session_id": self.session_id}
+        if text is not None:
+            message["text"] = check_emoji(text)
+        # 发送消息到客户端
+        await self._ws.send(json.dumps(message))
+
     async def send(self, msg: OutboundMessage) -> None:
         """Send a message through WebSocket."""
         if not self._connected or not self._ws:
             logger.warning("WebSocket not connected, cannot send message")
             return
+
+        if (
+            msg.metadata.get("msg_type", "text") == "audio"
+            and msg.metadata.get("encoder_type", "") == "opus"
+        ):
+            # Send opus back for testing
+            await self._send_tts_message("start")
+            await self._send_tts_message("sentence_start", msg.content)
+            for media in msg.media:
+                await self._ws.send(media)
+            play_time = len(msg.media) * self.config.frame_duration / 1000.0
+            await asyncio.sleep(play_time)
+            await self._send_tts_message("stop")
 
         try:
             # Convert media bytes to base64 for JSON serialization
