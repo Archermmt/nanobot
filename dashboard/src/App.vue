@@ -140,10 +140,22 @@ const disconnectWebSocket = () => {
   }
 }
 
+let thinkingInterval: number | null = null
+
 const handleThinkingChange = (isThinkingState: boolean) => {
   if (isThinkingState) {
-    document.title = 'Thinking...'
+    // Start blinking effect
+    let dots = 0
+    thinkingInterval = window.setInterval(() => {
+      dots = (dots + 1) % 4
+      document.title = 'Thinking ' + '.'.repeat(dots)
+    }, 500)
   } else {
+    // Stop blinking effect and reset title
+    if (thinkingInterval) {
+      clearInterval(thinkingInterval)
+      thinkingInterval = null
+    }
     document.title = 'NanoBoard'
   }
 }
