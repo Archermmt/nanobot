@@ -275,7 +275,7 @@ const handleWebSocketMessage = (event: MessageEvent) => {
   }
 }
 
-const sendMessage = async (data: string | { text: string; images: Array<{ data: string; type: string; name: string }>; files: Array<{ data: string; type: string; name: string }> }) => {
+const sendMessage = async (data: string | { text: string; images: Array<{ data: string; type: string; name: string }>; files: Array<{ data: string; type: string; name: string }> }, hideFromUI = false) => {
   // Handle both old string format and new object format
   let text = ''
   let images: Array<{ data: string; type: string; name: string }> = []
@@ -300,7 +300,10 @@ const sendMessage = async (data: string | { text: string; images: Array<{ data: 
     userMessage.imageUrl = images[0].data
   }
 
-  messages.value.push(userMessage)
+  // Only add message to UI if not hidden
+  if (!hideFromUI) {
+    messages.value.push(userMessage)
+  }
 
   // Update input history with this message (if it's not a command)
   if (text.trim() && !text.trim().startsWith('/')) {
@@ -334,6 +337,7 @@ const sendMessage = async (data: string | { text: string; images: Array<{ data: 
         need_tts?: boolean
         msg_type?: string
         file_type?: string
+        _hide_from_ui?: boolean
       }
     } = {
       type: 'message',
@@ -346,7 +350,8 @@ const sendMessage = async (data: string | { text: string; images: Array<{ data: 
         source: 'web_dashboard',
         timestamp: Date.now(),
         session_id: sessionId.value,
-        need_tts: props.enableSpeak  // Add need_tts flag based on global enableSpeak
+        need_tts: props.enableSpeak,  // Add need_tts flag based on global enableSpeak
+        _hide_from_ui: hideFromUI  // Add hide flag for control commands
       }
     }
 
@@ -707,6 +712,10 @@ const handleStopAudio = () => {
       msg.metadata.isPlayingOpus = false
     }
   })
+
+  // Send /stop_audio command to backend only when playing opus audio
+  // and hide it from UI
+  sendMessage('/stop_audio', true)
 }
 
 const handleTTSMessage = async (data: any) => {
