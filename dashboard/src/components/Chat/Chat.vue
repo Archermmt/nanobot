@@ -61,6 +61,7 @@ const currentOpusText = ref('')
 const SAMPLE_RATE = 24000  // Match the server's sample rate
 const CHANNELS = 1
 const FRAME_SIZE = 960  // 40ms at 24kHz
+const SCRIPT_PROCESSOR_BUFFER_SIZE = 256  // ~10ms buffer for low latency
 
 // Method to set WebSocket instance from App.vue
 const setWebSocket = (websocket: WebSocket | null) => {
@@ -664,6 +665,7 @@ const stopAudio = () => {
     opusDecoderInstance = null
   }
   pcmBuffer.length = 0
+  framePosition = 0
   isPlayingOpus.value = false
   currentOpusText.value = ''
 }
@@ -708,19 +710,21 @@ const handleOpusAudioFrame = async (blob: Blob) => {
   }
 
   try {
-    // Convert blob to ArrayBuffer
-    const arrayBuffer = await blob.arrayBuffer()
-    const opusFrame = new Uint8Array(arrayBuffer)
+    // Convert blob to ArrayBuffer synchronously as possible
+    blob.arrayBuffer().then(arrayBuffer => {
+      const opusFrame = new Uint8Array(arrayBuffer)
+      console.log('📦 Received opus frame, size:', opusFrame.length, 'bytes')
 
-    console.log('📦 Received opus frame, size:', opusFrame.length, 'bytes')
-
-    // Decode opus frame to PCM
-    const pcmData = await decodeOpusFrame(opusFrame)
-
-    // Add PCM data to buffer for playback
-    pcmBuffer.push(pcmData)
-
-    console.log('🎵 Decoded to PCM, buffer size:', pcmBuffer.length)
+      // Decode immediately and add to buffer
+      decodeOpusFrame(opusFrame).then(pcmData => {
+        pcmBuffer.push(pcmData)
+        console.log('🎵 Decoded to PCM, buffer size:', pcmBuffer.length)
+      }).catch(error => {
+        console.error('❌ Failed to decode opus frame:', error)
+      })
+    }).catch(error => {
+      console.error('❌ Failed to convert blob:', error)
+    })
   } catch (error) {
     console.error('❌ Failed to process opus frame:', error)
   }
@@ -738,36 +742,59 @@ const initializeOpusPlayback = async () => {
       console.log('✅ Opus decoder WASM compiled and ready')
     }
 
-    // Create script processor for playing decoded PCM audio
-    scriptProcessor = audioContext.createScriptProcessor(4096, 1, 1)
+    // Create script processor with SMALLER buffer for lower latency
+    // 256 samples @ 24kHz = ~10.7ms latency (much better than 4096 = ~170ms)
+    scriptProcessor = audioContext.createScriptProcessor(SCRIPT_PROCESSOR_BUFFER_SIZE, 1, 1)
 
     scriptProcessor.onaudioprocess = (e) => {
-      if (pcmBuffer.length === 0) return
-
       const outputData = e.outputBuffer.getChannelData(0)
-      const pcmFrame = pcmBuffer.shift()!
 
-      // Copy PCM data to output
-      const length = Math.min(outputData.length, pcmFrame.length)
-      for (let i = 0; i < length; i++) {
-        outputData[i] = pcmFrame[i]
+      // Fill the entire buffer with audio data or silence
+      let outputIndex = 0
+
+      while (outputIndex < outputData.length) {
+        // If we have buffered PCM data, use it
+        if (pcmBuffer.length > 0) {
+          const currentFrame = pcmBuffer[0]
+
+          // Calculate how much we can copy
+          const remainingInFrame = currentFrame.length - framePosition
+          const remainingInOutput = outputData.length - outputIndex
+          const toCopy = Math.min(remainingInFrame, remainingInOutput)
+
+          // Copy from current frame to output
+          for (let i = 0; i < toCopy; i++) {
+            outputData[outputIndex + i] = currentFrame[framePosition + i]
+          }
+
+          outputIndex += toCopy
+          framePosition += toCopy
+
+          // If we've consumed this frame, remove it from buffer
+          if (framePosition >= currentFrame.length) {
+            pcmBuffer.shift()
+            framePosition = 0
+          }
+        } else {
+          // No more buffered data, fill rest with silence
+          for (let i = outputIndex; i < outputData.length; i++) {
+            outputData[i] = 0
+          }
+          break
+        }
       }
-
-      // Fill remaining with silence
-      for (let i = length; i < outputData.length; i++) {
-        outputData[i] = 0
-      }
-
-      console.log('🔊 Playing PCM frame, size:', pcmFrame.length)
     }
 
     scriptProcessor.connect(audioContext.destination)
-    console.log('✅ Opus playback initialized')
+    console.log('✅ Opus playback initialized with low-latency buffer')
   } catch (error) {
     console.error('❌ Failed to initialize opus playback:', error)
     throw error
   }
 }
+
+// Position within the current PCM frame being played
+let framePosition = 0
 
 const decodeOpusFrame = async (opusFrame: Uint8Array): Promise<Float32Array> => {
   try {
