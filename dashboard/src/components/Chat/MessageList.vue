@@ -27,6 +27,7 @@ interface Message {
     _progress?: boolean
     _response_for?: string
     mode_hint?: string
+    isPlayingOpus?: boolean
   }
 }
 
@@ -382,6 +383,15 @@ watch(() => props.showProgressMessages, scrollToBottom)
               {{ isPlaying(msg.audioUrl!) ? '⏹️' : '▶️' }}
             </button>
             <span class="text-xs opacity-70">{{ isPlaying(msg.audioUrl!) ? '播放中...' : '语音消息' }}</span>
+          </div>
+        </div>
+
+        <!-- Opus Audio Stop Button -->
+        <div v-if="msg.metadata?.isPlayingOpus !== undefined" class="mb-3">
+          <div class="flex items-center space-x-2">
+            <button @click="emit('stop-audio')" class="nes-btn is-error">
+              {{ msg.metadata.isPlayingOpus ? '⏹️ 停止播放' : '✅ 已停止' }}
+            </button>
           </div>
         </div>
 

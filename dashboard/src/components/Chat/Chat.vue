@@ -21,6 +21,7 @@ interface Message {
     _hide_from_ui?: boolean
     _progress?: boolean
     need_tts?: boolean
+    isPlayingOpus?: boolean
   }
 }
 
@@ -31,7 +32,7 @@ const props = defineProps<{
   enableSpeak?: boolean
 }>()
 
-const emit = defineEmits(['send', 'new-chat', 'clear-chat', 'upload-image', 'upload-audio', 'upload-file', 'ws-status-change', 'send-status', 'status-update', 'thinking-change'])
+const emit = defineEmits(['send', 'new-chat', 'clear-chat', 'upload-image', 'upload-audio', 'upload-file', 'ws-status-change', 'send-status', 'status-update', 'thinking-change', 'stop-audio'])
 
 const messages = ref<Message[]>([])
 const isLoading = ref(false)
@@ -670,6 +671,37 @@ const stopAudio = () => {
   currentOpusText.value = ''
 }
 
+const stopOpusPlayback = () => {
+  // Disconnect script processor
+  if (scriptProcessor) {
+    scriptProcessor.disconnect()
+    scriptProcessor = null
+  }
+  if (audioContext) {
+    audioContext.close()
+    audioContext = null
+  }
+  if (opusDecoderInstance) {
+    opusDecoderInstance = null
+  }
+  pcmBuffer.length = 0
+  framePosition = 0
+  isPlayingOpus.value = false
+  currentOpusText.value = ''
+}
+
+const handleStopAudio = () => {
+  // Stop opus playback but keep buffer cached
+  stopOpusPlayback()
+
+  // Update message playing state
+  messages.value.forEach(msg => {
+    if (msg.metadata?.isPlayingOpus) {
+      msg.metadata.isPlayingOpus = false
+    }
+  })
+}
+
 const handleTTSMessage = async (data: any) => {
   const state = data.state
   console.log('🎵 TTS message:', state, data.text)
@@ -686,11 +718,14 @@ const handleTTSMessage = async (data: any) => {
     currentOpusText.value = text
     console.log('📝 TTS text:', text)
 
-    // Add message to chat immediately
+    // Add message to chat immediately with playing state
     messages.value.push({
       role: 'assistant',
       content: text,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      metadata: {
+        isPlayingOpus: true
+      }
     })
   } else if (state === 'stop') {
     // Stop playback after a short delay to let remaining audio play
@@ -848,7 +883,7 @@ defineExpose({
 <template>
   <div class="flex flex-col h-full chat-container">
     <!-- Messages -->
-    <MessageList :messages="messages" :isLoading="isLoading" @play-audio="playAudio" @stop-audio="stopAudio"
+    <MessageList :messages="messages" :isLoading="isLoading" @play-audio="playAudio" @stop-audio="handleStopAudio"
       :show-progress-messages="props.showProgressMessages" :playing-audio-url="playingAudioUrl"
       @thinking-change="handleThinkingChange" />
 

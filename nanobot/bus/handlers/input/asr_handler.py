@@ -10,7 +10,6 @@ import tempfile
 import wave
 from pathlib import Path
 
-from botpy import Type
 from loguru import logger
 
 from nanobot.bus.events import InboundMessage

@@ -1,13 +1,17 @@
 """Text to TTS handler for converting text messages to audio messages."""
 
+import io
 import os
+import wave
 from pathlib import Path
 
+import numpy as np
 from loguru import logger
 
 from nanobot.bus.events import OutboundMessage
 from nanobot.bus.handlers.output.output_handler import OutputHandler
 from nanobot.config.schema import TTSHandlerConfig
+from nanobot.utils.log import CaptureOutput
 from nanobot.utils.media import audio_bytes_to_data_stream
 from nanobot.utils.text_utils import check_emoji, clean_markdown
 
@@ -177,44 +181,47 @@ class EdgeTTSHandler(BaseTTSHandler):
 
 
 @BaseTTSHandler.register()
-class LocalTTSHandler(BaseTTSHandler):
-    """Local TTS handler using pyttsx3 for offline text-to-speech."""
+class F5TTSHandler(BaseTTSHandler):
+    """F5 TTS handler for voice cloning using reference audio."""
 
     @classmethod
     def handler_type(cls) -> str:
-        return "local_tts"
+        return "f5_tts"
 
     def __init__(self, config: TTSHandlerConfig | None = None):
         """
-        Initialize the local TTS handler.
+        Initialize the F5 TTS handler.
 
         Args:
             config: TTSHandlerConfig containing TTS settings
         """
         try:
-            import pyttsx3
+            from f5_tts.api import F5TTS
+            from f5_tts.infer.utils_infer import preprocess_ref_audio_text
         except ImportError:
-            error_msg = "Init LocalTTSHandler failed. Install: pip install pyttsx3"
+            error_msg = "Init F5TTSHandler failed. Install: pip install f5-tts"
             raise ImportError(error_msg)
 
         super().__init__(config)
-        self.engine = pyttsx3.init()
+        # Disable encoder
+        self.encoder_type = ""
 
-        # Set voice properties
-        voices = self.engine.getProperty("voices")
-        if voices:
-            # Try to find Chinese voice first, otherwise use first available voice
-            chinese_voice = next(
-                (v for v in voices if "zh" in v.id.lower() or "chinese" in v.name.lower()), None
-            )
-            self.engine.setProperty("voice", chinese_voice.id if chinese_voice else voices[0].id)
+        # Initialize F5 TTS model
+        self.tts = F5TTS(model="F5TTS_v1_Base")
 
-        self.engine.setProperty("rate", 150)  # Speed
-        self.engine.setProperty("volume", 1.0)  # Volume (0.0 to 1.0)
+        # Preprocess reference audio and text for voice cloning
+        self.ref_audio = None
+        self.ref_text = None
+        if config and config.ref_audio and config.ref_text:
+            with CaptureOutput():
+                self.ref_audio, self.ref_text = preprocess_ref_audio_text(
+                    Path(config.ref_audio).expanduser(), config.ref_text
+                )
+            logger.info(f"✅ F5 TTS: Reference voice registered from {config.ref_audio}")
 
     async def _text_to_speak(self, text, output_file):
         """
-        Convert text to speech using pyttsx3.
+        Convert text to speech using F5 TTS with voice cloning.
 
         Args:
             text: Text content to convert
@@ -223,40 +230,46 @@ class LocalTTSHandler(BaseTTSHandler):
         Returns:
             Audio bytes or None if output_file is provided
         """
-        import tempfile
 
         try:
-            # Create temporary WAV file
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_file:
-                tmp_path = tmp_file.name
+            if not self.ref_audio or not self.ref_text:
+                raise ValueError("Reference audio and text are required for F5 TTS")
 
-            try:
-                # Save speech to file
-                self.engine.save_to_file(text, tmp_path)
-                self.engine.runAndWait()
+            # Run inference with reference audio/text and generation text
+            with CaptureOutput():
+                wav, sr, _ = self.tts.infer(
+                    ref_file=self.ref_audio,
+                    ref_text=self.ref_text,
+                    gen_text=text,
+                    speed=1.0,
+                )
 
-                # Read the generated WAV file directly as PCM data
-                with open(tmp_path, "rb") as f:
-                    # Skip WAV header (44 bytes typically)
-                    f.seek(44)
-                    pcm_data = f.read()
+            # Convert numpy array to WAV bytes
+            wav_bytes = self._wav_bytes(wav, sr)
 
-                if output_file:
-                    # Save to output file
-                    os.makedirs(os.path.dirname(output_file), exist_ok=True)
-                    with open(output_file, "wb") as f:
-                        f.write(pcm_data)
-                    return None
-                else:
-                    # Return raw PCM bytes
-                    return pcm_data
-
-            finally:
-                # Cleanup temporary file
-                if os.path.exists(tmp_path):
-                    os.unlink(tmp_path)
+            if output_file:
+                # Save to output file
+                os.makedirs(os.path.dirname(output_file), exist_ok=True)
+                with open(output_file, "wb") as f:
+                    f.write(wav_bytes)
+                return None
+            else:
+                # Return raw WAV bytes
+                return wav_bytes
 
         except Exception as e:
-            error_msg = f"Local TTS conversion failed: {str(e)}"
+            error_msg = f"F5 TTS conversion failed: {str(e)}"
             logger.error(error_msg)
             raise Exception(error_msg)
+
+    def _wav_bytes(self, wav: np.ndarray, sr: int) -> bytes:
+        """Convert numpy array to WAV bytes."""
+
+        buffer = io.BytesIO()
+        with wave.open(buffer, "wb") as wav_file:
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)
+            wav_file.setframerate(sr)
+            wav_int16 = (wav * 32767).astype(np.int16)
+            wav_file.writeframes(wav_int16.tobytes())
+        return buffer.getvalue()

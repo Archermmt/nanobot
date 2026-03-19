@@ -267,6 +267,8 @@ class TTSHandlerConfig(Base):
     audio_format: str = "mp3"  # Edge TTS returns mp3 format
     sample_rate: int = 24000
     output_dir: str = "~/.nanobot/media"
+    ref_audio: str | None = None  # Reference audio file path for voice cloning (F5 TTS)
+    ref_text: str | None = None  # Reference text for voice cloning (F5 TTS)
 
 
 class InputHandlerConfig(Base):
