@@ -13,7 +13,6 @@ from nanobot.bus.queue import MessageBus
 from nanobot.channels.base import BaseChannel
 from nanobot.config.schema import WebSocketConfig
 from nanobot.utils.media import save_media
-from nanobot.utils.text_utils import check_emoji
 
 
 class WebSocketChannel(BaseChannel):

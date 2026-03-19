@@ -1,7 +1,10 @@
 """Text to TTS handler for converting text messages to audio messages."""
 
+import asyncio
+import base64
 import io
 import os
+import time
 import wave
 from pathlib import Path
 
@@ -273,3 +276,180 @@ class F5TTSHandler(BaseTTSHandler):
             wav_int16 = (wav * 32767).astype(np.int16)
             wav_file.writeframes(wav_int16.tobytes())
         return buffer.getvalue()
+
+
+@BaseTTSHandler.register()
+class QwenTTSHandler(BaseTTSHandler):
+    """Qwen TTS handler for voice cloning using Alibaba Cloud CosyVoice service."""
+
+    @classmethod
+    def handler_type(cls) -> str:
+        return "qwen_tts"
+
+    def __init__(self, config: TTSHandlerConfig | None = None):
+        """
+        Initialize the Qwen TTS handler.
+
+        Args:
+            config: TTSHandlerConfig containing TTS settings
+        """
+        try:
+            import dashscope
+            from dashscope.audio.tts_v2 import SpeechSynthesizer, VoiceEnrollmentService
+        except ImportError:
+            error_msg = "Init QwenTTSHandler failed. Install: pip install dashscope"
+            raise ImportError(error_msg)
+
+        super().__init__(config)
+        # Disable encoder for Qwen TTS (uses direct audio format)
+        self.encoder_type = ""
+        self.model = config.model
+        # Voice ID will be lazily initialized on first use
+        # cosyvoice-v3.5-plus-nanobot-874c66864fd34610ba502d22cdaf1698
+        self.voice_id = config.voice
+        self.voice_service = None
+        # Check if API key is configured
+        assert os.getenv("DASHSCOPE_API_KEY"), (
+            "Qwen TTS: DASHSCOPE_API_KEY environment variable not set"
+        )
+        logger.info(f"✅ Qwen TTS: Initialized with model {self.model}")
+        self._clone_voice(config.ref_audio)
+
+    async def _text_to_speak(self, text, output_file):
+        """
+        Convert text to speech using Qwen TTS with optional voice cloning.
+
+        Args:
+            text: Text content to convert
+            output_file: Optional output file path (can be None)
+
+        Returns:
+            Audio bytes or None if output_file is provided
+        """
+        try:
+            from dashscope.audio.tts_v2 import SpeechSynthesizer
+
+            # Create speech synthesizer with the model and voice
+            synthesizer = SpeechSynthesizer(model=self.model, voice=self.voice_id)
+            # Synthesize speech
+            audio_data = synthesizer.call(text)
+
+            if output_file:
+                # Save to output file
+                os.makedirs(os.path.dirname(output_file), exist_ok=True)
+                with open(output_file, "wb") as f:
+                    f.write(audio_data)
+                return None
+            else:
+                # Return raw audio bytes
+                return audio_data
+
+        except Exception as e:
+            error_msg = f"Qwen TTS conversion failed: {str(e)}"
+            logger.error(error_msg)
+            raise Exception(error_msg)
+
+    def _clone_voice(self, ref_audio):
+        """
+        Clone voice using reference audio through Alibaba Cloud CosyVoice service.
+
+        This method creates a custom voice by converting local audio file to
+        base64 string and uploading to Alibaba Cloud's voice enrollment service.
+        """
+        try:
+            # Initialize voice enrollment service lazily
+            from dashscope.audio.tts_v2 import VoiceEnrollmentService
+
+            self.voice_service = VoiceEnrollmentService()
+
+            # Convert audio file to base64 string (similar to image handling)
+            audio_data_url = self._get_audio_data(ref_audio)
+            logger.info(f"🎤 Qwen TTS: Starting voice cloning from {ref_audio}")
+
+            # Create voice enrollment using data URL
+            self.voice_id = self.voice_service.create_voice(
+                target_model=self.model, prefix="nanobot", url=audio_data_url
+            )
+            if not self.voice_id:
+                raise ValueError("Failed to get voice_id from voice enrollment response")
+            logger.info(
+                f"Voice enrollment submitted successfully. Request ID: {self.voice_service.get_last_request_id()}, Voice ID: {self.voice_id}"
+            )
+
+            # Poll for voice status until ready
+            max_attempts = 30
+            poll_interval = 10  # seconds
+
+            for attempt in range(max_attempts):
+                try:
+                    voice_info = self.voice_service.query_voice(voice_id=self.voice_id)
+                    status = voice_info.get("status")
+
+                    logger.debug(f"Voice status check {attempt + 1}/{max_attempts}: {status}")
+
+                    if status == "OK":
+                        logger.info(
+                            f"✅ Qwen TTS: Voice cloning complete, voice {self.voice_id} is ready"
+                        )
+                        break
+                    elif status == "UNDEPLOYED":
+                        raise RuntimeError(f"Voice processing failed with status: {status}")
+
+                    # Wait for next check
+                    time.sleep(poll_interval)
+
+                except Exception as e:
+                    logger.warning(f"Voice status check error: {e}")
+                    time.sleep(poll_interval)
+            else:
+                logger.warning("⚠️ Qwen TTS: Voice enrollment timeout, will try to use anyway")
+
+            logger.info(f"🎯 Qwen TTS: Custom voice {self.voice_id} registered from {ref_audio}")
+
+        except Exception as e:
+            error_msg = f"Voice cloning failed: {str(e)}"
+            logger.error(error_msg)
+            raise Exception(error_msg)
+
+    def _get_audio_data(self, audio_path: str) -> str:
+        """
+        Get audio file data as base64 encoded string with MIME type.
+
+        Args:
+            audio_path: Absolute path to the audio file.
+
+        Returns:
+            Data URL formatted string: "data:<mime_type>;base64,<encoded_audio>"
+
+        Raises:
+            FileNotFoundError: If audio file doesn't exist.
+            ValueError: If file is not a valid audio format.
+        """
+        path = Path(audio_path)
+        if not path.exists():
+            raise FileNotFoundError(f"Audio file not found: {audio_path}")
+
+        # Check file extension
+        valid_extensions = {".wav", ".mp3", ".flac", ".m4a", ".ogg", ".wma"}
+        if path.suffix.lower() not in valid_extensions:
+            raise ValueError(
+                f"Unsupported audio format: {path.suffix}. "
+                f"Supported formats: {', '.join(valid_extensions)}"
+            )
+
+        # Get MIME type
+        mime_types = {
+            ".wav": "audio/wav",
+            ".mp3": "audio/mpeg",
+            ".flac": "audio/flac",
+            ".m4a": "audio/mp4",
+            ".ogg": "audio/ogg",
+            ".wma": "audio/x-ms-wma",
+        }
+        mime_type = mime_types.get(path.suffix.lower(), "audio/wav")
+
+        # Read and encode audio file
+        with open(path, "rb") as audio_file:
+            encoded_audio = base64.b64encode(audio_file.read()).decode("utf-8")
+
+        return f"data:{mime_type};base64,{encoded_audio}"

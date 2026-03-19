@@ -255,6 +255,7 @@ const stopAudio = () => {
     currentAudio.value.pause()
     currentAudio.value = null
   }
+  // Clear the playing audio URL state to update UI
   emit('stop-audio')
 }
 

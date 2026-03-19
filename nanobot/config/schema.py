@@ -269,6 +269,7 @@ class TTSHandlerConfig(Base):
     output_dir: str = "~/.nanobot/media"
     ref_audio: str | None = None  # Reference audio file path for voice cloning (F5 TTS)
     ref_text: str | None = None  # Reference text for voice cloning (F5 TTS)
+    model: str | None = None  # Model name for TTS service (e.g., cosyvoice-v3.5-plus for Qwen TTS)
 
 
 class InputHandlerConfig(Base):

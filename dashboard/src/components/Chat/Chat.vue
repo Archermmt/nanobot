@@ -691,6 +691,13 @@ const stopOpusPlayback = () => {
 }
 
 const handleStopAudio = () => {
+  // Stop normal audio playback first
+  if (currentAudio.value) {
+    currentAudio.value.pause()
+    playingAudioUrl.value = null
+    currentAudio.value = null
+  }
+
   // Stop opus playback but keep buffer cached
   stopOpusPlayback()
 
