@@ -206,21 +206,13 @@ class F5TTSHandler(BaseTTSHandler):
             raise ImportError(error_msg)
 
         super().__init__(config)
-        # Disable encoder
-        self.encoder_type = ""
-
-        # Initialize F5 TTS model
-        self.tts = F5TTS(model="F5TTS_v1_Base")
-
-        # Preprocess reference audio and text for voice cloning
-        self.ref_audio = None
-        self.ref_text = None
-        if config and config.ref_audio and config.ref_text:
-            with CaptureOutput():
-                self.ref_audio, self.ref_text = preprocess_ref_audio_text(
-                    Path(config.ref_audio).expanduser(), config.ref_text
-                )
-            logger.info(f"✅ F5 TTS: Reference voice registered from {config.ref_audio}")
+        self.tts = F5TTS(model=config.model)
+        assert config.ref_audio and config.ref_text, "Reference audio and text are required"
+        with CaptureOutput():
+            self.ref_audio, self.ref_text = preprocess_ref_audio_text(
+                Path(config.ref_audio).expanduser(), config.ref_text
+            )
+        logger.info(f"✅ F5 TTS: Reference voice registered from {config.ref_audio}")
 
     async def _text_to_speak(self, text, output_file):
         """
@@ -301,13 +293,8 @@ class QwenTTSHandler(BaseTTSHandler):
             raise ImportError(error_msg)
 
         super().__init__(config)
-        # Disable encoder for Qwen TTS (uses direct audio format)
-        self.encoder_type = ""
         self.model = config.model
-        # Voice ID will be lazily initialized on first use
-        # cosyvoice-v3.5-plus-nanobot-874c66864fd34610ba502d22cdaf1698
         self.voice_id = config.voice
-        # self.voice_id = "cosyvoice-v3.5-plus-nanobot-874c66864fd34610ba502d22cdaf1698"
         self.voice_service = VoiceEnrollmentService()
         # Check if API key is configured
         assert os.getenv("DASHSCOPE_API_KEY"), (
