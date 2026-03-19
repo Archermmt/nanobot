@@ -2,6 +2,7 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import MessageList from './MessageList.vue'
 import ChatInput from './ChatInput.vue'
+import { OpusDecoder } from 'opus-decoder'
 
 interface Message {
   role: 'user' | 'assistant' | 'system'
@@ -48,6 +49,19 @@ const playingAudioUrl = ref<string | null>(null)
 let ws: WebSocket | null = null
 const isConnected = ref(false)
 
+// Opus audio decoding and playback
+let audioContext: AudioContext | null = null
+let scriptProcessor: ScriptProcessorNode | null = null
+let opusDecoderInstance: any = null
+const pcmBuffer: Float32Array[] = []
+const isPlayingOpus = ref(false)
+const currentOpusText = ref('')
+
+// Opus decoder parameters
+const SAMPLE_RATE = 24000  // Match the server's sample rate
+const CHANNELS = 1
+const FRAME_SIZE = 960  // 40ms at 24kHz
+
 // Method to set WebSocket instance from App.vue
 const setWebSocket = (websocket: WebSocket | null) => {
   ws = websocket
@@ -57,8 +71,20 @@ const setWebSocket = (websocket: WebSocket | null) => {
 // Method to handle WebSocket messages from App.vue
 const handleWebSocketMessage = (event: MessageEvent) => {
   try {
+    // Check if this is binary data (opus audio frame)
+    if (event.data instanceof Blob) {
+      handleOpusAudioFrame(event.data)
+      return
+    }
+
     const data = JSON.parse(event.data)
     console.log('📥 Received message:', data)
+
+    // Handle TTS messages for opus audio streaming
+    if (data.type === 'tts') {
+      handleTTSMessage(data)
+      return
+    }
 
     // Clear timeout when receiving any message
     if (currentTimeoutId.value) {
@@ -623,6 +649,151 @@ const stopAudio = () => {
     currentAudio.value.pause()
     playingAudioUrl.value = null
     currentAudio.value = null
+  }
+
+  // Stop opus playback
+  if (scriptProcessor) {
+    scriptProcessor.disconnect()
+    scriptProcessor = null
+  }
+  if (audioContext) {
+    audioContext.close()
+    audioContext = null
+  }
+  if (opusDecoderInstance) {
+    opusDecoderInstance = null
+  }
+  pcmBuffer.length = 0
+  isPlayingOpus.value = false
+  currentOpusText.value = ''
+}
+
+const handleTTSMessage = async (data: any) => {
+  const state = data.state
+  console.log('🎵 TTS message:', state, data.text)
+
+  if (state === 'start') {
+    // Start new opus audio stream
+    pcmBuffer.length = 0
+    currentOpusText.value = ''
+    isPlayingOpus.value = true
+    await initializeOpusPlayback()
+  } else if (state === 'sentence_start') {
+    // Store the text content
+    currentOpusText.value = data.text || ''
+    console.log('📝 TTS text:', currentOpusText.value)
+  } else if (state === 'stop') {
+    // Stop playback after a short delay to let remaining audio play
+    setTimeout(() => {
+      isPlayingOpus.value = false
+      currentOpusText.value = ''
+      pcmBuffer.length = 0
+
+      // Add message to chat
+      if (currentOpusText.value) {
+        messages.value.push({
+          role: 'assistant',
+          content: currentOpusText.value,
+          timestamp: Date.now()
+        })
+      }
+    }, 500)
+  }
+}
+
+const handleOpusAudioFrame = async (blob: Blob) => {
+  if (!isPlayingOpus.value) {
+    console.warn('⚠️ Received opus frame but not playing')
+    return
+  }
+
+  try {
+    // Convert blob to ArrayBuffer
+    const arrayBuffer = await blob.arrayBuffer()
+    const opusFrame = new Uint8Array(arrayBuffer)
+
+    console.log('📦 Received opus frame, size:', opusFrame.length, 'bytes')
+
+    // Decode opus frame to PCM
+    const pcmData = await decodeOpusFrame(opusFrame)
+
+    // Add PCM data to buffer for playback
+    pcmBuffer.push(pcmData)
+
+    console.log('🎵 Decoded to PCM, buffer size:', pcmBuffer.length)
+  } catch (error) {
+    console.error('❌ Failed to process opus frame:', error)
+  }
+}
+
+const initializeOpusPlayback = async () => {
+  try {
+    // Create AudioContext
+    audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
+
+    // Initialize Opus decoder and wait for WASM to compile
+    if (!opusDecoderInstance) {
+      opusDecoderInstance = new OpusDecoder(SAMPLE_RATE, CHANNELS)
+      await opusDecoderInstance.ready
+      console.log('✅ Opus decoder WASM compiled and ready')
+    }
+
+    // Create script processor for playing decoded PCM audio
+    scriptProcessor = audioContext.createScriptProcessor(4096, 1, 1)
+
+    scriptProcessor.onaudioprocess = (e) => {
+      if (pcmBuffer.length === 0) return
+
+      const outputData = e.outputBuffer.getChannelData(0)
+      const pcmFrame = pcmBuffer.shift()!
+
+      // Copy PCM data to output
+      const length = Math.min(outputData.length, pcmFrame.length)
+      for (let i = 0; i < length; i++) {
+        outputData[i] = pcmFrame[i]
+      }
+
+      // Fill remaining with silence
+      for (let i = length; i < outputData.length; i++) {
+        outputData[i] = 0
+      }
+
+      console.log('🔊 Playing PCM frame, size:', pcmFrame.length)
+    }
+
+    scriptProcessor.connect(audioContext.destination)
+    console.log('✅ Opus playback initialized')
+  } catch (error) {
+    console.error('❌ Failed to initialize opus playback:', error)
+    throw error
+  }
+}
+
+const decodeOpusFrame = async (opusFrame: Uint8Array): Promise<Float32Array> => {
+  try {
+    // Ensure decoder is initialized and ready
+    if (!opusDecoderInstance) {
+      console.warn('⚠️ Decoder not initialized, initializing now...')
+      opusDecoderInstance = new OpusDecoder(SAMPLE_RATE, CHANNELS)
+      await opusDecoderInstance.ready
+    }
+
+    // Decode the opus frame
+    // The decodeFrame returns { channelData, samplesDecoded, sampleRate }
+    const result = opusDecoderInstance.decodeFrame(opusFrame)
+
+    if (!result || !result.channelData || result.channelData.length === 0) {
+      console.warn('⚠️ Opus decode returned null or empty, using empty PCM')
+      return new Float32Array(FRAME_SIZE)
+    }
+
+    // For mono audio, use the first channel
+    const pcmData = result.channelData[0]
+    console.log('✅ Opus frame decoded, samples:', pcmData.length)
+    return pcmData
+  } catch (error) {
+    console.error('❌ Failed to decode opus frame:', error)
+    return new Float32Array(FRAME_SIZE)
   }
 }
 
