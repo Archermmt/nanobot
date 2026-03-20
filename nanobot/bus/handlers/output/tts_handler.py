@@ -1,8 +1,8 @@
 """Text to TTS handler for converting text messages to audio messages."""
 
-import asyncio
 import base64
 import io
+import json
 import os
 import time
 import wave
@@ -40,7 +40,12 @@ class BaseTTSHandler(OutputHandler):
         self.audio_format = config.audio_format
         self.sample_rate = config.sample_rate
         self.encoder_type, self.encoder = config.encoder_type, None
-        # Expand ~ to home directory and convert to absolute path
+        # get voice config
+        self.depends_folder = Path(config.depends_folder).expanduser()
+        voice_path = self.depends_folder / "voice.json"
+        assert voice_path.exists(), f"Voice configuration not found: {voice_path}"
+        with open(voice_path, "r", encoding="utf-8") as f:
+            self.voice_config = json.load(f).get(self.voice, {})
         self.output_dir = Path(config.output_dir).expanduser().resolve()
         if self.encoder_type == "opus":
             self.encoder = opuslib_next.Encoder(self.sample_rate, 1, opuslib_next.APPLICATION_AUDIO)
@@ -206,13 +211,17 @@ class F5TTSHandler(BaseTTSHandler):
             raise ImportError(error_msg)
 
         super().__init__(config)
-        self.tts = F5TTS(model=config.model)
-        assert config.ref_audio and config.ref_text, "Reference audio and text are required"
+        # Build reference audio path relative to depends folder
+        assert "audio" in self.voice_config and "text" in self.voice_config, (
+            "Voice configuration missing 'audio' or 'text' key"
+        )
+        ref_audio = self.depends_folder / self.voice_config["audio"]
+        ref_text = self.voice_config["text"]
+        assert ref_audio.exists(), f"Reference audio not found: {ref_audio}"
+
         with CaptureOutput():
-            self.ref_audio, self.ref_text = preprocess_ref_audio_text(
-                Path(config.ref_audio).expanduser(), config.ref_text
-            )
-        logger.info(f"✅ F5 TTS: Reference voice registered from {config.ref_audio}")
+            self.ref_audio, self.ref_text = preprocess_ref_audio_text(ref_audio, ref_text)
+        logger.info(f"✅ F5 TTS: Reference voice registered from {ref_audio}")
 
     async def _text_to_speak(self, text, output_file):
         """
@@ -294,7 +303,7 @@ class QwenTTSHandler(BaseTTSHandler):
 
         super().__init__(config)
         self.model = config.model
-        self.voice_id = config.voice
+        self.voice_id = self.voice_config.get("cosyvoice_id")
         self.voice_service = VoiceEnrollmentService()
         self._qwen_audio_format = self._get_audio_format()
         # Check if API key is configured
@@ -307,7 +316,8 @@ class QwenTTSHandler(BaseTTSHandler):
         if self._check_voice(self.voice_id):
             logger.info(f"Use registered voice id {self.voice_id}")
         else:
-            self._clone_voice(config.ref_audio)
+            assert "audio" in self.voice_config, "Voice configuration missing 'audio' key"
+            self._clone_voice(self.voice_config["audio"])
 
     async def _text_to_speak(self, text, output_file):
         """
