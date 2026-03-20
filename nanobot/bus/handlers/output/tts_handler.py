@@ -215,6 +215,7 @@ class F5TTSHandler(BaseTTSHandler):
         assert "audio" in self.voice_config and "text" in self.voice_config, (
             "Voice configuration missing 'audio' or 'text' key"
         )
+        self.tts = F5TTS(model=config.model)
         ref_audio = self.depends_folder / self.voice_config["audio"]
         ref_text = self.voice_config["text"]
         assert ref_audio.exists(), f"Reference audio not found: {ref_audio}"
