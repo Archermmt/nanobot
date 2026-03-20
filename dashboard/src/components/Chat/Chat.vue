@@ -725,6 +725,7 @@ const handleTTSMessage = async (data: any) => {
   if (state === 'start') {
     // Start new opus audio stream
     pcmBuffer.length = 0
+    framePosition = 0  // Reset frame position to ensure playback starts from beginning
     currentOpusText.value = ''
     isPlayingOpus.value = true
     await initializeOpusPlayback()
@@ -750,6 +751,14 @@ const handleTTSMessage = async (data: any) => {
       currentOpusText.value = ''
       pcmBuffer.length = 0
       isLoading.value = false
+
+      // Update the last message's playing state
+      if (messages.value.length > 0) {
+        const lastMsg = messages.value[messages.value.length - 1]
+        if (lastMsg.metadata?.isPlayingOpus !== undefined) {
+          lastMsg.metadata.isPlayingOpus = false
+        }
+      }
     }, 500)
   }
 }

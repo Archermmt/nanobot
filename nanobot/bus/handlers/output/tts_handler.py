@@ -215,12 +215,11 @@ class F5TTSHandler(BaseTTSHandler):
         assert "audio" in self.voice_config and "text" in self.voice_config, (
             "Voice configuration missing 'audio' or 'text' key"
         )
-        self.tts = F5TTS(model=config.model)
         ref_audio = self.depends_folder / self.voice_config["audio"]
         ref_text = self.voice_config["text"]
         assert ref_audio.exists(), f"Reference audio not found: {ref_audio}"
-
         with CaptureOutput():
+            self.tts = F5TTS(model=config.model)
             self.ref_audio, self.ref_text = preprocess_ref_audio_text(ref_audio, ref_text)
         logger.info(f"✅ F5 TTS: Reference voice registered from {ref_audio}")
 
@@ -318,7 +317,8 @@ class QwenTTSHandler(BaseTTSHandler):
             logger.info(f"Use registered voice id {self.voice_id}")
         else:
             assert "audio" in self.voice_config, "Voice configuration missing 'audio' key"
-            self._clone_voice(self.voice_config["audio"])
+            ref_audio = self.depends_folder / self.voice_config["audio"]
+            self._clone_voice(str(ref_audio))
 
     async def _text_to_speak(self, text, output_file):
         """
@@ -401,7 +401,7 @@ class QwenTTSHandler(BaseTTSHandler):
 
             # Create voice enrollment using data URL
             self.voice_id = self.voice_service.create_voice(
-                target_model=self.model, prefix="nanobot", url=audio_data_url
+                target_model=self.model, prefix=self.voice, url=audio_data_url
             )
             if not self.voice_id:
                 raise ValueError("Failed to get voice_id from voice enrollment response")
