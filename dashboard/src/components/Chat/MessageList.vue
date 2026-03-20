@@ -393,7 +393,7 @@ watch(() => props.showProgressMessages, scrollToBottom)
             <button @click="emit('stop-audio')" class="nes-btn is-primary">
               {{ msg.metadata.isPlayingOpus ? '⏹️' : '✅' }}
             </button>
-            <span class="text-xs opacity-70">{{ isPlaying(msg.audioUrl!) ? '播放中...' : '已停止' }}</span>
+            <span class="text-xs opacity-70">{{ msg.metadata.isPlayingOpus ? '播放中...' : '已停止' }}</span>
           </div>
         </div>
 
