@@ -28,6 +28,7 @@ interface Message {
     _response_for?: string
     mode_hint?: string
     isPlayingOpus?: boolean
+    _as_input?: boolean
   }
 }
 
@@ -296,6 +297,23 @@ const visibleMessages = computed(() => {
   }
 })
 
+// Check if message should be displayed as user message
+const isUserMessage = (msg: Message): boolean => {
+  // If metadata has _as_input set to true, display as user message
+  if (msg.metadata?._as_input === true) {
+    return true
+  }
+  return msg.role === 'user'
+}
+
+// Get CSS class for message based on role and metadata
+const getMessageClass = (msg: Message): string => {
+  if (isUserMessage(msg)) {
+    return 'justify-end'
+  }
+  return 'justify-start'
+}
+
 // Auto scroll to bottom when messages change
 const scrollToBottom = () => {
   nextTick(() => {
@@ -313,12 +331,11 @@ watch(() => props.showProgressMessages, scrollToBottom)
 
 <template>
   <div ref="messageContainer" class="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-900">
-    <div v-for="(msg, index) in visibleMessages" :key="index" class="flex"
-      :class="msg.role === 'user' ? 'justify-end' : 'justify-start'">
+    <div v-for="(msg, index) in visibleMessages" :key="index" class="flex" :class="getMessageClass(msg)">
       <div class="border-2 rounded shadow-[4px_4px_0_rgba(0,0,0,0.5)] px-4 py-3 flex flex-col" :class="{
-        'bg-gradient-to-br from-blue-500 to-blue-600 border-blue-700 text-white max-w-[80%]': msg.role === 'user',
-        'bg-gradient-to-br from-gray-100 to-gray-200 border-gray-300 text-gray-800 max-w-[80%]': msg.role === 'assistant' && !msg.metadata?._progress && msg.metadata?._response_for !== 'status',
-        'bg-gradient-to-br from-green-100 to-green-200 border-green-300 text-gray-700 max-w-[80%]': msg.role === 'assistant' && msg.metadata?._progress,
+        'bg-gradient-to-br from-blue-500 to-blue-600 border-blue-700 text-white max-w-[80%]': isUserMessage(msg),
+        'bg-gradient-to-br from-gray-100 to-gray-200 border-gray-300 text-gray-800 max-w-[80%]': !isUserMessage(msg) && msg.role === 'assistant' && !msg.metadata?._progress && msg.metadata?._response_for !== 'status',
+        'bg-gradient-to-br from-green-100 to-green-200 border-green-300 text-gray-700 max-w-[80%]': !isUserMessage(msg) && msg.role === 'assistant' && msg.metadata?._progress,
         'bg-gradient-to-br from-red-100 to-red-200 border-red-300 text-red-800 max-w-[80%]': msg.role === 'system',
         'bg-gradient-to-br from-yellow-100 to-yellow-200 border-yellow-300 text-gray-700 max-w-[80%]': msg.metadata?._response_for === 'status'
       }">

@@ -4,7 +4,6 @@ import time
 from abc import ABC, abstractmethod
 from collections import deque
 from pathlib import Path
-from typing import Any
 
 import numpy as np
 from loguru import logger
@@ -16,6 +15,21 @@ from nanobot.config.schema import VADHandlerConfig
 
 class BaseVADHandler(InputHandler, ABC):
     """Base class for voice activity detection handlers."""
+
+    def __init__(self, config: VADHandlerConfig):
+        # ASR audio cache for accumulating audio during speech
+        self.vad_threshold = config.threshold
+        self.vad_threshold_low = config.threshold_low
+        self.silence_threshold_ms = config.min_silence_duration_ms
+        self.frame_window_threshold = 3
+        # components
+        self._client_audio_buffer = bytearray()
+        self._client_voice_window = deque(maxlen=5)
+        self._client_have_voice = False
+        self._last_activity_time = 0.0
+        self._client_voice_stop = False
+        self._last_is_voice = False
+        self._asr_audio = []
 
     @classmethod
     def msg_type(cls) -> str:
@@ -60,10 +74,16 @@ class BaseVADHandler(InputHandler, ABC):
         if not msg.content:
             return msg
 
+        self._asr_audio.append(msg.content)
         if self.is_vad(msg.content):
+            # Voice detected, cache the audio
             print("[TMINFO] should add msg!!")
-            raise Exception("stop here!!")
+            # Don't pass this message further, wait for silence
+            msg.content = ""
+            msg.metadata["passby"] = True
         else:
+            if not self._client_have_voice:
+                self._asr_audio = self._asr_audio[-10:]
             msg.content = ""
             msg.metadata["passby"] = True
         return msg
@@ -86,7 +106,7 @@ class SileroVADHandler(BaseVADHandler):
                 "Init SileroVADHandler failed. Install with: pip install onnxruntime opuslib_next"
             )
             return
-
+        super().__init__(config)
         model_path = Path(config.model).expanduser()
 
         if not model_path.exists():
@@ -99,17 +119,6 @@ class SileroVADHandler(BaseVADHandler):
         self.session = onnxruntime.InferenceSession(
             str(model_path), providers=["CPUExecutionProvider"], sess_options=opts
         )
-        self.vad_threshold = config.threshold
-        self.vad_threshold_low = config.threshold_low
-        self.silence_threshold_ms = config.min_silence_duration_ms
-        self.frame_window_threshold = 3
-        # components
-        self._client_audio_buffer = bytearray()
-        self._client_voice_window = deque(maxlen=5)
-        self._client_have_voice = False
-        self._last_activity_time = 0.0
-        self._client_voice_stop = False
-        self._last_is_voice = False
         self._vad_opus_decoder = opuslib_next.Decoder(16000, 1)
         self._vad_state = np.zeros((2, 1, 128), dtype=np.float32)
         self._vad_context = np.zeros((1, 64), dtype=np.float32)

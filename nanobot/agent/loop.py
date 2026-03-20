@@ -467,21 +467,21 @@ class AgentLoop:
             )
         if cmd.startswith("/history"):
             count = int(cmd.split(":")[1]) if ":" in cmd else self.memory_window
+            history = []
 
-            def _check_msg(msg):
+            def _add_msg(msg):
                 if not msg.get("content") or not isinstance(msg.get("content"), str):
-                    return False
+                    return
                 if msg["role"] == "user":
-                    return True
+                    history.append({"role": "user", "content": msg["content"]})
                 if msg["role"] == "assistant" and "tool_calls" not in msg:
-                    return True
-                return False
+                    history.append({"role": "assistant", "content": msg["content"]})
+                return
 
-            history = [
-                {"role": m["role"], "content": m.get("content", "")}
-                for m in session.messages
-                if _check_msg(m)
-            ][:count]
+            for message in session.messages:
+                _add_msg(message)
+                if len(history) >= count:
+                    break
             metadata = {"_response_for": "history"}
             return OutboundMessage(
                 channel=msg.channel,
@@ -593,16 +593,13 @@ class AgentLoop:
             chat_id=msg.chat_id,
         )
 
-        if "_hint_content" in msg.metadata:
+        if "_input_hint" in msg.metadata:
             meta = dict(msg.metadata)
-            hint_content = meta.pop("_hint_content")
-            meta["_progress"] = True
+            input_hint = meta.pop("_input_hint")
+            meta["_as_input"] = True
             await self.bus.publish_outbound(
                 OutboundMessage(
-                    channel=msg.channel,
-                    chat_id=msg.chat_id,
-                    content=hint_content,
-                    metadata=meta,
+                    channel=msg.channel, chat_id=msg.chat_id, content=input_hint, metadata=meta
                 )
             )
 

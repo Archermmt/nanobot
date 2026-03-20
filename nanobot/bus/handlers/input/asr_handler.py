@@ -84,7 +84,7 @@ class BaseASRHandler(InputHandler):
                 keep_meta = {k: v for k, v in msg.metadata.items() if k in keep_keys}
                 msg.metadata = {
                     **keep_meta,
-                    "_hint_content": "ASR: " + transcribed_text,
+                    "_input_hint": "ASR: " + transcribed_text,
                 }
             else:
                 logger.warning("No speech recognized, skipping message")

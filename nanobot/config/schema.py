@@ -263,12 +263,12 @@ class TTSHandlerConfig(Base):
     enabled: bool = False
     handler_type: str = "edge_tts"  # edge_tts or custom
     depends_folder: str = "~/.nanobot/depends/tts"  # Depends folder for voice configuration
+    output_dir: str = "~/.nanobot/media"
+    model: str | None = None  # Model name for TTS service (e.g., cosyvoice-v3.5-plus for Qwen TTS)
     voice: str = "zh-CN-XiaoxiaoNeural"
     encoder_type: str = "opus"
     audio_format: str = "mp3"  # Edge TTS returns mp3 format
     sample_rate: int = 24000
-    output_dir: str = "~/.nanobot/media"
-    model: str | None = None  # Model name for TTS service (e.g., cosyvoice-v3.5-plus for Qwen TTS)
 
 
 class InputHandlerConfig(Base):
