@@ -593,13 +593,15 @@ class AgentLoop:
             chat_id=msg.chat_id,
         )
 
-        if "_input_hint" in msg.metadata:
+        if msg.metadata.get("_as_input", False):
+            msg.metadata.pop("_as_input")
             meta = dict(msg.metadata)
-            input_hint = meta.pop("_input_hint")
-            meta["_as_input"] = True
             await self.bus.publish_outbound(
                 OutboundMessage(
-                    channel=msg.channel, chat_id=msg.chat_id, content=input_hint, metadata=meta
+                    channel=msg.channel,
+                    chat_id=msg.chat_id,
+                    content=msg.content,
+                    metadata={**meta, "_as_input": True, "_progress": True},
                 )
             )
 

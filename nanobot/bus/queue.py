@@ -68,12 +68,14 @@ class MessageBus:
         If the message contains media, it will be automatically
         transcribed to text before being published.
         """
-        msg_type = msg.metadata.get("msg_type", "text")
-        handlers = self.input_handlers.get(msg_type, [])
-        for handler in handlers:
-            if handler.can_handle(msg):
-                logger.debug("Processing input({}) : {}", msg_type, handler.handler_type())
-                msg = await handler.handle(msg)
+        msg_type, processed = msg.metadata.get("msg_type", "text"), True
+        while msg_type in self.input_handlers and processed:
+            processed = False
+            for handler in self.input_handlers[msg_type]:
+                if handler.can_handle(msg):
+                    logger.debug("Processing input({}) : {}", msg_type, handler.handler_type())
+                    msg = await handler.handle(msg)
+                    processed = True
         await self.inbound.put(msg)
 
     async def consume_inbound(self) -> InboundMessage:
@@ -82,12 +84,14 @@ class MessageBus:
 
     async def publish_outbound(self, msg: OutboundMessage) -> None:
         """Publish a response from the agent to channels."""
-        msg_type = msg.metadata.get("msg_type", "text")
-        handlers = self.output_handlers.get(msg_type, [])
-        for handler in handlers:
-            if handler.can_handle(msg):
-                logger.debug("Processing output({}) : {}", msg_type, handler.handler_type())
-                msg = await handler.handle(msg)
+        msg_type, processed = msg.metadata.get("msg_type", "text"), True
+        while msg_type in self.output_handlers and processed:
+            processed = False
+            for handler in self.output_handlers[msg_type]:
+                if handler.can_handle(msg):
+                    logger.debug("Processing output({}) : {}", msg_type, handler.handler_type())
+                    msg = await handler.handle(msg)
+                    processed = True
         await self.outbound.put(msg)
 
     async def consume_outbound(self) -> OutboundMessage:

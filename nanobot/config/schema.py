@@ -251,6 +251,7 @@ class VADHandlerConfig(Base):
 
     enabled: bool = False
     handler_type: str = "silero"  # silero or custom
+    audio_format: str = "opus"  # opus or pcm
     model: str = "~/.nanobot/models/silero_vad"  # Path to Silero VAD model directory
     threshold: float = 0.5  # High threshold for voice detection
     threshold_low: float = 0.2  # Low threshold for voice detection
@@ -266,8 +267,7 @@ class TTSHandlerConfig(Base):
     output_dir: str = "~/.nanobot/media"
     model: str | None = None  # Model name for TTS service (e.g., cosyvoice-v3.5-plus for Qwen TTS)
     voice: str = "zh-CN-XiaoxiaoNeural"
-    encoder_type: str = "opus"
-    audio_format: str = "mp3"  # Edge TTS returns mp3 format
+    audio_format: str = "opus"  # Edge TTS returns mp3 format
     sample_rate: int = 24000
 
 

@@ -4,6 +4,7 @@ import time
 from abc import ABC, abstractmethod
 from collections import deque
 from pathlib import Path
+from typing import List
 
 import numpy as np
 from loguru import logger
@@ -17,7 +18,13 @@ class BaseVADHandler(InputHandler, ABC):
     """Base class for voice activity detection handlers."""
 
     def __init__(self, config: VADHandlerConfig):
+        try:
+            import opuslib_next
+        except ImportError:
+            logger.error("Init SileroVADHandler failed. Install with: pip install opuslib_next")
+            return
         # ASR audio cache for accumulating audio during speech
+        self.audio_format = config.audio_format
         self.vad_threshold = config.threshold
         self.vad_threshold_low = config.threshold_low
         self.silence_threshold_ms = config.min_silence_duration_ms
@@ -30,6 +37,8 @@ class BaseVADHandler(InputHandler, ABC):
         self._client_voice_stop = False
         self._last_is_voice = False
         self._asr_audio = []
+        # decoder
+        self._opus_decoder = opuslib_next.Decoder(16000, 1)
 
     @classmethod
     def msg_type(cls) -> str:
@@ -76,17 +85,50 @@ class BaseVADHandler(InputHandler, ABC):
 
         self._asr_audio.append(msg.content)
         if self.is_vad(msg.content):
-            # Voice detected, cache the audio
-            print("[TMINFO] should add msg!!")
-            # Don't pass this message further, wait for silence
-            msg.content = ""
-            msg.metadata["passby"] = True
+            print("[TMINFO] is vad!!")
         else:
             if not self._client_have_voice:
                 self._asr_audio = self._asr_audio[-10:]
-            msg.content = ""
+
+        msg.content = ""
+        if len(self._asr_audio) > 15:
+            print("[TMINFO] should use asr to recognize!!")
+            pcm_data, self._asr_audio = self._asr_audio.copy(), []
+            if self.audio_format == "opus":
+                pcm_data = self.decode_opus(pcm_data)
+            msg.media = [b"".join(pcm_data)]
+            msg.metadata["msg_type"] = "audio"
+        else:
             msg.metadata["passby"] = True
         return msg
+
+    def decode_opus(self, opus_data: List[bytes]) -> List[bytes]:
+        """将Opus音频数据解码为PCM数据"""
+        import opuslib_next
+
+        try:
+            pcm_data = []
+            buffer_size = 960  # 每次处理960个采样点 (60ms at 16kHz)
+
+            for i, opus_packet in enumerate(opus_data):
+                try:
+                    if not opus_packet or len(opus_packet) == 0:
+                        continue
+
+                    pcm_frame = self._opus_decoder.decode(opus_packet, buffer_size)
+                    if pcm_frame and len(pcm_frame) > 0:
+                        pcm_data.append(pcm_frame)
+
+                except opuslib_next.OpusError as e:
+                    logger.warning(f"Opus解码错误，跳过数据包 {i}: {e}")
+                except Exception as e:
+                    logger.error(f"音频处理错误，数据包 {i}: {e}")
+
+            return pcm_data
+
+        except Exception as e:
+            logger.error(f"音频解码过程发生错误: {e}")
+            return []
 
 
 @BaseVADHandler.register()
@@ -98,15 +140,12 @@ class SileroVADHandler(BaseVADHandler):
         return "silero"
 
     def __init__(self, config: VADHandlerConfig):
+        super().__init__(config)
         try:
             import onnxruntime
-            import opuslib_next
         except ImportError:
-            logger.error(
-                "Init SileroVADHandler failed. Install with: pip install onnxruntime opuslib_next"
-            )
+            logger.error("Init SileroVADHandler failed. Install with: pip install onnxruntime")
             return
-        super().__init__(config)
         model_path = Path(config.model).expanduser()
 
         if not model_path.exists():
@@ -119,7 +158,6 @@ class SileroVADHandler(BaseVADHandler):
         self.session = onnxruntime.InferenceSession(
             str(model_path), providers=["CPUExecutionProvider"], sess_options=opts
         )
-        self._vad_opus_decoder = opuslib_next.Decoder(16000, 1)
         self._vad_state = np.zeros((2, 1, 128), dtype=np.float32)
         self._vad_context = np.zeros((1, 64), dtype=np.float32)
 

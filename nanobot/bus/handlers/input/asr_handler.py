@@ -82,10 +82,7 @@ class BaseASRHandler(InputHandler):
                 msg.content = transcribed_text
                 msg.media, keep_keys = [], ("source", "timestamp", "session_id", "need_tts")
                 keep_meta = {k: v for k, v in msg.metadata.items() if k in keep_keys}
-                msg.metadata = {
-                    **keep_meta,
-                    "_input_hint": "ASR: " + transcribed_text,
-                }
+                msg.metadata = {**keep_meta, "_as_input": True}
             else:
                 logger.warning("No speech recognized, skipping message")
                 msg.content = "No speech recognized, skipping message"

@@ -36,10 +36,12 @@ class BaseTTSHandler(OutputHandler):
         except ImportError:
             error_msg = "Init EdgeTTSHandler failed. Install: pip install opuslib_next pydub"
             raise ImportError(error_msg)
-        self.voice = config.voice
-        self.audio_format = config.audio_format
+        self.voice, self.encoder = config.voice, None
+        if config.audio_format == "opus":
+            self.audio_format, self.encoder_type = "mp3", "ops"
+        else:
+            self.audio_format, self.encoder_type = config.audio_format, ""
         self.sample_rate = config.sample_rate
-        self.encoder_type, self.encoder = config.encoder_type, None
         # get voice config
         self.depends_folder = Path(config.depends_folder).expanduser()
         voice_path = self.depends_folder / "voice.json"
