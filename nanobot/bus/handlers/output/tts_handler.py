@@ -34,11 +34,11 @@ class BaseTTSHandler(OutputHandler):
             import opuslib_next
             import pydub
         except ImportError:
-            error_msg = "Init EdgeTTSHandler failed. Install: pip install opuslib_next pydub"
+            error_msg = "Init BaseTTSHandler failed. Install: pip install opuslib_next pydub"
             raise ImportError(error_msg)
         self.voice, self.encoder = config.voice, None
         if config.audio_format == "opus":
-            self.audio_format, self.encoder_type = "mp3", "ops"
+            self.audio_format, self.encoder_type = "mp3", "opus"
         else:
             self.audio_format, self.encoder_type = config.audio_format, ""
         self.sample_rate = config.sample_rate
