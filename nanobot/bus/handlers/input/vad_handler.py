@@ -92,6 +92,7 @@ class BaseVADHandler(InputHandler, ABC):
                 self._asr_audio = self._asr_audio[-10:]
 
         msg.content = ""
+        print(f"[TMINFO] has {len(self._asr_audio)} asr audio")
         if len(self._asr_audio) > 15:
             print("[TMINFO] should use asr to recognize!!")
             pcm_data, self._asr_audio = self._asr_audio.copy(), []
@@ -209,7 +210,6 @@ class SileroVADHandler(BaseVADHandler):
                 self._vad_state = state
                 self._vad_context = audio_input[:, -64:]
                 speech_prob = out.item()
-                print(f"[TMINFO] speech_prob {speech_prob} for bytes {chunk}")
 
                 # Dual threshold decision
                 if speech_prob >= self.vad_threshold:
@@ -227,8 +227,6 @@ class SileroVADHandler(BaseVADHandler):
                 client_have_voice = (
                     self._client_voice_window.count(True) >= self.frame_window_threshold
                 )
-                print("[TMINFO] client_have_voice: " + str(client_have_voice))
-
                 # Detect silence after voice
                 if self._client_have_voice and not client_have_voice:
                     stop_duration = time.time() * 1000 - self._last_activity_time
@@ -243,8 +241,6 @@ class SileroVADHandler(BaseVADHandler):
                 # Keep window bounded
                 if len(self._client_voice_window) > 10:
                     self._client_voice_window = self._client_voice_window[-10:]
-
-            print("[TMINFO] client_have_voice " + str(client_have_voice))
             return client_have_voice
 
         except opuslib_next.OpusError as e:
