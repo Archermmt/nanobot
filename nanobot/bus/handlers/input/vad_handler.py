@@ -84,22 +84,21 @@ class BaseVADHandler(InputHandler, ABC):
             return msg
 
         self._asr_audio.append(msg.content)
-        if self.is_vad(msg.content):
-            print("[TMINFO] is vad!!")
-        else:
-            print("[TMINFO] is not vad!!")
-            if not self._client_have_voice:
-                self._asr_audio = self._asr_audio[-10:]
+        audio_have_voice = self.is_vad(msg.content)
+        if not audio_have_voice and not self._client_have_voice:
+            self._asr_audio = self._asr_audio[-10:]
+            msg.content = ""
+            msg.metadata["passby"] = True
+            return msg
 
         msg.content = ""
-        print(f"[TMINFO] has {len(self._asr_audio)} asr audio")
-        if len(self._asr_audio) > 15:
-            print("[TMINFO] should use asr to recognize!!")
+        if len(self._asr_audio) > 15 and self._client_voice_stop:
             pcm_data, self._asr_audio = self._asr_audio.copy(), []
             if self.audio_format == "opus":
                 pcm_data = self.decode_opus(pcm_data)
-            msg.media = [b"".join(pcm_data)]
+            msg.media = [{"data": b"".join(pcm_data)}]
             msg.metadata["msg_type"] = "audio"
+            msg.metadata["audio_format"] = "pcm"
         else:
             msg.metadata["passby"] = True
         return msg

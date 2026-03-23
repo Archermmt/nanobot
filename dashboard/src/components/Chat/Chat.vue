@@ -57,6 +57,7 @@ let opusDecoderInstance: any = null
 const pcmBuffer: Float32Array[] = []
 const isPlayingOpus = ref(false)
 const currentOpusText = ref('')
+let isPlaybackReady = false  // Flag to track if playback is fully initialized
 
 // Opus decoder parameters
 const SAMPLE_RATE = 24000  // Match the server's sample rate
@@ -723,13 +724,27 @@ const handleTTSMessage = async (data: any) => {
   console.log('🎵 TTS message:', state, data.text)
 
   if (state === 'start') {
-    // Start new opus audio stream
+    // Stop any existing playback before starting new one
+    if (scriptProcessor) {
+      scriptProcessor.disconnect()
+      scriptProcessor = null
+    }
+    if (audioContext) {
+      audioContext.close()
+      audioContext = null
+    }
+    // Clear all buffers and reset state
     pcmBuffer.length = 0
     framePosition = 0  // Reset frame position to ensure playback starts from beginning
     currentOpusText.value = ''
     isPlayingOpus.value = true
+    isLoading.value = false
     await initializeOpusPlayback()
+    console.log('✅ Playback initialized, ready to receive audio frames')
   } else if (state === 'sentence_start') {
+    // Reset playback position to start for new sentence
+    framePosition = 0
+    pcmBuffer.length = 0  // Clear any buffered audio from previous sentence
     // Store the text content and display it immediately
     const text = data.text || ''
     currentOpusText.value = text
@@ -745,6 +760,12 @@ const handleTTSMessage = async (data: any) => {
       }
     })
   } else if (state === 'stop') {
+    // Delay stop to allow remaining audio to play out
+    // Calculate delay based on buffered audio duration
+    const estimatedBufferDuration = pcmBuffer.length * (FRAME_SIZE / SAMPLE_RATE) * 1000 // ms
+    const stopDelay = Math.max(1000, estimatedBufferDuration + 200) // At least 500ms, or buffer duration + 200ms
+    console.log(`📊 Estimated buffer duration: ${estimatedBufferDuration.toFixed(0)}ms, scheduling stop in ${stopDelay.toFixed(0)}ms`)
+
     // Stop playback after a short delay to let remaining audio play
     setTimeout(() => {
       isPlayingOpus.value = false
@@ -759,7 +780,7 @@ const handleTTSMessage = async (data: any) => {
           lastMsg.metadata.isPlayingOpus = false
         }
       }
-    }, 500)
+    }, stopDelay)
   }
 }
 
@@ -767,6 +788,21 @@ const handleOpusAudioFrame = async (blob: Blob) => {
   if (!isPlayingOpus.value) {
     console.warn('⚠️ Received opus frame but not playing')
     return
+  }
+  // Wait for playback to be ready
+  if (!isPlaybackReady) {
+    console.log('⏳ Waiting for playback to be ready...')
+    const waitForReady = () => new Promise<void>((resolve) => {
+      const checkReady = () => {
+        if (isPlaybackReady) {
+          resolve()
+        } else {
+          setTimeout(checkReady, 10)
+        }
+      }
+      checkReady()
+    })
+    await waitForReady()
   }
 
   try {
@@ -792,6 +828,8 @@ const handleOpusAudioFrame = async (blob: Blob) => {
 
 const initializeOpusPlayback = async () => {
   try {
+    isPlaybackReady = false  // Reset ready flag
+
     // Create AudioContext
     audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
 
@@ -846,6 +884,9 @@ const initializeOpusPlayback = async () => {
     }
 
     scriptProcessor.connect(audioContext.destination)
+    // Mark playback as ready after a short delay to ensure first onaudioprocess callback is set up
+    await new Promise(resolve => setTimeout(resolve, 50))
+    isPlaybackReady = true
     console.log('✅ Opus playback initialized with low-latency buffer')
   } catch (error) {
     console.error('❌ Failed to initialize opus playback:', error)

@@ -39,12 +39,13 @@ class BaseASRHandler(InputHandler):
         msg_type = msg.metadata.get("msg_type", "text")
         return msg_type == "audio" and not msg.content
 
-    async def _process_audio(self, media_data: str) -> str:
+    async def _process_audio(self, media_data: str, audio_format: str = "wav") -> str:
         """
         Recognize speech from audio data. To be implemented by subclasses.
 
         Args:
             media_data: Base64 encoded audio data or file path
+            audio_format: Audio format of the input media data (default: "wav")
 
         Returns:
             Recognized text string
@@ -75,7 +76,8 @@ class BaseASRHandler(InputHandler):
                 media_data = base64.b64decode(media_data.split(",", 1)[1])
 
             # Recognize speech from audio
-            transcribed_text = await self._process_audio(media_data)
+            audio_format = msg.metadata.get("audio_format", "wav")
+            transcribed_text = await self._process_audio(media_data, audio_format)
 
             if transcribed_text:
                 logger.info(f"Recognized speech from audio: '{transcribed_text}'")
@@ -203,18 +205,21 @@ class FunasrHandler(BaseASRHandler):
                 disable_update=True,
             )
 
-    async def _process_audio(self, media_data: str) -> str:
+    async def _process_audio(self, media_data: str, audio_format: str = "wav") -> str:
         """
         Recognize speech from audio data using FunASR.
 
         Args:
             media_data: Base64 encoded audio data (WAV or WebM format)
+            audio_format: Audio format of the input media data (default: "wav")
 
         Returns:
             Recognized text string
         """
         # Read base64 audio data
-        if os.path.isfile(media_data):
+        if isinstance(media_data, bytes):
+            audio_bytes = media_data
+        elif os.path.isfile(media_data):
             with open(media_data, "rb") as f:
                 audio_bytes = f.read()
         else:
@@ -223,26 +228,24 @@ class FunasrHandler(BaseASRHandler):
             )
 
         try:
-            # Detect audio format and convert to WAV if needed
-            wav_io = io.BytesIO(audio_bytes)
-
-            # Check if it's a WAV file by reading the first 4 bytes
-            wav_io.seek(0)
-            header = wav_io.read(4)
-            wav_io.seek(0)
-
-            if header != b"RIFF":
-                # Not a WAV file, use parent class method to convert
-                logger.info("Detected non-WAV format, converting to WAV...")
-                converted_wav = self._convert_to_wav(audio_bytes)
-                if converted_wav is None:
-                    return ""
-                wav_io = converted_wav
-
-            # Read WAV file and extract PCM data
-            with wave.open(wav_io, "rb") as wf:
-                audio_data = wf.readframes(wf.getnframes())
-
+            if audio_format == "wav":
+                # Detect audio format and convert to WAV if needed
+                wav_io = io.BytesIO(audio_bytes)
+                wav_io.seek(0)
+                header = wav_io.read(4)
+                wav_io.seek(0)
+                if header != b"RIFF":
+                    # Not a WAV file, use parent class method to convert
+                    logger.info("Detected non-WAV format, converting to WAV...")
+                    converted_wav = self._convert_to_wav(audio_bytes)
+                    if converted_wav is None:
+                        return ""
+                    wav_io = converted_wav
+                # Read WAV file and extract PCM data
+                with wave.open(wav_io, "rb") as wf:
+                    audio_data = wf.readframes(wf.getnframes())
+            else:
+                audio_data = audio_bytes
             # Use thread pool to avoid blocking event loop
             result = await asyncio.to_thread(
                 self._model.generate,
@@ -252,10 +255,8 @@ class FunasrHandler(BaseASRHandler):
                 use_itn=True,
                 batch_size_s=60,
             )
-
             # Extract text from result
-            text = result[0]["text"] if result else ""
-            return text
+            return result[0]["text"] if result else ""
         except ImportError:
             logger.error("FunASR not installed. Install with: pip install funasr")
             return ""
@@ -285,12 +286,13 @@ class VoskHandler(BaseASRHandler):
         logger.info(f"Loading Vosk model from {model}")
         self._model = Model(model_path=str(model_dir_expanded))
 
-    async def _process_audio(self, media_data: str) -> str:
+    async def _process_audio(self, media_data: str, audio_format: str = "wav") -> str:
         """
         Recognize speech from audio data using Vosk (offline CPU-based ASR).
 
         Args:
             media_data: Base64 encoded audio data (WAV or WebM format)
+            audio_format: Audio format of the input media data (default: "wav")
 
         Returns:
             Recognized text string
