@@ -2,7 +2,7 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import MessageList from './MessageList.vue'
 import ChatInput from './ChatInput.vue'
-import { OpusDecoder } from 'opus-decoder'
+import { getAudioPlayer } from '../Media/audio/player.js'
 
 interface Message {
   role: 'user' | 'assistant' | 'system'
@@ -50,20 +50,10 @@ const playingAudioUrl = ref<string | null>(null)
 let ws: WebSocket | null = null
 const isConnected = ref(false)
 
-// Opus audio decoding and playback
-let audioContext: AudioContext | null = null
-let scriptProcessor: ScriptProcessorNode | null = null
-let opusDecoderInstance: any = null
-const pcmBuffer: Float32Array[] = []
-const isPlayingOpus = ref(false)
-const currentOpusText = ref('')
-let isPlaybackReady = false  // Flag to track if playback is fully initialized
-
-// Opus decoder parameters
-const SAMPLE_RATE = 24000  // Match the server's sample rate
-const CHANNELS = 1
-const FRAME_SIZE = 960  // 40ms at 24kHz
-const SCRIPT_PROCESSOR_BUFFER_SIZE = 256  // ~10ms buffer for low latency
+// Audio player instance
+const audioPlayer = getAudioPlayer()
+const isRemoteSpeaking = ref(false)
+const ttsSentenceCount = ref(0)
 
 // Method to set WebSocket instance from App.vue
 const setWebSocket = (websocket: WebSocket | null) => {
@@ -75,7 +65,7 @@ const setWebSocket = (websocket: WebSocket | null) => {
 const handleWebSocketMessage = (event: MessageEvent) => {
   try {
     // Check if this is binary data (opus audio frame)
-    if (event.data instanceof Blob) {
+    if (event.data instanceof Blob || event.data instanceof ArrayBuffer) {
       handleOpusAudioFrame(event.data)
       return
     }
@@ -658,42 +648,6 @@ const stopAudio = () => {
     playingAudioUrl.value = null
     currentAudio.value = null
   }
-
-  // Stop opus playback
-  if (scriptProcessor) {
-    scriptProcessor.disconnect()
-    scriptProcessor = null
-  }
-  if (audioContext) {
-    audioContext.close()
-    audioContext = null
-  }
-  if (opusDecoderInstance) {
-    opusDecoderInstance = null
-  }
-  pcmBuffer.length = 0
-  framePosition = 0
-  isPlayingOpus.value = false
-  currentOpusText.value = ''
-}
-
-const stopOpusPlayback = () => {
-  // Disconnect script processor
-  if (scriptProcessor) {
-    scriptProcessor.disconnect()
-    scriptProcessor = null
-  }
-  if (audioContext) {
-    audioContext.close()
-    audioContext = null
-  }
-  if (opusDecoderInstance) {
-    opusDecoderInstance = null
-  }
-  pcmBuffer.length = 0
-  framePosition = 0
-  isPlayingOpus.value = false
-  currentOpusText.value = ''
 }
 
 const handleStopAudio = () => {
@@ -704,68 +658,68 @@ const handleStopAudio = () => {
     currentAudio.value = null
   }
 
-  // Stop opus playback but keep buffer cached
-  stopOpusPlayback()
+  // Stop remote speaking (opus playback)
+  if (isRemoteSpeaking.value) {
+    // Clear all audio buffers and stop playback
+    audioPlayer.clearAllAudio()
+    isRemoteSpeaking.value = false
+    ttsSentenceCount.value = 0
 
-  // Update message playing state
-  messages.value.forEach(msg => {
-    if (msg.metadata?.isPlayingOpus) {
-      msg.metadata.isPlayingOpus = false
-    }
-  })
+    // Update message playing state
+    messages.value.forEach(msg => {
+      if (msg.metadata?.isPlayingOpus) {
+        msg.metadata.isPlayingOpus = false
+      }
+    })
+  }
 
-  // Send /stop_audio command to backend only when playing opus audio
-  // and hide it from UI
+  // Send /stop_audio command to backend
   sendMessage('/stop_audio', true)
 }
 
+// Handle TTS message - same as xiaozhi-esp32-server implementation
 const handleTTSMessage = async (data: any) => {
   const state = data.state
   console.log('🎵 TTS message:', state, data.text)
 
   if (state === 'start') {
-    // Stop any existing playback before starting new one
-    if (scriptProcessor) {
-      scriptProcessor.disconnect()
-      scriptProcessor = null
-    }
-    if (audioContext) {
-      audioContext.close()
-      audioContext = null
-    }
-    // Clear all buffers and reset state
-    pcmBuffer.length = 0
-    framePosition = 0  // Reset frame position to ensure playback starts from beginning
-    currentOpusText.value = ''
-    isPlayingOpus.value = true
-    isLoading.value = false
-    await initializeOpusPlayback()
-    console.log('✅ Playback initialized, ready to receive audio frames')
-  } else if (state === 'sentence_start') {
-    // Reset playback position to start for new sentence
-    framePosition = 0
-    pcmBuffer.length = 0  // Clear any buffered audio from previous sentence
-    // Store the text content and display it immediately
-    const text = data.text || ''
-    currentOpusText.value = text
-    console.log('📝 TTS text:', text)
+    console.log('服务器开始发送语音', 'info')
+    isRemoteSpeaking.value = true
+    ttsSentenceCount.value = 0
 
-    // Add message to chat immediately with playing state
-    messages.value.push({
-      role: 'assistant',
-      content: text,
-      timestamp: Date.now(),
-      metadata: {
-        isPlayingOpus: true
-      }
+    // Start audio buffering system
+    audioPlayer.start().catch((error: Error) => {
+      console.error('Failed to start audio player:', error)
     })
+  } else if (state === 'sentence_start') {
+    console.log(`服务器发送语音段：${data.text}`, 'info')
+    ttsSentenceCount.value++
+
+    // Add message to chat immediately
+    if (data.text && !data.text.trim().startsWith('/')) {
+      messages.value.push({
+        role: 'assistant',
+        content: data.text,
+        timestamp: Date.now(),
+        metadata: {
+          isPlayingOpus: true
+        }
+      })
+    }
+  } else if (state === 'sentence_end') {
+    console.log(`语音段结束：${data.text}`, 'info')
+    // Don't clear animation at sentence end, wait for next sentence or final stop
   } else if (state === 'stop') {
-    // Stop playback after a short delay to let remaining audio play
+    console.log('服务器语音传输结束，清空所有音频缓冲', 'info')
+
+    // Clear all audio buffers and stop playback
+    audioPlayer.clearAllAudio()
+
+    isRemoteSpeaking.value = false
+
+    // Delay stop to let remaining audio play
     setTimeout(() => {
-      isPlayingOpus.value = false
-      currentOpusText.value = ''
-      pcmBuffer.length = 0
-      isLoading.value = false
+      ttsSentenceCount.value = 0
 
       // Update the last message's playing state
       if (messages.value.length > 0) {
@@ -774,150 +728,39 @@ const handleTTSMessage = async (data: any) => {
           lastMsg.metadata.isPlayingOpus = false
         }
       }
+
+      isLoading.value = false
     }, 1000)
   }
 }
 
-const handleOpusAudioFrame = async (blob: Blob) => {
-  if (!isPlayingOpus.value) {
-    console.warn('⚠️ Received opus frame but not playing')
+// Handle opus audio frame - enqueue to player
+const handleOpusAudioFrame = async (data: Blob | ArrayBuffer) => {
+  if (!isRemoteSpeaking.value) {
+    console.warn('⚠️ Received opus frame but not speaking')
     return
-  }
-  // Wait for playback to be ready
-  if (!isPlaybackReady) {
-    console.log('⏳ Waiting for playback to be ready...')
-    const waitForReady = () => new Promise<void>((resolve) => {
-      const checkReady = () => {
-        if (isPlaybackReady) {
-          resolve()
-        } else {
-          setTimeout(checkReady, 10)
-        }
-      }
-      checkReady()
-    })
-    await waitForReady()
   }
 
   try {
-    // Convert blob to ArrayBuffer synchronously as possible
-    blob.arrayBuffer().then(arrayBuffer => {
-      const opusFrame = new Uint8Array(arrayBuffer)
-      console.log('📦 Received opus frame, size:', opusFrame.length, 'bytes')
+    let opusData: Uint8Array
 
-      // Decode immediately and add to buffer
-      decodeOpusFrame(opusFrame).then(pcmData => {
-        pcmBuffer.push(pcmData)
-        console.log('🎵 Decoded to PCM, buffer size:', pcmBuffer.length)
-      }).catch(error => {
-        console.error('❌ Failed to decode opus frame:', error)
-      })
-    }).catch(error => {
-      console.error('❌ Failed to convert blob:', error)
-    })
+    if (data instanceof Blob) {
+      const arrayBuffer = await data.arrayBuffer()
+      opusData = new Uint8Array(arrayBuffer)
+    } else {
+      opusData = new Uint8Array(data)
+    }
+
+    console.log('📦 Received opus frame, size:', opusData.length, 'bytes')
+
+    // Enqueue to audio player for buffering and playback
+    audioPlayer.enqueueAudioData(opusData)
   } catch (error) {
     console.error('❌ Failed to process opus frame:', error)
   }
 }
 
-const initializeOpusPlayback = async () => {
-  try {
-    isPlaybackReady = false  // Reset ready flag
 
-    // Create AudioContext
-    audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
-
-    // Initialize Opus decoder and wait for WASM to compile
-    if (!opusDecoderInstance) {
-      opusDecoderInstance = new OpusDecoder(SAMPLE_RATE, CHANNELS)
-      await opusDecoderInstance.ready
-      console.log('✅ Opus decoder WASM compiled and ready')
-    }
-
-    // Create script processor with SMALLER buffer for lower latency
-    // 256 samples @ 24kHz = ~10.7ms latency (much better than 4096 = ~170ms)
-    scriptProcessor = audioContext.createScriptProcessor(SCRIPT_PROCESSOR_BUFFER_SIZE, 1, 1)
-
-    scriptProcessor.onaudioprocess = (e) => {
-      const outputData = e.outputBuffer.getChannelData(0)
-
-      // Fill the entire buffer with audio data or silence
-      let outputIndex = 0
-
-      while (outputIndex < outputData.length) {
-        // If we have buffered PCM data, use it
-        if (pcmBuffer.length > 0) {
-          const currentFrame = pcmBuffer[0]
-
-          // Calculate how much we can copy
-          const remainingInFrame = currentFrame.length - framePosition
-          const remainingInOutput = outputData.length - outputIndex
-          const toCopy = Math.min(remainingInFrame, remainingInOutput)
-
-          // Copy from current frame to output
-          for (let i = 0; i < toCopy; i++) {
-            outputData[outputIndex + i] = currentFrame[framePosition + i]
-          }
-
-          outputIndex += toCopy
-          framePosition += toCopy
-
-          // If we've consumed this frame, remove it from buffer
-          if (framePosition >= currentFrame.length) {
-            pcmBuffer.shift()
-            framePosition = 0
-          }
-        } else {
-          // No more buffered data, fill rest with silence
-          for (let i = outputIndex; i < outputData.length; i++) {
-            outputData[i] = 0
-          }
-          break
-        }
-      }
-    }
-
-    scriptProcessor.connect(audioContext.destination)
-    // Mark playback as ready after a short delay to ensure first onaudioprocess callback is set up
-    await new Promise(resolve => setTimeout(resolve, 50))
-    isPlaybackReady = true
-    console.log('✅ Opus playback initialized with low-latency buffer')
-  } catch (error) {
-    console.error('❌ Failed to initialize opus playback:', error)
-    throw error
-  }
-}
-
-// Position within the current PCM frame being played
-let framePosition = 0
-
-const decodeOpusFrame = async (opusFrame: Uint8Array): Promise<Float32Array> => {
-  try {
-    // Ensure decoder is initialized and ready
-    if (!opusDecoderInstance) {
-      console.warn('⚠️ Decoder not initialized, initializing now...')
-      opusDecoderInstance = new OpusDecoder(SAMPLE_RATE, CHANNELS)
-      await opusDecoderInstance.ready
-    }
-
-    // Decode the opus frame
-    // The decodeFrame returns { channelData, samplesDecoded, sampleRate }
-    const result = opusDecoderInstance.decodeFrame(opusFrame)
-
-    if (!result || !result.channelData || result.channelData.length === 0) {
-      console.warn('⚠️ Opus decode returned null or empty, using empty PCM')
-      return new Float32Array(FRAME_SIZE)
-    }
-
-    // For mono audio, use the first channel
-    const pcmData = result.channelData[0]
-    console.log('✅ Opus frame decoded, samples:', pcmData.length)
-    return pcmData
-  } catch (error) {
-    console.error('❌ Failed to decode opus frame:', error)
-    return new Float32Array(FRAME_SIZE)
-  }
-}
 
 // No longer automatically connect on mounted
 onMounted(() => {
@@ -930,6 +773,11 @@ onUnmounted(() => {
     clearTimeout(currentTimeoutId.value)
   }
   stopAudio()
+
+  // Clear all audio when component unmounts
+  if (audioPlayer) {
+    audioPlayer.clearAllAudio()
+  }
 })
 
 // Expose methods to App.vue
