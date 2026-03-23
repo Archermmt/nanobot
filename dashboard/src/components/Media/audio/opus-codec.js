@@ -1,4 +1,4 @@
-import { log } from '../../utils/logger.js?v=0205';
+import { checkOpusLoaded } from './opus-codec.js';
 
 
 // 检查Opus库是否已加载
@@ -13,7 +13,7 @@ export function checkOpusLoaded() {
         if (typeof Module.instance !== 'undefined' && typeof Module.instance._opus_decoder_get_size === 'function') {
             // 使用Module.instance对象替换全局Module对象
             window.ModuleInstance = Module.instance;
-            log('Opus库加载成功（使用Module.instance）', 'success');
+            console.log('Opus 库加载成功（使用 Module.instance）');
 
             // 3秒后隐藏状态
             const statusElement = document.getElementById('scriptStatus');
@@ -24,7 +24,7 @@ export function checkOpusLoaded() {
         // 如果没有Module.instance，检查全局Module函数
         if (typeof Module._opus_decoder_get_size === 'function') {
             window.ModuleInstance = Module;
-            log('Opus库加载成功（使用全局Module）', 'success');
+            console.log('Opus 库加载成功（使用全局 Module）');
 
             // 3秒后隐藏状态
             const statusElement = document.getElementById('scriptStatus');
@@ -34,7 +34,7 @@ export function checkOpusLoaded() {
 
         throw new Error('Opus解码函数未找到，可能Module结构不正确');
     } catch (err) {
-        log(`Opus库加载失败，请检查libopus.js文件是否存在且正确: ${err.message}`, 'error');
+        console.error(`Opus 库加载失败，请检查 libopus.js文件是否存在且正确：${err.message}`);
     }
 }
 
@@ -48,7 +48,7 @@ export function initOpusEncoder() {
         }
 
         if (!window.ModuleInstance) {
-            log('无法创建Opus编码器：ModuleInstance不可用', 'error');
+            console.error('无法创建 Opus 编码器：ModuleInstance 不可用');
             return;
         }
 
@@ -71,7 +71,7 @@ export function initOpusEncoder() {
                 try {
                     // 获取编码器大小
                     const encoderSize = mod._opus_encoder_get_size(this.channels);
-                    log(`Opus编码器大小: ${encoderSize}字节`, 'info');
+                    console.log(`Opus 编码器大小：${encoderSize}字节`);
 
                     // 分配内存
                     this.encoderPtr = mod._malloc(encoderSize);
@@ -100,14 +100,14 @@ export function initOpusEncoder() {
                     // 设置使用DTX (不传输静音帧)
                     mod._opus_encoder_ctl(this.encoderPtr, 4016, 1);     // OPUS_SET_DTX
 
-                    log("Opus编码器初始化成功", 'success');
+                    console.log("Opus 编码器初始化成功");
                     return true;
                 } catch (error) {
                     if (this.encoderPtr) {
                         mod._free(this.encoderPtr);
                         this.encoderPtr = null;
                     }
-                    log(`Opus编码器初始化失败: ${error.message}`, 'error');
+                    console.error(`Opus 编码器初始化失败：${error.message}`);
                     return false;
                 }
             },
@@ -159,7 +159,7 @@ export function initOpusEncoder() {
 
                     return opusData;
                 } catch (error) {
-                    log(`Opus编码出错: ${error.message}`, 'error');
+                    console.error(`Opus 编码出错：${error.message}`);
                     return null;
                 }
             },
@@ -176,7 +176,7 @@ export function initOpusEncoder() {
         opusEncoder.init();
         return opusEncoder;
     } catch (error) {
-        log(`创建Opus编码器失败: ${error.message}`, 'error');
+        console.error(`创建 Opus 编码器失败：${error.message}`);
         return false;
     }
 }
