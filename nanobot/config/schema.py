@@ -271,25 +271,18 @@ class TTSHandlerConfig(Base):
     sample_rate: int = 16000
 
 
-class InputHandlerConfig(Base):
+class HandlersConfig(Base):
     """Configuration for input handlers."""
 
     asr: ASRHandlerConfig | None = None
     vad: VADHandlerConfig | None = None
+    tts: TTSHandlerConfig | None = None
 
     def model_post_init(self, __context):
         if self.asr is None:
             self.asr = ASRHandlerConfig()
         if self.vad is None:
             self.vad = VADHandlerConfig()
-
-
-class OutputHandlerConfig(Base):
-    """Configuration for output handlers."""
-
-    tts: TTSHandlerConfig | None = None
-
-    def model_post_init(self, __context):
         if self.tts is None:
             self.tts = TTSHandlerConfig()
 
@@ -297,14 +290,11 @@ class OutputHandlerConfig(Base):
 class BusConfig(Base):
     """Configuration for MessageBus."""
 
-    input_handler: InputHandlerConfig | None = None
-    output_handler: OutputHandlerConfig | None = None
+    handlers: HandlersConfig | None = None
 
     def model_post_init(self, __context):
-        if self.input_handler is None:
-            self.input_handler = InputHandlerConfig()
-        if self.output_handler is None:
-            self.output_handler = OutputHandlerConfig()
+        if self.handlers is None:
+            self.handlers = HandlersConfig()
 
 
 class MatrixConfig(Base):

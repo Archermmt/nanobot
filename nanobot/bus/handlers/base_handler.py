@@ -1,15 +1,15 @@
-"""Base handler for message processing."""
+"""Base handler for processing inbound and outbound messages."""
 
 from abc import ABC, abstractmethod
-from typing import Dict, List, Type
+from typing import Dict, Type
 
-from nanobot.bus.events import InboundMessage
+from nanobot.bus.events import InboundMessage, OutboundMessage
 
 
-class InputHandler(ABC):
-    """Base class for all message handlers."""
+class BaseHandler(ABC):
+    """Base class for all message handlers (both inbound and outbound)."""
 
-    _registry: Dict[str, Type["InputHandler"]] = {}
+    _registry: Dict[str, Type["BaseHandler"]] = {}
 
     @classmethod
     def msg_type(cls) -> str:
@@ -24,8 +24,8 @@ class InputHandler(ABC):
         and the message type is obtained from msg_type().
 
         Usage:
-            @InputHandler.register()
-            class MyHandler(InputHandler):
+            @BaseHandler.register()
+            class MyHandler(BaseHandler):
                 @classmethod
                 def msg_type(cls) -> str:
                     return "audio"
@@ -35,7 +35,7 @@ class InputHandler(ABC):
                     return "funasr"
         """
 
-        def decorator(subclass: Type["InputHandler"]) -> Type["InputHandler"]:
+        def decorator(subclass: Type["BaseHandler"]) -> Type["BaseHandler"]:
             if not hasattr(subclass, "msg_type") or not callable(subclass.msg_type):
                 raise TypeError(f"Subclass {subclass.__name__} must define msg_type() class method")
             if not hasattr(subclass, "handler_type") or not callable(subclass.handler_type):
@@ -49,7 +49,7 @@ class InputHandler(ABC):
         return decorator
 
     @classmethod
-    def get_registered_type(cls, handler_type: str) -> Type["InputHandler"] | None:
+    def get_registered_type(cls, handler_type: str) -> Type["BaseHandler"] | None:
         """
         Get a registered handler class by handler type.
         The message type is obtained from the subclass's msg_type() class method.
@@ -62,8 +62,31 @@ class InputHandler(ABC):
         """
         return cls._registry.get(handler_type)
 
-    @abstractmethod
-    async def handle(self, msg: InboundMessage) -> InboundMessage:
+    def can_handle_input(self, msg: InboundMessage) -> bool:
+        """
+        Check if this handler can process the given inbound message.
+
+        Args:
+            msg: The inbound message to check
+
+        Returns:
+            True if the message can be handled, False otherwise
+        """
+        return False
+
+    def can_handle_output(self, msg: OutboundMessage) -> bool:
+        """
+        Check if this handler can process the given outbound message.
+
+        Args:
+            msg: The outbound message to check
+
+        Returns:
+            True if the message can be handled, False otherwise
+        """
+        return False
+
+    async def handle_input(self, msg: InboundMessage) -> InboundMessage:
         """
         Process an inbound message.
 
@@ -75,15 +98,14 @@ class InputHandler(ABC):
         """
         return msg
 
-    @abstractmethod
-    def can_handle(self, msg: InboundMessage) -> bool:
+    async def handle_output(self, msg: OutboundMessage) -> OutboundMessage:
         """
-        Check if this handler can process the given message.
+        Process an outbound message.
 
         Args:
-            msg: The inbound message to check
+            msg: The outbound message to process
 
         Returns:
-            True if the message type is supported, False otherwise
+            The processed outbound message (may be modified or the same instance)
         """
-        return False
+        return msg

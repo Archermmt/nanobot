@@ -1,6 +1,7 @@
 """VAD (Voice Activity Detection) handlers for voice activity detection."""
 
 import time
+import uuid
 from abc import ABC, abstractmethod
 from collections import deque
 from pathlib import Path
@@ -9,12 +10,12 @@ from typing import List
 import numpy as np
 from loguru import logger
 
-from nanobot.bus.events import InboundMessage
-from nanobot.bus.handlers.input.input_handler import InputHandler
+from nanobot.bus.events import InboundMessage, OutboundMessage
+from nanobot.bus.handlers.base_handler import BaseHandler
 from nanobot.config.schema import VADHandlerConfig
 
 
-class BaseVADHandler(InputHandler, ABC):
+class BaseVADHandler(BaseHandler, ABC):
     """Base class for voice activity detection handlers."""
 
     def __init__(self, config: VADHandlerConfig):
@@ -36,7 +37,7 @@ class BaseVADHandler(InputHandler, ABC):
         self._last_activity_time = 0.0
         self._client_voice_stop = False
         self._last_is_voice = False
-        self._asr_audio = []
+        self._asr_audio, self._waiting_id = [], ""
         # decoder
         self._opus_decoder = opuslib_next.Decoder(16000, 1)
 
@@ -44,7 +45,7 @@ class BaseVADHandler(InputHandler, ABC):
     def msg_type(cls) -> str:
         return "audio_clip"
 
-    def can_handle(self, msg: InboundMessage) -> bool:
+    def can_handle_input(self, msg: InboundMessage) -> bool:
         """
         Check if this handler can process the given message.
 
@@ -56,6 +57,18 @@ class BaseVADHandler(InputHandler, ABC):
         """
         msg_type = msg.metadata.get("msg_type", "text")
         return msg_type == "audio_clip"
+
+    def can_handle_output(self, msg: OutboundMessage) -> bool:
+        """
+        Check if this handler can process the given outbound message.
+
+        Args:
+            msg: The outbound message to check
+
+        Returns:
+            True if the message can be handled, False otherwise
+        """
+        return "audio_id" in msg.metadata and msg.metadata["audio_id"] == self._waiting_id
 
     @abstractmethod
     def is_vad(self, opus_packet: bytes) -> bool:
@@ -70,7 +83,7 @@ class BaseVADHandler(InputHandler, ABC):
         """
         pass
 
-    async def handle(self, msg: InboundMessage) -> InboundMessage:
+    async def handle_input(self, msg: InboundMessage) -> InboundMessage:
         """
         Process an audio message for voice activity detection.
 
@@ -81,6 +94,8 @@ class BaseVADHandler(InputHandler, ABC):
             Modified InboundMessage with VAD metadata
         """
         if not msg.content:
+            return msg
+        if self._waiting_id:
             return msg
 
         self._asr_audio.append(msg.content)
@@ -99,8 +114,24 @@ class BaseVADHandler(InputHandler, ABC):
             msg.media = [{"data": b"".join(pcm_data)}]
             msg.metadata["msg_type"] = "audio"
             msg.metadata["audio_format"] = "pcm"
+            self._waiting_id = str(uuid.uuid4())[:8]
+            msg.metadata["audio_id"] = self._waiting_id
         else:
             msg.metadata["passby"] = True
+        return msg
+
+    async def handle_output(self, msg: OutboundMessage) -> OutboundMessage:
+        """
+        Process an outbound message.
+
+        Args:
+            msg: The outbound message to process
+
+        Returns:
+            The processed outbound message (may be modified or the same instance)
+        """
+
+        self._waiting_id = ""
         return msg
 
     def decode_opus(self, opus_data: List[bytes]) -> List[bytes]:

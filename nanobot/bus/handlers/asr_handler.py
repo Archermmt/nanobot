@@ -13,19 +13,19 @@ from pathlib import Path
 from loguru import logger
 
 from nanobot.bus.events import InboundMessage
-from nanobot.bus.handlers.input.input_handler import InputHandler
+from nanobot.bus.handlers.base_handler import BaseHandler
 from nanobot.config.schema import ASRHandlerConfig
 from nanobot.utils.log import CaptureOutput
 
 
-class BaseASRHandler(InputHandler):
+class BaseASRHandler(BaseHandler):
     """Base class for automatic speech recognition handlers."""
 
     @classmethod
     def msg_type(cls) -> str:
         return "audio"
 
-    def can_handle(self, msg: InboundMessage) -> bool:
+    def can_handle_input(self, msg: InboundMessage) -> bool:
         """
         Check if this handler can process the given message.
 
@@ -52,7 +52,7 @@ class BaseASRHandler(InputHandler):
         """
         raise NotImplementedError("Subclasses must implement _process_audio method")
 
-    async def handle(self, msg: InboundMessage) -> InboundMessage:
+    async def handle_input(self, msg: InboundMessage) -> InboundMessage:
         """
         Process an audio message by converting speech to text.
 
@@ -82,7 +82,8 @@ class BaseASRHandler(InputHandler):
             if transcribed_text:
                 logger.info(f"Recognized speech from audio: '{transcribed_text}'")
                 msg.content = transcribed_text
-                msg.media, keep_keys = [], ("source", "timestamp", "session_id", "need_tts")
+                msg.media = []
+                keep_keys = ("source", "timestamp", "session_id", "need_tts", "audio_id")
                 keep_meta = {k: v for k, v in msg.metadata.items() if k in keep_keys}
                 msg.metadata = {**keep_meta, "_as_input": True}
             else:

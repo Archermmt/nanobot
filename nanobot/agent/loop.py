@@ -505,8 +505,8 @@ class AgentLoop:
                 "history": len(session.messages),
                 "skills": len(self.context.skills.list_skills()),
                 "tools": len(self.tools),
-                "enable_audio": "audio" in self.bus.input_handlers,
-                "enable_tts": "text" in self.bus.output_handlers,
+                "enable_audio": "audio" in self.bus.handlers,
+                "enable_tts": "text" in self.bus.handlers,
             }
             metadata = {"_response_for": "status"}
             if msg.metadata.get("_hide_from_ui", False):

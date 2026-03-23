@@ -12,14 +12,14 @@ import numpy as np
 from loguru import logger
 
 from nanobot.bus.events import OutboundMessage
-from nanobot.bus.handlers.output.output_handler import OutputHandler
+from nanobot.bus.handlers.base_handler import BaseHandler
 from nanobot.config.schema import TTSHandlerConfig
 from nanobot.utils.log import CaptureOutput
 from nanobot.utils.media import audio_bytes_to_data_stream
 from nanobot.utils.text_utils import check_emoji, clean_markdown
 
 
-class BaseTTSHandler(OutputHandler):
+class BaseTTSHandler(BaseHandler):
     """Base class for text-to-speech message handlers."""
 
     def __init__(self, config: TTSHandlerConfig | None = None):
@@ -56,7 +56,7 @@ class BaseTTSHandler(OutputHandler):
     def msg_type(cls) -> str:
         return "text"
 
-    def can_handle(self, msg: OutboundMessage) -> bool:
+    def can_handle_output(self, msg: OutboundMessage) -> bool:
         """
         Check if this handler can process the given message.
 
@@ -74,7 +74,7 @@ class BaseTTSHandler(OutputHandler):
             and not msg.metadata.get("_progress", False)
         )
 
-    async def handle(self, msg: OutboundMessage) -> OutboundMessage:
+    async def handle_output(self, msg: OutboundMessage) -> OutboundMessage:
         """
         Process a text message and convert it to speech.
 
