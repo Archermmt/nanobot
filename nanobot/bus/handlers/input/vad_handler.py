@@ -87,6 +87,7 @@ class BaseVADHandler(InputHandler, ABC):
         if self.is_vad(msg.content):
             print("[TMINFO] is vad!!")
         else:
+            print("[TMINFO] is not vad!!")
             if not self._client_have_voice:
                 self._asr_audio = self._asr_audio[-10:]
 
@@ -177,7 +178,7 @@ class SileroVADHandler(BaseVADHandler):
 
         try:
             # Decode Opus packet to PCM
-            pcm_frame = self._vad_opus_decoder.decode(opus_packet, 960)
+            pcm_frame = self._opus_decoder.decode(opus_packet, 960)
             self._client_audio_buffer.extend(pcm_frame)
 
             client_have_voice = False
@@ -226,7 +227,7 @@ class SileroVADHandler(BaseVADHandler):
                 client_have_voice = (
                     self._client_voice_window.count(True) >= self.frame_window_threshold
                 )
-                print("[TMINFO] client_have_voice" + str(client_have_voice))
+                print("[TMINFO] client_have_voice: " + str(client_have_voice))
 
                 # Detect silence after voice
                 if self._client_have_voice and not client_have_voice:

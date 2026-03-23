@@ -72,10 +72,11 @@ class MessageBus:
         while msg_type in self.input_handlers and processed:
             processed = False
             for handler in self.input_handlers[msg_type]:
-                if handler.can_handle(msg):
+                h_mark = f"{handler.handler_type()}_processed"
+                if handler.can_handle(msg) and not msg.metadata.get(h_mark, False):
                     logger.debug("Processing input({}) : {}", msg_type, handler.handler_type())
                     msg = await handler.handle(msg)
-                    processed = True
+                    msg.metadata[h_mark], processed = True, True
         await self.inbound.put(msg)
 
     async def consume_inbound(self) -> InboundMessage:
@@ -88,10 +89,11 @@ class MessageBus:
         while msg_type in self.output_handlers and processed:
             processed = False
             for handler in self.output_handlers[msg_type]:
-                if handler.can_handle(msg):
+                h_mark = f"{handler.handler_type()}_processed"
+                if handler.can_handle(msg) and not msg.metadata.get(h_mark, False):
                     logger.debug("Processing output({}) : {}", msg_type, handler.handler_type())
                     msg = await handler.handle(msg)
-                    processed = True
+                    msg.metadata[h_mark], processed = True, True
         await self.outbound.put(msg)
 
     async def consume_outbound(self) -> OutboundMessage:

@@ -268,7 +268,7 @@ class TTSHandlerConfig(Base):
     model: str | None = None  # Model name for TTS service (e.g., cosyvoice-v3.5-plus for Qwen TTS)
     voice: str = "zh-CN-XiaoxiaoNeural"
     audio_format: str = "opus"  # Edge TTS returns mp3 format
-    sample_rate: int = 24000
+    sample_rate: int = 16000
 
 
 class InputHandlerConfig(Base):
