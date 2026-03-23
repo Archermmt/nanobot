@@ -105,7 +105,6 @@ class XiaoZhiChannel(BaseChannel):
         self.config_lock = asyncio.Lock()
         self.session_id = str(uuid.uuid4())[:8]
         self.audio_format = "opus"
-        self.client_listen_mode = "auto"
         self.features = {}
 
     async def start(self) -> None:
@@ -351,7 +350,7 @@ class XiaoZhiChannel(BaseChannel):
                 sender_id=self.session_id,
                 chat_id=client_info["client_id"],
                 content=msg_data["bytes"],
-                metadata={"msg_type": "audio_clip"},
+                metadata={"msg_type": "audio_clip", "need_tts": True},
             )
             return
         if msg_type == TextMessageType.HELLO.value:
@@ -362,33 +361,6 @@ class XiaoZhiChannel(BaseChannel):
             return
         if msg_type != TextMessageType.LISTEN.value:
             logger.warning("Received unknown message type: {}", msg_type)
-            return
-
-        # Handle state
-        if "mode" in msg_data:
-            self.client_listen_mode = msg_data["mode"]
-            logger.debug(f"客户端拾音模式：{self.client_listen_mode}")
-        if msg_data["state"] == "start":
-            # 设备从播放模式切回录音模式,清除所有音频状态和缓冲区
-            # conn.reset_audio_states()
-            raise NotImplementedError("start record is not implemented")
-            return
-        if msg_data["state"] == "stop":
-            """
-            conn.client_voice_stop = True
-            if conn.asr.interface_type == InterfaceType.STREAM:
-                # 流式模式下，发送结束请求
-                asyncio.create_task(conn.asr._send_stop_request())
-            else:
-                # 非流式模式：直接触发ASR识别
-                if len(conn.asr_audio) > 0:
-                    asr_audio_task = conn.asr_audio.copy()
-                    conn.reset_audio_states()
-
-                    if len(asr_audio_task) > 0:
-                        await conn.asr.handle_voice_stop(conn, asr_audio_task)
-            """
-            raise NotImplementedError("Stop record is not implemented")
             return
 
         if msg_data["state"] != "detect":

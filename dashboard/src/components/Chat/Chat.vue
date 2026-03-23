@@ -760,12 +760,6 @@ const handleTTSMessage = async (data: any) => {
       }
     })
   } else if (state === 'stop') {
-    // Delay stop to allow remaining audio to play out
-    // Calculate delay based on buffered audio duration
-    const estimatedBufferDuration = pcmBuffer.length * (FRAME_SIZE / SAMPLE_RATE) * 1000 // ms
-    const stopDelay = Math.max(1000, estimatedBufferDuration + 200) // At least 500ms, or buffer duration + 200ms
-    console.log(`📊 Estimated buffer duration: ${estimatedBufferDuration.toFixed(0)}ms, scheduling stop in ${stopDelay.toFixed(0)}ms`)
-
     // Stop playback after a short delay to let remaining audio play
     setTimeout(() => {
       isPlayingOpus.value = false
@@ -780,7 +774,7 @@ const handleTTSMessage = async (data: any) => {
           lastMsg.metadata.isPlayingOpus = false
         }
       }
-    }, stopDelay)
+    }, 1000)
   }
 }
 

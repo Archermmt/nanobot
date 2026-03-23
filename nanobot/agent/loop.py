@@ -466,8 +466,7 @@ class AgentLoop:
             return OutboundMessage(
                 channel=msg.channel, chat_id=msg.chat_id, content="Session cleared."
             )
-        if cmd.startswith("/history"):
-            count = int(cmd.split(":")[1]) if ":" in cmd else self.memory_window
+        if cmd == "/history":
             history = []
 
             def _add_msg(msg):
@@ -481,7 +480,7 @@ class AgentLoop:
 
             for message in session.messages:
                 _add_msg(message)
-                if len(history) >= count:
+                if len(history) >= self.memory_window:
                     break
             metadata = {"_response_for": "history"}
             return OutboundMessage(

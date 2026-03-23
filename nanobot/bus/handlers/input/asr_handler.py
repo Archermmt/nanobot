@@ -87,7 +87,8 @@ class BaseASRHandler(InputHandler):
                 msg.metadata = {**keep_meta, "_as_input": True}
             else:
                 logger.warning("No speech recognized, skipping message")
-                msg.content = "No speech recognized, skipping message"
+                msg.content = ""
+                msg.metadata = {"passby": True}
         except Exception as e:
             logger.error(f"Audio processing error: {e}")
             msg.content = f"Error processing audio: {e}"
