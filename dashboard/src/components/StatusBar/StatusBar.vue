@@ -8,7 +8,7 @@ interface Status {
   skills: number
   tools: number
   connected: boolean
-  enable_audio: boolean
+  enable_asr: boolean
   enable_tts: boolean
 }
 
@@ -19,7 +19,7 @@ const status = ref<Status>({
   skills: 0,
   tools: 0,
   connected: false,
-  enable_audio: false,
+  enable_asr: false,
   enable_tts: false
 })
 
@@ -59,7 +59,7 @@ const handleStatusUpdate = (data: any) => {
       skills: parsedData.skills || 0,
       tools: parsedData.tools || 0,
       connected: true,
-      enable_audio: parsedData.enable_audio || false,
+      enable_asr: parsedData.enable_asr || false,
       enable_tts: parsedData.enable_tts || false
     }
   } catch (error) {

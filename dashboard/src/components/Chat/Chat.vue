@@ -2,7 +2,7 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import MessageList from './MessageList.vue'
 import ChatInput from './ChatInput.vue'
-import { getAudioPlayer } from '../Media/audio/player.js'
+import { getAudioPlayer } from '../../js/audio/player.js'
 
 interface Message {
   role: 'user' | 'assistant' | 'system'
@@ -28,7 +28,7 @@ interface Message {
 const props = defineProps<{
   showProgressMessages?: boolean
   isMicrophoneOn?: boolean
-  enableAudio?: boolean
+  enableASR?: boolean
   enableSpeak?: boolean
 }>()
 
@@ -40,7 +40,7 @@ const sessionId = ref(`session_${Date.now()}`)
 const currentAudio = ref<HTMLAudioElement | null>(null)
 const currentTimeoutId = ref<number | null>(null)
 const chatInputRef = ref<InstanceType<typeof ChatInput> | null>(null)
-const enableAudio = ref(false)
+const enableASR = ref(false)
 const enableTTS = ref(false)
 
 // Global audio playing state shared across components
@@ -92,13 +92,13 @@ const handleWebSocketMessage = (event: MessageEvent) => {
         try {
           const statusData = JSON.parse(data.content)
           // Update global audio/tts state
-          if (statusData.enable_audio !== undefined) {
-            enableAudio.value = statusData.enable_audio
+          if (statusData.enable_asr !== undefined) {
+            enableASR.value = statusData.enable_asr
           }
           if (statusData.enable_tts !== undefined) {
             enableTTS.value = statusData.enable_tts
           }
-          console.log('🔊 Audio enabled:', enableAudio.value, 'TTS enabled:', enableTTS.value)
+          console.log('🔊 ASR enabled:', enableASR.value, 'TTS enabled:', enableTTS.value)
           emit('status-update', statusData)
         } catch (e) {
           console.log('Status message content:', data.content)
@@ -786,7 +786,7 @@ defineExpose({
 
     <!-- Input -->
     <ChatInput ref="chatInputRef" :isLoading="isLoading" :disabled="!isConnected"
-      :is-microphone-on="props.isMicrophoneOn" :enable-audio="props.enableAudio" :enable-speak="props.enableSpeak"
+      :is-microphone-on="props.isMicrophoneOn" :enable-audio="props.enableASR" :enable-speak="props.enableSpeak"
       :messages="messages" @send="sendMessage" @new-chat="handleNewChat" @clear-chat="handleClearChat"
       @upload-image="handleImageUpload" @upload-audio="handleAudioUpload" @upload-file="handleFileUpload"
       @send-status="handleSendStatus" @stop-audio="stopAudio" />

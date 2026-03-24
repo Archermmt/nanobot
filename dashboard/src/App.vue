@@ -4,9 +4,9 @@ import Sidebar from './components/Sidebar/Sidebar.vue'
 import StatusBar from './components/StatusBar/StatusBar.vue'
 import Chat from './components/Chat/Chat.vue'
 import { mdiPhone, mdiWebcam, mdiMicrophone, mdiVolumeHigh, mdiEyeOff } from '@mdi/js'
-import { getAudioPlayer } from './components/Media/audio/player.js'
-import { checkOpusLoaded, initOpusEncoder } from './components/Media/audio/opus-codec.js';
-import { getAudioRecorder } from './components/Media/audio/recorder.js';
+import { getAudioPlayer } from './js/audio/player.js'
+import { checkOpusLoaded, initOpusEncoder } from './js/audio/opus-codec.js';
+import { getAudioRecorder } from './js/audio/recorder.js';
 
 // Audio player instance
 let audioPlayer: any = null
@@ -34,7 +34,7 @@ const statusBarComponentRef = ref<any>(null)
 const hideProgress = ref(false)
 const isCameraOn = ref(false)
 const isOnlineChatOn = ref(false)
-const enableAudio = ref(false) // Track if audio input handler is enabled
+const enableASR = ref(false) // Track if audio input handler is enabled
 const enableSpeak = ref(false) // Track if speech output is enabled
 const enableTTS = ref(false) // Track if TTS is available
 const videoStream = ref<MediaStream | null>(null)
@@ -235,9 +235,9 @@ const handleSendStatus = () => {
 // Handle status update from Chat component
 const handleStatusUpdate = (data: any) => {
   console.log('📊 Status update received in App.vue:', data)
-  // Update global enable_audio and enable_tts state
-  if (data.enable_audio !== undefined) {
-    enableAudio.value = data.enable_audio
+  // Update global enable_asr and enable_tts state
+  if (data.enable_asr !== undefined) {
+    enableASR.value = data.enable_asr
   }
   if (data.enable_tts !== undefined) {
     enableTTS.value = data.enable_tts
@@ -418,7 +418,7 @@ document.addEventListener('mouseup', stopDragCamera)
       <main class="flex-1 overflow-hidden bg-gray-900">
         <Chat ref="chatComponentRef" v-show="currentSection === 'chat'" @status-update="handleStatusUpdate"
           @ws-status-change="handleWsStatusChange" @thinking-change="handleThinkingChange"
-          :show-progress-messages="!hideProgress" :is-online-chat-on="isOnlineChatOn" :enable-audio="enableAudio"
+          :show-progress-messages="!hideProgress" :is-online-chat-on="isOnlineChatOn" :enable-audio="enableASR"
           :enable-tts="enableTTS" :enable-speak="enableSpeak" />
         <div v-show="currentSection !== 'chat'" class="p-6 text-gray-500 text-center">
           <p class="text-lg">Section under construction</p>

@@ -505,7 +505,7 @@ class AgentLoop:
                 "history": len(session.messages),
                 "skills": len(self.context.skills.list_skills()),
                 "tools": len(self.tools),
-                "enable_audio": "asr" in self.bus.handlers,
+                "enable_asr": "asr" in self.bus.handlers,
                 "enable_tts": "tts" in self.bus.handlers,
             }
             metadata = {"_response_for": "status"}

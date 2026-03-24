@@ -5,7 +5,7 @@ import { mdiImage, mdiFileUploadOutline, mdiChat, mdiStop } from '@mdi/js'
 interface Props {
   disabled?: boolean
   isMicrophoneOn?: boolean
-  enableAudio?: boolean // Track if audio input handler is enabled
+  enableASR?: boolean // Track if audio input handler is enabled
   enableSpeak?: boolean // Track if speech output is enabled
 }
 
