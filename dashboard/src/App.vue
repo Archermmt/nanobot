@@ -1,9 +1,13 @@
 <script setup lang="ts">
-import { ref, onUnmounted, watch } from 'vue'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
 import Sidebar from './components/Sidebar/Sidebar.vue'
 import StatusBar from './components/StatusBar/StatusBar.vue'
 import Chat from './components/Chat/Chat.vue'
 import { mdiPhone, mdiWebcam, mdiMicrophone, mdiVolumeHigh, mdiEyeOff } from '@mdi/js'
+import { getAudioPlayer } from './components/Media/audio/player.js'
+
+// Audio player instance
+let audioPlayer: any = null
 
 // WebSocket connection state
 const wsUrl = ref('ws://localhost:8765')
@@ -142,6 +146,28 @@ const disconnectWebSocket = () => {
 
 let thinkingInterval: number | null = null
 
+// Initialize application (similar to xiaozhi-esp32-server app.js init)
+const initApp = async () => {
+  console.log('正在初始化应用...')
+
+  try {
+    // Initialize audio player
+    console.log('初始化音频播放器...')
+    audioPlayer = getAudioPlayer()
+    await audioPlayer.start()
+    console.log('音频播放器初始化完成')
+
+    console.log('应用初始化完成')
+  } catch (error) {
+    console.error('应用初始化失败:', error)
+  }
+}
+
+onMounted(() => {
+  // Initialize audio player and other components
+  initApp()
+})
+
 const handleThinkingChange = (isThinkingState: boolean) => {
   if (isThinkingState) {
     // Start blinking effect
@@ -164,6 +190,7 @@ onUnmounted(() => {
   if (ws) {
     ws.close()
   }
+
   // Clean up media streams
   if (videoStream.value) {
     videoStream.value.getTracks().forEach(track => track.stop())
@@ -171,7 +198,13 @@ onUnmounted(() => {
   if (audioStream.value) {
     audioStream.value.getTracks().forEach(track => track.stop())
   }
-  // Remove global event listeners
+
+  // Clean up audio player
+  if (audioPlayer) {
+    audioPlayer.clearAllAudio()
+  }
+
+  // Remove global event listeners for drag
   document.removeEventListener('mousemove', dragCamera)
   document.removeEventListener('mouseup', stopDragCamera)
 })
