@@ -1,15 +1,39 @@
 """Session management for conversation history."""
 
 import json
+import random
 import shutil
 from dataclasses import dataclass, field
 from datetime import datetime
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
 from loguru import logger
 
+from nanobot.bus.events import InboundMessage
+from nanobot.config.schema import SessionConfig
 from nanobot.utils.helpers import ensure_dir, safe_filename
+
+WAKEUP_RESPONSE = [
+    "我一直都在呢，您请说。",
+    "在的呢，请随时吩咐我。",
+    "来啦来啦，请告诉我吧。",
+    "您请说，我正听着。",
+    "请您讲话，我准备好了。",
+    "请您说出指令吧。",
+    "我认真听着呢，请讲。",
+    "请问您需要什么帮助？",
+    "我在这里，等候您的指令。",
+]
+
+
+class ChatStatus(Enum):
+    """Chat status enum."""
+
+    WAKEUP = "wakeup"
+    LISTEN = "listen"
+    MUTE = "mute"
 
 
 @dataclass
@@ -31,20 +55,20 @@ class Session:
     metadata: dict[str, Any] = field(default_factory=dict)
     last_consolidated: int = 0  # Number of messages already consolidated to files
 
+    def setup(self, config: SessionConfig):
+        self.wakeup_words = config.wakeup_words
+        self.wakeup_response = config.wakeup_response
+        self._status = ChatStatus.MUTE if self.wakeup_words else ChatStatus.LISTEN
+
     def add_message(self, role: str, content: str, **kwargs: Any) -> None:
         """Add a message to the session."""
-        msg = {
-            "role": role,
-            "content": content,
-            "timestamp": datetime.now().isoformat(),
-            **kwargs
-        }
+        msg = {"role": role, "content": content, "timestamp": datetime.now().isoformat(), **kwargs}
         self.messages.append(msg)
         self.updated_at = datetime.now()
 
     def get_history(self, max_messages: int = 500) -> list[dict[str, Any]]:
         """Return unconsolidated messages for LLM input, aligned to a user turn."""
-        unconsolidated = self.messages[self.last_consolidated:]
+        unconsolidated = self.messages[self.last_consolidated :]
         sliced = unconsolidated[-max_messages:]
 
         # Drop leading non-user messages to avoid orphaned tool_result blocks
@@ -68,6 +92,18 @@ class Session:
         self.last_consolidated = 0
         self.updated_at = datetime.now()
 
+    def check_status(self, msg: InboundMessage) -> dict[str, Any]:
+        """Check the chat status based on the message content."""
+        response = ""
+        if self._status == ChatStatus.LISTEN:
+            self._status = ChatStatus.LISTEN
+        elif self._status == ChatStatus.WAKEUP:
+            self._status = ChatStatus.LISTEN
+        elif self._status == ChatStatus.MUTE and msg.content in self.wakeup_words:
+            self._status = ChatStatus.WAKEUP
+            response = random.choice(self.wakeup_response)
+        return {"status": ChatStatus.WAKEUP, "response": response}
+
 
 class SessionManager:
     """
@@ -76,11 +112,12 @@ class SessionManager:
     Sessions are stored as JSONL files in the sessions directory.
     """
 
-    def __init__(self, workspace: Path):
+    def __init__(self, workspace: Path, config: SessionConfig):
         self.workspace = workspace
         self.sessions_dir = ensure_dir(self.workspace / "sessions")
         self.legacy_sessions_dir = Path.home() / ".nanobot" / "sessions"
         self._cache: dict[str, Session] = {}
+        self._config = config
 
     def _get_session_path(self, key: str) -> Path:
         """Get the file path for a session."""
@@ -108,6 +145,7 @@ class SessionManager:
         session = self._load(key)
         if session is None:
             session = Session(key=key)
+            session.setup(self._config)
 
         self._cache[key] = session
         return session
@@ -143,7 +181,11 @@ class SessionManager:
 
                     if data.get("_type") == "metadata":
                         metadata = data.get("metadata", {})
-                        created_at = datetime.fromisoformat(data["created_at"]) if data.get("created_at") else None
+                        created_at = (
+                            datetime.fromisoformat(data["created_at"])
+                            if data.get("created_at")
+                            else None
+                        )
                         last_consolidated = data.get("last_consolidated", 0)
                     else:
                         messages.append(data)
@@ -153,7 +195,7 @@ class SessionManager:
                 messages=messages,
                 created_at=created_at or datetime.now(),
                 metadata=metadata,
-                last_consolidated=last_consolidated
+                last_consolidated=last_consolidated,
             )
         except Exception as e:
             logger.warning("Failed to load session {}: {}", key, e)
@@ -170,7 +212,7 @@ class SessionManager:
                 "created_at": session.created_at.isoformat(),
                 "updated_at": session.updated_at.isoformat(),
                 "metadata": session.metadata,
-                "last_consolidated": session.last_consolidated
+                "last_consolidated": session.last_consolidated,
             }
             f.write(json.dumps(metadata_line, ensure_ascii=False) + "\n")
             for msg in session.messages:
@@ -200,12 +242,14 @@ class SessionManager:
                         data = json.loads(first_line)
                         if data.get("_type") == "metadata":
                             key = data.get("key") or path.stem.replace("_", ":", 1)
-                            sessions.append({
-                                "key": key,
-                                "created_at": data.get("created_at"),
-                                "updated_at": data.get("updated_at"),
-                                "path": str(path)
-                            })
+                            sessions.append(
+                                {
+                                    "key": key,
+                                    "created_at": data.get("created_at"),
+                                    "updated_at": data.get("updated_at"),
+                                    "path": str(path),
+                                }
+                            )
             except Exception:
                 continue
 

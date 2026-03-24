@@ -56,7 +56,7 @@ class OTAHandler(BaseHandler):
         self.allowed_devices = set(config.allowed_devices)
         self.auth = AuthManager(secret_key=config.auth_key, expire_seconds=config.expire_seconds)
         # firmware storage
-        self.bin_dir = Path(self.config.depends_folder) / "bin"
+        self.bin_dir = Path(self.config.depends_folder).expanduser() / "bin"
         # cache structure: { 'updated_at': timestamp, 'ttl': seconds, 'files_by_model': { model: [(version, filename), ...] } }
         self._bin_cache: Dict = {
             "updated_at": 0,

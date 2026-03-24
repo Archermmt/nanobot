@@ -463,6 +463,13 @@ class ToolsConfig(Base):
     mcp_servers: dict[str, MCPServerConfig] = Field(default_factory=dict)
 
 
+class SessionConfig(BaseSettings):
+    """Configuration for a single session with wake word detection."""
+
+    wakeup_words: list[str] = Field(default_factory=list)  # Wake words to trigger response
+    wakeup_response: list[str] = Field(default_factory=list)  # Responses when wake word detected
+
+
 class Config(BaseSettings):
     """Root configuration for nanobot."""
 
@@ -472,6 +479,7 @@ class Config(BaseSettings):
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
     tools: ToolsConfig = Field(default_factory=ToolsConfig)
     bus: BusConfig = Field(default_factory=BusConfig)
+    session: SessionConfig = Field(default_factory=SessionConfig)
 
     @property
     def workspace_path(self) -> Path:

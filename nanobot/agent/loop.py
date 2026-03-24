@@ -72,6 +72,8 @@ class AgentLoop:
     ):
         from nanobot.config.schema import ExecToolConfig
 
+        self._config = load_config()
+
         self.bus = bus
         self.channels_config = channels_config
         self.provider = provider
@@ -89,7 +91,7 @@ class AgentLoop:
         self.restrict_to_workspace = restrict_to_workspace
 
         self.context = ContextBuilder(workspace)
-        self.sessions = session_manager or SessionManager(workspace)
+        self.sessions = session_manager or SessionManager(workspace, self._config.session)
         self.tools = ToolRegistry()
         self.subagents = SubagentManager(
             provider=provider,
@@ -123,7 +125,7 @@ class AgentLoop:
 
     def _register_default_tools(self) -> None:
         """Register the default set of tools."""
-        tools_config = load_config().tools
+        tools_config = self._config.tools
         allowed_dir = self.workspace if self.restrict_to_workspace else None
         for cls in (ReadFileTool, WriteFileTool, EditFileTool, ListDirTool):
             self.tools.register(cls(workspace=self.workspace, allowed_dir=allowed_dir))
