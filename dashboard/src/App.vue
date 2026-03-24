@@ -36,7 +36,7 @@ const isCameraOn = ref(false)
 const isOnlineChatOn = ref(false)
 const enableAudio = ref(false) // Track if audio input handler is enabled
 const enableSpeak = ref(false) // Track if speech output is enabled
-const enableTts = ref(false) // Track if TTS is available
+const enableTTS = ref(false) // Track if TTS is available
 const videoStream = ref<MediaStream | null>(null)
 const audioStream = ref<MediaStream | null>(null)
 const videoElement = ref<HTMLVideoElement | null>(null)
@@ -240,7 +240,7 @@ const handleStatusUpdate = (data: any) => {
     enableAudio.value = data.enable_audio
   }
   if (data.enable_tts !== undefined) {
-    enableTts.value = data.enable_tts
+    enableTTS.value = data.enable_tts
   }
   // Pass the status data to StatusBar via a custom event or prop
   // We'll use a ref to call StatusBar's method
@@ -393,7 +393,7 @@ document.addEventListener('mouseup', stopDragCamera)
           </button>
 
           <button @click="enableSpeak = !enableSpeak" class="nes-btn"
-            :class="{ 'is-success': enableSpeak, 'is-disabled': !isConnected || !enableTts }"
+            :class="{ 'is-success': enableSpeak, 'is-disabled': !isConnected || !enableTTS }"
             :title="enableSpeak ? '关闭语音输出' : '开启语音输出'">
             <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
               <path :d="mdiVolumeHigh" />
@@ -419,7 +419,7 @@ document.addEventListener('mouseup', stopDragCamera)
         <Chat ref="chatComponentRef" v-show="currentSection === 'chat'" @status-update="handleStatusUpdate"
           @ws-status-change="handleWsStatusChange" @thinking-change="handleThinkingChange"
           :show-progress-messages="!hideProgress" :is-online-chat-on="isOnlineChatOn" :enable-audio="enableAudio"
-          :enable-tts="enableTts" :enable-speak="enableSpeak" />
+          :enable-tts="enableTTS" :enable-speak="enableSpeak" />
         <div v-show="currentSection !== 'chat'" class="p-6 text-gray-500 text-center">
           <p class="text-lg">Section under construction</p>
           <p class="text-sm mt-2">{{ currentSection }} view coming soon...</p>

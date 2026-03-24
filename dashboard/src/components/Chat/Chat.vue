@@ -41,7 +41,7 @@ const currentAudio = ref<HTMLAudioElement | null>(null)
 const currentTimeoutId = ref<number | null>(null)
 const chatInputRef = ref<InstanceType<typeof ChatInput> | null>(null)
 const enableAudio = ref(false)
-const enableTts = ref(false)
+const enableTTS = ref(false)
 
 // Global audio playing state shared across components
 const playingAudioUrl = ref<string | null>(null)
@@ -96,9 +96,9 @@ const handleWebSocketMessage = (event: MessageEvent) => {
             enableAudio.value = statusData.enable_audio
           }
           if (statusData.enable_tts !== undefined) {
-            enableTts.value = statusData.enable_tts
+            enableTTS.value = statusData.enable_tts
           }
-          console.log('🔊 Audio enabled:', enableAudio.value, 'TTS enabled:', enableTts.value)
+          console.log('🔊 Audio enabled:', enableAudio.value, 'TTS enabled:', enableTTS.value)
           emit('status-update', statusData)
         } catch (e) {
           console.log('Status message content:', data.content)
@@ -229,7 +229,7 @@ const handleWebSocketMessage = (event: MessageEvent) => {
         messages.value.push(newMessage)
 
         // Auto-play audio if it's an audio message and TTS is enabled
-        if (audioUrl && enableTts.value) {
+        if (audioUrl && enableTTS.value) {
           playAudio(audioUrl)
         }
       }
