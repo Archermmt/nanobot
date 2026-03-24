@@ -38,7 +38,6 @@ const enableASR = ref(false) // Track if audio input handler is enabled
 const enableSpeak = ref(false) // Track if speech output is enabled
 const enableTTS = ref(false) // Track if TTS is available
 const videoStream = ref<MediaStream | null>(null)
-const audioStream = ref<MediaStream | null>(null)
 const videoElement = ref<HTMLVideoElement | null>(null)
 
 // Draggable camera window state
