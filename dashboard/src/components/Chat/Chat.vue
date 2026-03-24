@@ -3,6 +3,7 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import MessageList from './MessageList.vue'
 import ChatInput from './ChatInput.vue'
 import { getAudioPlayer } from '../../js/audio/player.js'
+import { handleMCPMessage } from '../../js/mcp/tools.js'
 
 interface Message {
   role: 'user' | 'assistant' | 'system'
@@ -76,6 +77,12 @@ const handleWebSocketMessage = (event: MessageEvent) => {
     // Handle TTS messages for opus audio streaming
     if (data.type === 'tts') {
       handleTTSMessage(data)
+      return
+    }
+
+    // Handle MCP messages
+    if (data.type === 'mcp') {
+      handleMCPMessage(data, ws)
       return
     }
 
