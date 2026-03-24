@@ -309,6 +309,30 @@ const startOnlineChat = async () => {
       audioRecorder = getAudioRecorder()
       if (audioRecorder && ws) {
         audioRecorder.setWebSocket(ws)
+
+        // Set callback to check if audio should be sent
+        audioRecorder.setShouldSendAudioCallback(() => {
+          // Don't send audio if:
+          // 1. Remote is speaking (isPlayingOpus = true)
+          // 2. AI is thinking (isLoading = true)
+          // 3. Local audio is playing (playingAudioUrl != null)
+          const isRemoteSpeaking = chatComponentRef.value?.isRemoteSpeaking === true
+          const isLoading = chatComponentRef.value?.isLoading === true
+          const isPlayingAudio = chatComponentRef.value?.playingAudioUrl !== null && chatComponentRef.value?.playingAudioUrl !== undefined
+
+          const shouldBlock = isRemoteSpeaking || isLoading || isPlayingAudio
+
+          if (shouldBlock) {
+            console.debug('⏸️ 暂停发送音频：', {
+              isRemoteSpeaking,
+              isLoading,
+              isPlayingAudio
+            })
+          }
+
+          return !shouldBlock
+        })
+
         await audioRecorder.start()
       }
       console.log('Online chat enabled')

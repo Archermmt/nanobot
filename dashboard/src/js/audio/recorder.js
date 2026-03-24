@@ -22,11 +22,17 @@ export class AudioRecorder {
         this.onRecordingStart = null;
         this.onRecordingStop = null;
         this.onVisualizerUpdate = null;
+        this.shouldSendAudioCallback = null; // Callback to check if audio should be sent
     }
 
     // Set WebSocket instance
     setWebSocket(ws) {
         this.websocket = ws;
+    }
+
+    // Set callback to check if audio should be sent
+    setShouldSendAudioCallback(callback) {
+        this.shouldSendAudioCallback = callback;
     }
 
     // Get AudioContext instance
@@ -170,7 +176,14 @@ export class AudioRecorder {
                 if (opusData && opusData.length > 0) {
                     this.audioBuffers.push(opusData.buffer);
                     this.totalAudioSize += opusData.length;
-                    if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
+
+                    // Check if we should send audio based on callback
+                    let shouldSend = true;
+                    if (this.shouldSendAudioCallback) {
+                        shouldSend = this.shouldSendAudioCallback();
+                    }
+
+                    if (shouldSend && this.websocket && this.websocket.readyState === WebSocket.OPEN) {
                         try {
                             this.websocket.send(opusData.buffer);
                         } catch (error) {

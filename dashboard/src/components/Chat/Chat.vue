@@ -768,8 +768,11 @@ onUnmounted(() => {
   }
 })
 
-// Expose methods to App.vue
+// Expose reactive state and methods to parent component
 defineExpose({
+  isLoading,
+  isRemoteSpeaking,
+  playingAudioUrl,
   setWebSocket,
   handleWebSocketMessage,
   handleSendStatus,
