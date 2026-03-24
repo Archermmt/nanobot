@@ -505,8 +505,8 @@ class AgentLoop:
                 "history": len(session.messages),
                 "skills": len(self.context.skills.list_skills()),
                 "tools": len(self.tools),
-                "enable_audio": "audio" in self.bus.handlers,
-                "enable_tts": "text" in self.bus.handlers,
+                "enable_audio": "asr" in self.bus.handlers,
+                "enable_tts": "tts" in self.bus.handlers,
             }
             metadata = {"_response_for": "status"}
             if msg.metadata.get("_hide_from_ui", False):
@@ -552,9 +552,6 @@ class AgentLoop:
                 metadata={"_response_for": "register_extern_tools"},
             )
         if msg.metadata and msg.metadata.get("passby", False):
-            msg.metadata.pop("passby")
-            if not msg.content:
-                return
             return OutboundMessage(
                 channel=msg.channel, chat_id=msg.chat_id, content=msg.content, metadata=msg.metadata
             )

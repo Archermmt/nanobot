@@ -203,6 +203,7 @@ export class AudioRecorder {
         if (this.isRecording) return false;
         try {
             // Check if WebSocketHandler instance exists
+            /*
             const { getWebSocketHandler } = await import('../network/websocket.js?v=0205');
             const wsHandler = getWebSocketHandler();
             // If machine is speaking, send abort message
@@ -213,6 +214,7 @@ export class AudioRecorder {
                     console.log('已发送中止消息');
                 }
             }
+            */
             if (!this.initEncoder()) {
                 console.error('无法开始录音：Opus 编码器初始化失败');
                 return false;

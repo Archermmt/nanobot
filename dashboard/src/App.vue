@@ -5,9 +5,13 @@ import StatusBar from './components/StatusBar/StatusBar.vue'
 import Chat from './components/Chat/Chat.vue'
 import { mdiPhone, mdiWebcam, mdiMicrophone, mdiVolumeHigh, mdiEyeOff } from '@mdi/js'
 import { getAudioPlayer } from './components/Media/audio/player.js'
+import { checkOpusLoaded, initOpusEncoder } from './components/Media/audio/opus-codec.js';
+import { getAudioRecorder } from './components/Media/audio/recorder.js';
 
 // Audio player instance
 let audioPlayer: any = null
+// Audio recorder instance
+let audioRecorder: any = null
 
 // WebSocket connection state
 const wsUrl = ref('ws://localhost:8765')
@@ -148,15 +152,16 @@ let thinkingInterval: number | null = null
 
 // Initialize application (similar to xiaozhi-esp32-server app.js init)
 const initApp = async () => {
-  console.log('正在初始化应用...')
+  console.debug('正在初始化应用...')
 
   try {
+    // 检查Opus库
+    checkOpusLoaded();
+    // 初始化Opus编码器
+    initOpusEncoder();
     // Initialize audio player
-    console.log('初始化音频播放器...')
     audioPlayer = getAudioPlayer()
     await audioPlayer.start()
-    console.log('音频播放器初始化完成')
-
     console.log('应用初始化完成')
   } catch (error) {
     console.error('应用初始化失败:', error)
@@ -195,13 +200,13 @@ onUnmounted(() => {
   if (videoStream.value) {
     videoStream.value.getTracks().forEach(track => track.stop())
   }
-  if (audioStream.value) {
-    audioStream.value.getTracks().forEach(track => track.stop())
-  }
 
-  // Clean up audio player
+  // Clean up audio player and recorder
   if (audioPlayer) {
     audioPlayer.clearAllAudio()
+  }
+  if (audioRecorder && audioRecorder.isRecording) {
+    audioRecorder.stop()
   }
 
   // Remove global event listeners for drag
@@ -291,25 +296,21 @@ const toggleCamera = async () => {
 const startOnlineChat = async () => {
   if (isOnlineChatOn.value) {
     // Turn off online chat
-    if (audioStream.value) {
-      audioStream.value.getTracks().forEach(track => track.stop())
-      audioStream.value = null
+    if (audioRecorder && audioRecorder.isRecording) {
+      audioRecorder.stop()
     }
     isOnlineChatOn.value = false
     console.log('Online chat disabled')
   } else {
     // Turn on online chat
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          sampleRate: 16000,
-          channelCount: 1
-        }
-      })
-      audioStream.value = stream
       isOnlineChatOn.value = true
+      // Initialize and start audio recorder
+      audioRecorder = getAudioRecorder()
+      if (audioRecorder && ws) {
+        audioRecorder.setWebSocket(ws)
+        await audioRecorder.start()
+      }
       console.log('Online chat enabled')
     } catch (error) {
       console.error('Error accessing microphone:', error)

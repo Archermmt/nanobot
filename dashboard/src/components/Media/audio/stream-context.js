@@ -84,7 +84,7 @@ export class StreamingContext {
 
     // 清空所有音频缓冲
     clearAllBuffers() {
-        console.log('清空所有音频缓冲');
+        console.debug('清空所有音频缓冲');
 
         // 清空所有队列（使用clear方法保持对象引用）
         this.audioBufferQueue.clear();
@@ -108,7 +108,7 @@ export class StreamingContext {
         this.scheduledEndTime = this.audioContext.currentTime;
         this.totalSamples = 0;
 
-        console.log('音频缓冲已清空');
+        console.debug('音频缓冲已清空');
     }
 
     // 获取分析器节点（供Live2D使用）
@@ -122,7 +122,7 @@ export class StreamingContext {
             console.error('Opus 解码器未初始化，无法解码');
             return;
         } else {
-            console.log('Opus 解码器启动');
+            console.debug('Opus 解码器启动');
         }
 
         while (true) {

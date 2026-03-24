@@ -547,9 +547,9 @@ class XiaoZhiChannel(BaseChannel):
             return
 
         # Ignore some cases
-        if msg.metadata and msg.metadata.get("_response_for", "") == "register_extern_tools":
+        if msg.metadata.get("_response_for", "") == "register_extern_tools":
             return
-        if msg.metadata and msg.metadata.get("_hide_from_ui", False):
+        if msg.metadata.get("_progress", False) or msg.metadata.get("mode_hint", ""):
             return
 
         # Find the appropriate client connection

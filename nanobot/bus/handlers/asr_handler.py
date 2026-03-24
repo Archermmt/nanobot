@@ -80,16 +80,14 @@ class BaseASRHandler(BaseHandler):
             transcribed_text = await self._process_audio(media_data, audio_format)
 
             if transcribed_text:
-                logger.info(f"Recognized speech from audio: '{transcribed_text}'")
+                logger.debug(f"Recognized speech from audio: '{transcribed_text}'")
                 msg.content = transcribed_text
                 msg.media = []
-                keep_keys = ("source", "timestamp", "session_id", "need_tts", "audio_id")
-                keep_meta = {k: v for k, v in msg.metadata.items() if k in keep_keys}
-                msg.metadata = {**keep_meta, "_as_input": True}
+                msg.metadata.update({"_as_input": True, "msg_type": "text"})
             else:
                 logger.warning("No speech recognized, skipping message")
                 msg.content = ""
-                msg.metadata = {"passby": True}
+                msg.metadata["passby"] = True
         except Exception as e:
             logger.error(f"Audio processing error: {e}")
             msg.content = f"Error processing audio: {e}"

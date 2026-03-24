@@ -1,6 +1,3 @@
-import { checkOpusLoaded } from './opus-codec.js';
-
-
 // 检查Opus库是否已加载
 export function checkOpusLoaded() {
     try {
@@ -13,7 +10,7 @@ export function checkOpusLoaded() {
         if (typeof Module.instance !== 'undefined' && typeof Module.instance._opus_decoder_get_size === 'function') {
             // 使用Module.instance对象替换全局Module对象
             window.ModuleInstance = Module.instance;
-            console.log('Opus 库加载成功（使用 Module.instance）');
+            console.debug('Opus 库加载成功（使用 Module.instance）');
 
             // 3秒后隐藏状态
             const statusElement = document.getElementById('scriptStatus');
@@ -24,7 +21,7 @@ export function checkOpusLoaded() {
         // 如果没有Module.instance，检查全局Module函数
         if (typeof Module._opus_decoder_get_size === 'function') {
             window.ModuleInstance = Module;
-            console.log('Opus 库加载成功（使用全局 Module）');
+            console.debug('Opus 库加载成功（使用全局 Module）');
 
             // 3秒后隐藏状态
             const statusElement = document.getElementById('scriptStatus');
@@ -100,7 +97,7 @@ export function initOpusEncoder() {
                     // 设置使用DTX (不传输静音帧)
                     mod._opus_encoder_ctl(this.encoderPtr, 4016, 1);     // OPUS_SET_DTX
 
-                    console.log("Opus 编码器初始化成功");
+                    console.debug("Opus 编码器初始化成功");
                     return true;
                 } catch (error) {
                     if (this.encoderPtr) {

@@ -58,7 +58,7 @@ export class AudioPlayer {
                     if (this.decoderPtr) return true;
 
                     const decoderSize = mod._opus_decoder_get_size(this.channels);
-                    console.log(`Opus 解码器大小：${decoderSize}字节`);
+                    console.debug(`Opus 解码器大小：${decoderSize}字节`);
 
                     this.decoderPtr = mod._malloc(decoderSize);
                     if (!this.decoderPtr) {
@@ -76,7 +76,7 @@ export class AudioPlayer {
                         throw new Error(`Opus解码器初始化失败: ${err}`);
                     }
 
-                    console.log("Opus 解码器初始化成功");
+                    console.debug("Opus 解码器初始化成功");
                     return true;
                 },
 
@@ -148,7 +148,7 @@ export class AudioPlayer {
 
     // 启动音频缓冲
     async startAudioBuffering() {
-        console.log("开始音频缓冲...");
+        console.debug("开始音频缓冲...");
 
         this.initOpusDecoder().catch(error => {
             console.error(`预初始化 Opus 解码器失败：${error.message}`);
@@ -185,13 +185,13 @@ export class AudioPlayer {
             this.audioContext = this.getAudioContext();
 
             if (!this.opusDecoder) {
-                console.log('初始化 Opus 解码器...');
+                console.debug('初始化 Opus 解码器...');
                 try {
                     this.opusDecoder = await this.initOpusDecoder();
                     if (!this.opusDecoder) {
                         throw new Error('解码器初始化失败');
                     }
-                    console.log("Opus 解码器初始化成功");
+                    console.debug("Opus 解码器初始化成功");
                 } catch (error) {
                     console.error('Opus 解码器初始化失败：' + error.message);
                     this.isPlaying = false;
@@ -271,8 +271,7 @@ export class AudioPlayer {
 
     // 清空所有音频缓冲并停止播放
     clearAllAudio() {
-        console.log('AudioPlayer: 清空所有音频');
-
+        console.debug('AudioPlayer: 清空所有音频');
         // 清空接收队列（使用clear方法保持对象引用）
         this.queue.clear();
 
@@ -280,8 +279,7 @@ export class AudioPlayer {
         if (this.streamingContext) {
             this.streamingContext.clearAllBuffers();
         }
-
-        console.log('AudioPlayer: 音频已清空');
+        console.debug('AudioPlayer: 音频已清空');
     }
 }
 

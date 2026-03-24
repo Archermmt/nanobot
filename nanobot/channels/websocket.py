@@ -192,7 +192,12 @@ class WebSocketChannel(BaseChannel):
                 break
 
             try:
-                msg_data = json.loads(message)
+                if isinstance(message, str):
+                    msg_data = json.loads(message)
+                elif isinstance(message, bytes):
+                    msg_data = {"type": "audio_clip", "bytes": message}
+                else:
+                    return
                 await self._process_incoming_message(msg_data)
             except json.JSONDecodeError as e:
                 logger.warning("Invalid JSON message received: {}", e)
@@ -277,6 +282,14 @@ class WebSocketChannel(BaseChannel):
         """Process an incoming message from WebSocket."""
         msg_type = msg_data.get("type", "message")
 
+        if msg_type == "audio_clip":
+            await self._handle_message(
+                sender_id=msg_data.get("sender_id", "web_user"),
+                chat_id=msg_data.get("chat_id", "default"),
+                content=msg_data["bytes"],
+                metadata={"msg_type": "audio_clip", "need_tts": True},
+            )
+            return
         if msg_type == "heartbeat":
             # Respond to heartbeat
             await self._send_heartbeat_response()

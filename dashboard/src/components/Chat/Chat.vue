@@ -686,15 +686,9 @@ const handleTTSMessage = async (data: any) => {
     console.log('服务器开始发送语音', 'info')
     isRemoteSpeaking.value = true
     ttsSentenceCount.value = 0
-
-    // Start audio buffering system
-    audioPlayer.start().catch((error: Error) => {
-      console.error('Failed to start audio player:', error)
-    })
   } else if (state === 'sentence_start') {
     console.log(`服务器发送语音段：${data.text}`, 'info')
     ttsSentenceCount.value++
-
     // Add message to chat immediately
     if (data.text && !data.text.trim().startsWith('/')) {
       messages.value.push({
@@ -710,13 +704,9 @@ const handleTTSMessage = async (data: any) => {
     console.log(`语音段结束：${data.text}`, 'info')
     // Don't clear animation at sentence end, wait for next sentence or final stop
   } else if (state === 'stop') {
-    console.log('服务器语音传输结束，清空所有音频缓冲', 'info')
-
     // Clear all audio buffers and stop playback
     audioPlayer.clearAllAudio()
-
     isRemoteSpeaking.value = false
-
     // Delay stop to let remaining audio play
     setTimeout(() => {
       ttsSentenceCount.value = 0
@@ -743,15 +733,13 @@ const handleOpusAudioFrame = async (data: Blob | ArrayBuffer) => {
 
   try {
     let opusData: Uint8Array
-
     if (data instanceof Blob) {
       const arrayBuffer = await data.arrayBuffer()
       opusData = new Uint8Array(arrayBuffer)
     } else {
       opusData = new Uint8Array(data)
     }
-
-    console.log('📦 Received opus frame, size:', opusData.length, 'bytes')
+    console.debug('📦 Received opus frame, size:', opusData.length, 'bytes')
 
     // Enqueue to audio player for buffering and playback
     audioPlayer.enqueueAudioData(opusData)

@@ -68,7 +68,13 @@ class BaseVADHandler(BaseHandler, ABC):
         Returns:
             True if the message can be handled, False otherwise
         """
-        return "audio_id" in msg.metadata and msg.metadata["audio_id"] == self._waiting_id
+        if msg.metadata.get("_progress", False):
+            return False
+        if not self._waiting_id or msg.metadata.get("audio_id", "") != self._waiting_id:
+            return False
+        if msg.metadata.get("need_tts", False):
+            return msg.metadata.get("msg_type", "") == "audio"
+        return True
 
     @abstractmethod
     def is_vad(self, opus_packet: bytes) -> bool:
@@ -96,6 +102,8 @@ class BaseVADHandler(BaseHandler, ABC):
         if not msg.content:
             return msg
         if self._waiting_id:
+            msg.content = ""
+            msg.metadata["passby"] = True
             return msg
 
         self._asr_audio.append(msg.content)
@@ -107,7 +115,7 @@ class BaseVADHandler(BaseHandler, ABC):
             return msg
 
         msg.content = ""
-        if len(self._asr_audio) > 15 and self._client_voice_stop:
+        if len(self._asr_audio) > 20 and self._client_voice_stop:
             pcm_data, self._asr_audio = self._asr_audio.copy(), []
             if self.audio_format == "opus":
                 pcm_data = self.decode_opus(pcm_data)

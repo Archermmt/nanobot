@@ -228,6 +228,8 @@ class ChannelManager:
         while True:
             try:
                 msg = await asyncio.wait_for(self.bus.consume_outbound(), timeout=1.0)
+                if msg.metadata.get("passby", False):
+                    continue
 
                 if msg.metadata.get("_progress"):
                     if msg.metadata.get("_tool_hint") and not self.config.channels.send_tool_hints:
