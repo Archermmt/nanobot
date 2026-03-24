@@ -281,13 +281,59 @@ class WebSocketChannel(BaseChannel):
     async def _process_incoming_message(self, msg_data: dict) -> None:
         """Process an incoming message from WebSocket."""
         msg_type = msg_data.get("type", "message")
+        # Extract message fields
+        message_id = msg_data.get("message_id") or str(hash(str(msg_data)))
+        sender_id = msg_data.get("sender_id", "unknown")
+        chat_id = msg_data.get("chat_id", "default")
+        content = msg_data.get("content", "")
+        media = msg_data.get("media", [])
+        metadata = msg_data.get("metadata", {})
 
         if msg_type == "audio_clip":
             await self._handle_message(
-                sender_id=msg_data.get("sender_id", "web_user"),
-                chat_id=msg_data.get("chat_id", "default"),
+                sender_id=sender_id,
+                chat_id=chat_id,
                 content=msg_data["bytes"],
                 metadata={"msg_type": "audio_clip", "need_tts": True},
+            )
+            return
+        if msg_type == "mcp":
+            mcp_tools, result = [], metadata["payload"]["result"]
+            if isinstance(result, dict) and "tools" in result:
+                tools_data = result["tools"]
+                if not isinstance(tools_data, list):
+                    logger.error("工具列表格式错误")
+                    return
+                logger.info(f"客户端设备支持的工具数量: {len(tools_data)}")
+                for i, tool in enumerate(tools_data):
+                    if not isinstance(tool, dict):
+                        continue
+                    name = tool.get("name", "")
+                    description = tool.get("description", "")
+                    input_schema = {"type": "object", "properties": {}, "required": []}
+                    if "inputSchema" in tool and isinstance(tool["inputSchema"], dict):
+                        schema = tool["inputSchema"]
+                        input_schema["type"] = schema.get("type", "object")
+                        input_schema["properties"] = schema.get("properties", {})
+                        input_schema["required"] = [
+                            s for s in schema.get("required", []) if isinstance(s, str)
+                        ]
+                    new_tool = {
+                        "name": name,
+                        "description": description,
+                        "inputSchema": input_schema,
+                    }
+                    mcp_tools.append(new_tool)
+                    logger.debug(f"客户端工具 #{i + 1}: {name}")
+            await self._handle_message(
+                sender_id=sender_id,
+                chat_id=chat_id,
+                content="/register_extern_tools",
+                metadata={
+                    "type": "xiaozhi",
+                    "kwargs": {"websocket": self._ws, "timeout": 30},
+                    "tools": mcp_tools,
+                },
             )
             return
         if msg_type == "heartbeat":
@@ -298,15 +344,7 @@ class WebSocketChannel(BaseChannel):
             # Ignore unknown message types
             return
 
-        # Extract message fields
-        message_id = msg_data.get("message_id") or str(hash(str(msg_data)))
-        sender_id = msg_data.get("sender_id", "unknown")
-        chat_id = msg_data.get("chat_id", "default")
-        content = msg_data.get("content", "")
-        media = msg_data.get("media", [])
-        metadata = msg_data.get("metadata", {})
-        msg_type = metadata.get("msg_type", "text")
-
+        meta_type = metadata.get("msg_type", "text")
         if content == "/stop_audio":
             logger.debug("Stop audio sending")
             await self._ws.send(json.dumps({"type": "tts", "state": "stop", "session_id": chat_id}))
@@ -327,7 +365,7 @@ class WebSocketChannel(BaseChannel):
 
         media_dir = Path.home() / ".nanobot" / "media"
         media_dir.mkdir(parents=True, exist_ok=True)
-        if not content and msg_type == "audio":
+        if not content and meta_type == "audio":
             # Save media if cache_media is enabled
             if self.config.cache_media and media:
                 for media_item in media:
@@ -364,7 +402,7 @@ class WebSocketChannel(BaseChannel):
                     try:
                         file_path, filename = save_media(media_data, media_dir, filename)
                         media_paths.append(str(file_path))
-                        content_parts.append(f"{filename}({msg_type}) saved to {file_path}")
+                        content_parts.append(f"{filename}({meta_type}) saved to {file_path}")
                     except Exception as e:
                         logger.error("Failed to process base64 media: {}", e)
                 else:
