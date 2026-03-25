@@ -67,14 +67,15 @@ class Session:
         self.goodbye_response = config.goodbye_response
         self._status = ChatStatus.MUTE if self.wakeup_words else ChatStatus.LISTEN
         # Start background timeout checking task
-        import asyncio
-
-        self._stop_timeout_check = False
-        self._timeout_task = asyncio.create_task(
-            self._check_timeout_loop(
-                timeout_seconds=config.timeout_seconds, check_interval=config.check_interval
+        if self.wakeup_words:
+            self._stop_timeout_check = False
+            self._timeout_task = asyncio.create_task(
+                self._check_timeout_loop(
+                    timeout_seconds=config.timeout_seconds, check_interval=config.check_interval
+                )
             )
-        )
+        else:
+            self._stop_timeout_check, self._timeout_task = True, None
 
     def add_message(self, role: str, content: str, **kwargs: Any) -> None:
         """Add a message to the session."""
