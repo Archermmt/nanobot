@@ -22,14 +22,6 @@ class WebsocketTool(ExternTool):
         self._timeout = kwargs.get("timeout", 30)
         self._result_queue = kwargs.get("result_queue")  # Queue for fetching MCP results
 
-    async def _send_mcp_message(self, payload: dict) -> None:
-        """Send MCP message via WebSocket."""
-        if not self._websocket:
-            raise RuntimeError("WebSocket not initialized")
-
-        message = json.dumps({"type": "mcp", "payload": payload})
-        await self._websocket.send(message)
-
     async def execute(self, **kwargs: Any) -> str:
         """
         Execute the WebSocket tool by calling remote device via MCP.
@@ -53,6 +45,7 @@ class WebsocketTool(ExternTool):
             raise RuntimeError("WebSocket not initialized")
 
         message_data = {"type": "tool_call", "name": self.name, "kwargs": kwargs}
+        print("\n\n[TMINFO] websocket tool call " + str(message_data))
         # Send message ( works for both client and server mode)
         await self._websocket.send(json.dumps(message_data, ensure_ascii=False))
 
@@ -65,8 +58,12 @@ class WebsocketTool(ExternTool):
                     self._result_queue.get(), timeout=self._timeout
                 )
                 # Check if msg_id matches
-                if result_data["name"] == self.name:
-                    raw_result = result_data["result"]
+                if result_data["msg_id"] == self.name:
+                    # Extract result from kwargs (may contain 'result' or 'error')
+                    kwargs_result = result_data.get("result", {})
+                    if "error" in kwargs_result:
+                        raise RuntimeError(kwargs_result["error"])
+                    raw_result = kwargs_result.get("result", kwargs_result)
                     break
                 else:
                     # Put back to queue if not matching

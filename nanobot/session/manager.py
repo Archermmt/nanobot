@@ -54,6 +54,8 @@ class Session:
         if self.wakeup_words:
             self.goodbye_words = config.goodbye_words
             self.goodbye_response = config.goodbye_response
+        else:
+            self.goodbye_words, self.goodbye_response = [], []
         self._status = ChatStatus.MUTE if self.wakeup_words else ChatStatus.LISTEN
         self._default_channel = None
         self._default_chat_id = None

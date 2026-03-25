@@ -346,11 +346,13 @@ class WebSocketChannel(BaseChannel):
             await self._send_heartbeat_response()
             return
         if msg_type == "tool_call":
-            print("[TMNIFO] Received tool_call result " + str(msg_data))
+            print("\n\n[TMNIFO] Received tool_call result " + str(msg_data))
             # Put result into queue for tool to fetch
             try:
-                tool_name = metadata["tool_name"]
-                await self._mcp_result_queue.put({"tool_name": tool_name, "message": msg_data})
+                tool_name = msg_data.get("name") or metadata.get("tool_name")
+                await self._mcp_result_queue.put(
+                    {"msg_id": tool_name, "result": msg_data.get("result", {})}
+                )
                 logger.debug(f"Put tool call result into queue, tool_name={tool_name}")
             except Exception as e:
                 logger.error(f"Failed to put tool call result into queue: {e}")

@@ -111,7 +111,7 @@ class BaseVADHandler(BaseHandler, ABC):
             return msg
 
         msg.content = ""
-        if len(self._asr_audio) > 20 and self._client_voice_stop:
+        if len(self._asr_audio) > 20 and not audio_have_voice and self._client_voice_stop:
             pcm_data, self._asr_audio = self._asr_audio.copy(), []
             if self.audio_format == "opus":
                 pcm_data = self.decode_opus(pcm_data)

@@ -3,7 +3,7 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import MessageList from './MessageList.vue'
 import ChatInput from './ChatInput.vue'
 import { getAudioPlayer } from '../../js/audio/player.js'
-import { handleMCPMessage } from '../../js/mcp/tools.js'
+import { handleToolCallMessage } from '../../js/tools/tools.js'
 
 interface Message {
   role: 'user' | 'assistant' | 'system'
@@ -81,8 +81,8 @@ const handleWebSocketMessage = (event: MessageEvent) => {
     }
 
     // Handle MCP messages
-    if (data.type === 'mcp') {
-      handleMCPMessage(data, ws)
+    if (data.type === 'tool_call') {
+      handleToolCallMessage(data, ws)
       return
     }
 
@@ -696,6 +696,8 @@ const handleTTSMessage = async (data: any) => {
   } else if (state === 'sentence_start') {
     console.log(`服务器发送语音段：${data.text}`, 'info')
     ttsSentenceCount.value++
+    // Set thinking state to true when sentence starts
+    isLoading.value = true
     // Add message to chat immediately
     if (data.text && !data.text.trim().startsWith('/')) {
       messages.value.push({
@@ -711,6 +713,8 @@ const handleTTSMessage = async (data: any) => {
     console.log(`语音段结束：${data.text}`, 'info')
     // Don't clear animation at sentence end, wait for next sentence or final stop
   } else if (state === 'stop') {
+    // Clear thinking state when stop is received
+    isLoading.value = false
     // Clear all audio buffers and stop playback
     audioPlayer.clearAllAudio()
     isRemoteSpeaking.value = false

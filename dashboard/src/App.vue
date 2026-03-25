@@ -7,7 +7,7 @@ import { mdiPhone, mdiWebcam, mdiMicrophone, mdiVolumeHigh, mdiEyeOff } from '@m
 import { getAudioPlayer } from './js/audio/player.js'
 import { checkOpusLoaded, initOpusEncoder } from './js/audio/opus-codec.js';
 import { getAudioRecorder } from './js/audio/recorder.js';
-import defaultMcpTools from './js/config/default-mcp-tools.json'
+import defaultMcpTools from './js/tools/default-mcp-tools.json'
 
 // Audio player instance
 let audioPlayer: any = null
