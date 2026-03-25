@@ -346,7 +346,6 @@ class WebSocketChannel(BaseChannel):
             await self._send_heartbeat_response()
             return
         if msg_type == "tool_call":
-            print("\n\n[TMNIFO] Received tool_call result " + str(msg_data))
             # Put result into queue for tool to fetch
             try:
                 tool_name = msg_data.get("name") or metadata.get("tool_name")

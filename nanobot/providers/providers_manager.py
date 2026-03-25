@@ -90,6 +90,9 @@ class ProvidersManager:
             user_content = user_content.split("\n\n")[1]
         if not user_content:
             mode, user_content = "main", "foo task"
+        if isinstance(user_content, list):
+            mode = "multimodal"
+        preview = str(user_content)[:20]
         if mode == "auto":
             assert "main" in self._modes, "No main mode configured for auto mode"
             # For auto mode, use decider to choose the best mode
@@ -115,17 +118,17 @@ class ProvidersManager:
             selected_mode = decider_response.content.strip() if decider_response.content else "main"
             # Use the selected mode's provider
             if selected_mode in self._modes:
-                logger.info(f"Choose {selected_mode} for task: {user_content[:20]}")
+                logger.info(f"Choose {selected_mode} for task: {preview}")
                 decide_mode = selected_mode
             else:
                 # Fallback to main if selected mode not found
-                logger.info(f"Fallback to main for task: {user_content[:20]}")
+                logger.info(f"Fallback to main for task: {preview}")
                 decide_mode = "main"
         elif mode in self._modes:
-            logger.info(f"Use specified {mode} for task: {user_content[:20]}")
+            logger.info(f"Use specified {mode} for task: {preview}")
             decide_mode = mode
         elif "main" in self._modes:
-            logger.info(f"Fallback to main for task: {user_content[:20]}")
+            logger.info(f"Fallback to main for task: {preview}")
             decide_mode = "main"
         else:
             raise ValueError(f"Unknown mode: {mode} and no fallback available")

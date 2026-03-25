@@ -4,6 +4,8 @@ import asyncio
 import json
 from typing import Any
 
+from nanobot.utils.media import save_media
+
 from .extern_tool import ExternTool
 
 
@@ -45,13 +47,11 @@ class WebsocketTool(ExternTool):
             raise RuntimeError("WebSocket not initialized")
 
         message_data = {"type": "tool_call", "name": self.name, "kwargs": kwargs}
-        print("\n\n[TMINFO] websocket tool call " + str(message_data))
-        # Send message ( works for both client and server mode)
         await self._websocket.send(json.dumps(message_data, ensure_ascii=False))
 
         # Fetch result from queue
         try:
-            raw_result = None
+            raw_result = {}
             while True:
                 # Get result from queue
                 result_data = await asyncio.wait_for(
@@ -69,6 +69,8 @@ class WebsocketTool(ExternTool):
                     # Put back to queue if not matching
                     await self._result_queue.put(result_data)
                     await asyncio.sleep(0.1)
+            if "image_data" in raw_result:
+                raw_result["image_data"] = save_media(raw_result["image_data"], "photo.jpg")[0]
             return str(raw_result)
 
         except asyncio.TimeoutError:

@@ -418,6 +418,8 @@ class AgentLoop:
         preview = msg.content[:80] + "..." if len(msg.content) > 80 else msg.content
         if msg.content and not msg.metadata.get("passby", False):
             logger.info("Processing message from {}:{}: {}", msg.channel, msg.sender_id, preview)
+        if isinstance(msg.content, bytes):
+            print("\n\n[TMINFO] handle SB bytes msg " + str(msg), flush=True)
 
         key = session_key or msg.session_key
         session = self.sessions.get_or_create(key)

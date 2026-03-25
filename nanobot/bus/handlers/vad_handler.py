@@ -95,22 +95,18 @@ class BaseVADHandler(BaseHandler, ABC):
         Returns:
             Modified InboundMessage with VAD metadata
         """
-        if not msg.content:
-            return msg
-        if self._waiting_id:
+        if not msg.content or self._waiting_id:
             msg.content = ""
             msg.metadata["passby"] = True
             return msg
 
         self._asr_audio.append(msg.content)
-        audio_have_voice = self.is_vad(msg.content)
+        audio_have_voice, msg.content = self.is_vad(msg.content), ""
         if not audio_have_voice and not self._client_have_voice:
             self._asr_audio = self._asr_audio[-10:]
-            msg.content = ""
             msg.metadata["passby"] = True
             return msg
 
-        msg.content = ""
         if len(self._asr_audio) > 20 and not audio_have_voice and self._client_voice_stop:
             pcm_data, self._asr_audio = self._asr_audio.copy(), []
             if self.audio_format == "opus":
