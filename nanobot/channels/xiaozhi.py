@@ -19,7 +19,7 @@ from nanobot.utils.text_utils import check_emoji, get_string_no_punctuation_or_e
 
 
 class TextMessageType(Enum):
-    """消息类型枚举"""
+    """Message type enumeration."""
 
     HELLO = "hello"
     ABORT = "abort"
@@ -243,12 +243,12 @@ class XiaoZhiChannel(BaseChannel):
                 logger.warning("Error closing connection: {}", close_error)
 
     async def _http_response(self, websocket, request_headers):
-        # 检查是否为 WebSocket 升级请求
+        # Check if it's a WebSocket upgrade request
         if request_headers.headers.get("connection", "").lower() == "upgrade":
-            # 如果是 WebSocket 请求，返回 None 允许握手继续
+            # If it's a WebSocket request, return None to allow handshake to continue
             return None
         else:
-            # 如果是普通 HTTP 请求，返回 "server is running"
+            # If it's a regular HTTP request, return "server is running"
             return websocket.respond(200, "Server is running\n")
 
     async def _authenticate(
@@ -361,7 +361,7 @@ class XiaoZhiChannel(BaseChannel):
         return
 
     async def _handle_hello_message(self, msg_data: dict):
-        """处理hello消息"""
+        """Handle hello message."""
 
         response = {
             "session_id": self.session_id,
@@ -387,14 +387,14 @@ class XiaoZhiChannel(BaseChannel):
             logger.warning("Failed to send hello response: {}", e)
 
     async def _handle_mcp_message(self, msg_data: dict, client_info: dict):
-        """处理mcp消息"""
+        """Handle MCP message."""
 
         # Handle result
         payload = msg_data["payload"]
         if "error" in payload:
             error_data = payload["error"]
-            error_msg = error_data.get("message", "未知错误")
-            logger.error(f"收到MCP错误响应: {error_msg}")
+            error_msg = error_data.get("message", "Unknown error")
+            logger.error(f"Received MCP error response: {error_msg}")
             return
 
         if "result" not in payload:
@@ -403,26 +403,26 @@ class XiaoZhiChannel(BaseChannel):
         result = payload["result"]
         msg_id = int(payload.get("id", 0))
         if msg_id == 1:  # mcpInitializeID
-            logger.debug("收到MCP初始化响应")
+            logger.debug("Received MCP initialization response")
             server_info = result.get("serverInfo")
             if isinstance(server_info, dict):
                 name = server_info.get("name")
                 version = server_info.get("version")
-                logger.debug(f"客户端MCP服务器信息: name={name}, version={version}")
+                logger.debug(f"Client MCP server info: name={name}, version={version}")
             await asyncio.sleep(1)
-            logger.debug("初始化完成，开始请求MCP工具列表")
+            logger.debug("Initialization complete, start requesting MCP tool list")
             await self._send_mcp_message({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
             return
 
         if msg_id == 2:  # mcpToolsListID
-            logger.debug("收到MCP工具列表响应")
+            logger.debug("Received MCP tool list response")
             mcp_tools = []
             if isinstance(result, dict) and "tools" in result:
                 tools_data = result["tools"]
                 if not isinstance(tools_data, list):
-                    logger.error("工具列表格式错误")
+                    logger.error("Tool list format error")
                     return
-                logger.info(f"客户端设备支持的工具数量: {len(tools_data)}")
+                logger.info(f"Number of tools supported by client device: {len(tools_data)}")
                 for i, tool in enumerate(tools_data):
                     if not isinstance(tool, dict):
                         continue
@@ -443,7 +443,7 @@ class XiaoZhiChannel(BaseChannel):
                         "tool_id": i + 3,
                     }
                     mcp_tools.append(new_tool)
-                    logger.debug(f"客户端工具 #{i + 1}: {name}")
+                    logger.debug(f"Client tool #{i + 1}: {name}")
             await self._handle_message(
                 sender_id=self.session_id,
                 chat_id=msg_data.get("chat_id", client_info["client_id"]),
@@ -462,16 +462,16 @@ class XiaoZhiChannel(BaseChannel):
 
         # Handle tool call results (msg_id > 2)
         if msg_id > 2:
-            logger.debug(f"收到 MCP 工具调用结果，msg_id={msg_id}")
+            logger.debug(f"Received MCP tool call result, msg_id={msg_id}")
             # Put result into queue for tool to fetch
             try:
                 await self._mcp_result_queue.put({"msg_id": msg_id, "result": result})
-                logger.debug(f"已将工具调用结果放入队列，msg_id={msg_id}")
+                logger.debug(f"Put tool call result into queue, msg_id={msg_id}")
             except Exception as e:
-                logger.error(f"放置工具调用结果到队列失败：{e}")
+                logger.error(f"Failed to put tool call result into queue: {e}")
 
     async def _send_mcp_initialize_message(self):
-        """发送MCP初始化消息"""
+        """Send MCP initialization message."""
 
         payload = {
             "jsonrpc": "2.0",
@@ -494,15 +494,15 @@ class XiaoZhiChannel(BaseChannel):
     async def _send_mcp_message(self, payload: dict):
         """Helper to send MCP messages, encapsulating common logic."""
         if not self.features.get("mcp"):
-            logger.warning("客户端不支持MCP，无法发送MCP消息")
+            logger.warning("Client does not support MCP, cannot send MCP message")
             return
 
         message = json.dumps({"type": "mcp", "payload": payload})
         try:
             await self._ws.send(message)
-            logger.debug(f"成功发送MCP消息: {message}")
+            logger.debug(f"Successfully sent MCP message: {message}")
         except Exception as e:
-            logger.error(f"发送MCP消息失败: {e}")
+            logger.error(f"Failed to send MCP message: {e}")
 
     async def _start_to_chat(self, msg_data, client_info):
         content = msg_data["text"]
@@ -518,13 +518,13 @@ class XiaoZhiChannel(BaseChannel):
         )
 
     async def _send_tts_message(self, state, text=None, websocket=None):
-        """发送 TTS 状态消息"""
+        """Send TTS status message."""
         if text is None and state == "sentence_start":
             return
         message = {"type": "tts", "state": state, "session_id": self.session_id}
         if text is not None:
             message["text"] = check_emoji(text)
-        # 发送消息到客户端
+        # Send message to client
         websocket = websocket or self._ws
         await websocket.send(json.dumps(message))
 
@@ -540,7 +540,7 @@ class XiaoZhiChannel(BaseChannel):
             return
 
         # Ignore some cases
-        if msg.metadata.get("_response_for", "") == "register_extern_tools":
+        if msg.metadata.get("_task_ref", "") == "register_extern_tools":
             return
         if msg.metadata.get("_progress", False) or msg.metadata.get("_hide_from_ui", False):
             return

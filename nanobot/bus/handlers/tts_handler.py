@@ -52,10 +52,6 @@ class BaseTTSHandler(BaseHandler):
         if self.encoder_type == "opus":
             self.encoder = opuslib_next.Encoder(self.sample_rate, 1, opuslib_next.APPLICATION_AUDIO)
 
-    @classmethod
-    def msg_type(cls) -> str:
-        return "text"
-
     def can_handle_output(self, msg: OutboundMessage) -> bool:
         """
         Check if this handler can process the given message.

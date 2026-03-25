@@ -484,7 +484,7 @@ class AgentLoop:
                 _add_msg(message)
                 if len(history) >= self.memory_window:
                     break
-            metadata = {"_response_for": "history"}
+            metadata = {"_task_ref": "history"}
             return OutboundMessage(
                 channel=msg.channel,
                 chat_id=msg.chat_id,
@@ -510,7 +510,7 @@ class AgentLoop:
                 "enable_asr": "asr" in self.bus.handlers,
                 "enable_tts": "tts" in self.bus.handlers,
             }
-            metadata = {"_response_for": "status"}
+            metadata = {"_task_ref": "status"}
             if msg.metadata.get("_hide_from_ui", False):
                 metadata.update({"_hide_from_ui": True})
             return OutboundMessage(
@@ -552,7 +552,7 @@ class AgentLoop:
                 channel=msg.channel,
                 chat_id=msg.chat_id,
                 content="Registered extern tools: " + ",".join(tools),
-                metadata={"_response_for": "register_extern_tools"},
+                metadata={"_task_ref": "register_extern_tools"},
             )
         if msg.metadata and msg.metadata.get("passby", False):
             return OutboundMessage(
@@ -580,10 +580,13 @@ class AgentLoop:
                 metadata=msg.metadata,
             )
         if s_info["status"] == ChatStatus.MUTE:
+            if "need_tts" in msg.metadata:
+                msg.metadata.pop("need_tts")
             return OutboundMessage(
                 channel=msg.channel,
                 chat_id=msg.chat_id,
                 content="Session muted, please wake up the assistant.",
+                metadata=msg.metadata,
             )
 
         unconsolidated = len(session.messages) - session.last_consolidated

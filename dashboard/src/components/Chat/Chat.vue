@@ -18,7 +18,7 @@ interface Message {
   metadata?: {
     msg_type?: string
     file_type?: string
-    _response_for?: string
+    _task_ref?: string
     _hide_from_ui?: boolean
     _progress?: boolean
     need_tts?: boolean
@@ -94,7 +94,7 @@ const handleWebSocketMessage = (event: MessageEvent) => {
 
     if (data.type === 'message') {
       // Check if this is a status response
-      if (data.content && data.metadata?._response_for === 'status') {
+      if (data.content && data.metadata?._task_ref === 'status') {
         // This is a status update, emit it for StatusBar
         try {
           const statusData = JSON.parse(data.content)
@@ -113,7 +113,7 @@ const handleWebSocketMessage = (event: MessageEvent) => {
       }
 
       // Check if this is a history response (JSON array)
-      if (data.content && data.metadata?._response_for === 'history') {
+      if (data.content && data.metadata?._task_ref === 'history') {
         try {
           const historyData = JSON.parse(data.content)
           if (Array.isArray(historyData)) {
@@ -241,8 +241,8 @@ const handleWebSocketMessage = (event: MessageEvent) => {
         }
       }
 
-      // Check if message contains mode_hint and is not a progress message
-      if (data.metadata?.mode_hint && !data.metadata?._progress) {
+      // Check if message contains _mode_hint and is not a progress message
+      if (data.metadata?._mode_hint && !data.metadata?._progress) {
         // Call handleSendStatus to update status bar
         handleSendStatus()
       }

@@ -134,7 +134,7 @@ class ProvidersManager:
             channel=self._default_channel,
             chat_id=self._default_chat_id,
             content=f"Choose mode -> {decide_mode}",
-            metadata={"_progress": True, "mode_hint": decide_mode},
+            metadata={"_progress": True, "_mode_hint": decide_mode},
         )
         await self._send_callback(msg)
 
@@ -166,7 +166,7 @@ class ProvidersManager:
             channel=self._default_channel,
             chat_id=self._default_chat_id,
             content=f"Add mode -> {mode}",
-            metadata={"mode_hint": mode},
+            metadata={"_mode_hint": mode},
         )
         await self._send_callback(msg)
 
@@ -190,7 +190,7 @@ class ProvidersManager:
             channel=self._default_channel,
             chat_id=self._default_chat_id,
             content=f"Update mode -> {mode}",
-            metadata={"mode_hint": mode},
+            metadata={"_mode_hint": mode},
         )
         await self._send_callback(msg)
 
@@ -207,7 +207,7 @@ class ProvidersManager:
             channel=self._default_channel,
             chat_id=self._default_chat_id,
             content=f"Remove mode -> {mode}",
-            metadata={"mode_hint": mode},
+            metadata={"_mode_hint": mode},
         )
         await self._send_callback(msg)
 
@@ -219,7 +219,7 @@ class ProvidersManager:
             channel=self._default_channel,
             chat_id=self._default_chat_id,
             content=f"Change mode -> {mode}",
-            metadata={"mode_hint": mode},
+            metadata={"_mode_hint": mode},
         )
         await self._send_callback(msg)
 

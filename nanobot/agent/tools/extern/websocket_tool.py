@@ -65,7 +65,7 @@ class WebsocketTool(ExternTool):
                     self._result_queue.get(), timeout=self._timeout
                 )
                 # Check if msg_id matches
-                if result_data["msg_id"] == self._tool_id:
+                if result_data["name"] == self.name:
                     raw_result = result_data["result"]
                     break
                 else:
@@ -75,7 +75,7 @@ class WebsocketTool(ExternTool):
             return str(raw_result)
 
         except asyncio.TimeoutError:
-            raise TimeoutError("工具调用请求超时")
+            raise TimeoutError("Tool call request timeout")
         except Exception as e:
             raise e
 

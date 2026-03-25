@@ -12,11 +12,6 @@ class BaseHandler(ABC):
     _registry: Dict[str, Type["BaseHandler"]] = {}
 
     @classmethod
-    def msg_type(cls) -> str:
-        """Return the message type for this handler. Must be overridden by subclasses."""
-        raise NotImplementedError("Subclasses must implement msg_type() class method")
-
-    @classmethod
     def register(cls):
         """
         Decorator to register a subclass with its handler type.
@@ -27,17 +22,11 @@ class BaseHandler(ABC):
             @BaseHandler.register()
             class MyHandler(BaseHandler):
                 @classmethod
-                def msg_type(cls) -> str:
-                    return "audio"
-
-                @classmethod
                 def handler_type(cls) -> str:
                     return "funasr"
         """
 
         def decorator(subclass: Type["BaseHandler"]) -> Type["BaseHandler"]:
-            if not hasattr(subclass, "msg_type") or not callable(subclass.msg_type):
-                raise TypeError(f"Subclass {subclass.__name__} must define msg_type() class method")
             if not hasattr(subclass, "handler_type") or not callable(subclass.handler_type):
                 raise TypeError(
                     f"Subclass {subclass.__name__} must define handler_type() class method"

@@ -21,10 +21,6 @@ from nanobot.utils.log import CaptureOutput
 class BaseASRHandler(BaseHandler):
     """Base class for automatic speech recognition handlers."""
 
-    @classmethod
-    def msg_type(cls) -> str:
-        return "audio"
-
     def can_handle_input(self, msg: InboundMessage) -> bool:
         """
         Check if this handler can process the given message.

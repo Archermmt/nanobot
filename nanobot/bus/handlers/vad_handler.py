@@ -41,10 +41,6 @@ class BaseVADHandler(BaseHandler, ABC):
         # decoder
         self._opus_decoder = opuslib_next.Decoder(16000, 1)
 
-    @classmethod
-    def msg_type(cls) -> str:
-        return "audio_clip"
-
     def can_handle_input(self, msg: InboundMessage) -> bool:
         """
         Check if this handler can process the given message.

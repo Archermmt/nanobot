@@ -303,9 +303,9 @@ class WebSocketChannel(BaseChannel):
             if isinstance(result, dict) and "tools" in result:
                 tools_data = result["tools"]
                 if not isinstance(tools_data, list):
-                    logger.error("工具列表格式错误")
+                    logger.error("Tool call result format error")
                     return
-                logger.info(f"客户端设备支持的工具数量: {len(tools_data)}")
+                logger.info(f"Number of tools supported by client device: {len(tools_data)}")
                 for i, tool in enumerate(tools_data):
                     if not isinstance(tool, dict):
                         continue
@@ -325,7 +325,7 @@ class WebSocketChannel(BaseChannel):
                         "inputSchema": input_schema,
                     }
                     mcp_tools.append(new_tool)
-                    logger.debug(f"客户端工具 #{i + 1}: {name}")
+                    logger.debug(f"Client tool #{i + 1}: {name}")
             await self._handle_message(
                 sender_id=sender_id,
                 chat_id=chat_id,
@@ -346,14 +346,14 @@ class WebSocketChannel(BaseChannel):
             await self._send_heartbeat_response()
             return
         if msg_type == "tool_call":
-            print("[TMNIFO] get tool_call result " + str(msg_data))
+            print("[TMNIFO] Received tool_call result " + str(msg_data))
             # Put result into queue for tool to fetch
             try:
                 tool_name = metadata["tool_name"]
                 await self._mcp_result_queue.put({"tool_name": tool_name, "message": msg_data})
-                logger.debug(f"已将工具调用结果放入队列，tool_name={tool_name}")
+                logger.debug(f"Put tool call result into queue, tool_name={tool_name}")
             except Exception as e:
-                logger.error(f"放置工具调用结果到队列失败：{e}")
+                logger.error(f"Failed to put tool call result into queue: {e}")
         if msg_type != "message":
             # Ignore unknown message types
             return

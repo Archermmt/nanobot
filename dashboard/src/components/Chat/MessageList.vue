@@ -25,8 +25,8 @@ interface Message {
     msg_type?: string
     file_type?: string
     _progress?: boolean
-    _response_for?: string
-    mode_hint?: string
+    _task_ref?: string
+    _mode_hint?: string
     isPlayingOpus?: boolean
     _as_input?: boolean
   }
@@ -279,21 +279,21 @@ const visibleMessages = computed(() => {
   if (props.showProgressMessages !== false) {
     // Show all messages including_progress messages
     props.messages.forEach(msg => {
-      // Cache mode_hint from messages
-      if (msg.metadata?.mode_hint) {
-        currentModeHint.value = msg.metadata.mode_hint
+      // Cache _mode_hint from messages
+      if (msg.metadata?._mode_hint) {
+        currentModeHint.value = msg.metadata._mode_hint
       }
     })
-    return props.messages.filter(msg => !msg.metadata?.mode_hint)
+    return props.messages.filter(msg => !msg.metadata?._mode_hint)
   } else {
     // Hide messages with _progress: true in metadata
     props.messages.forEach(msg => {
-      // Cache mode_hint from messages (even progress messages)
-      if (msg.metadata?.mode_hint) {
-        currentModeHint.value = msg.metadata.mode_hint
+      // Cache _mode_hint from messages (even progress messages)
+      if (msg.metadata?._mode_hint) {
+        currentModeHint.value = msg.metadata._mode_hint
       }
     })
-    return props.messages.filter(msg => !msg.metadata?._progress && !msg.metadata?.mode_hint)
+    return props.messages.filter(msg => !msg.metadata?._progress && !msg.metadata?._mode_hint)
   }
 })
 
@@ -334,10 +334,10 @@ watch(() => props.showProgressMessages, scrollToBottom)
     <div v-for="(msg, index) in visibleMessages" :key="index" class="flex" :class="getMessageClass(msg)">
       <div class="border-2 rounded shadow-[4px_4px_0_rgba(0,0,0,0.5)] px-4 py-3 flex flex-col" :class="{
         'bg-gradient-to-br from-blue-500 to-blue-600 border-blue-700 text-white max-w-[80%]': isUserMessage(msg),
-        'bg-gradient-to-br from-gray-100 to-gray-200 border-gray-300 text-gray-800 max-w-[80%]': !isUserMessage(msg) && msg.role === 'assistant' && !msg.metadata?._progress && msg.metadata?._response_for !== 'status',
+        'bg-gradient-to-br from-gray-100 to-gray-200 border-gray-300 text-gray-800 max-w-[80%]': !isUserMessage(msg) && msg.role === 'assistant' && !msg.metadata?._progress && msg.metadata?._task_ref !== 'status',
         'bg-gradient-to-br from-green-100 to-green-200 border-green-300 text-gray-700 max-w-[80%]': !isUserMessage(msg) && msg.role === 'assistant' && msg.metadata?._progress,
         'bg-gradient-to-br from-red-100 to-red-200 border-red-300 text-red-800 max-w-[80%]': msg.role === 'system',
-        'bg-gradient-to-br from-yellow-100 to-yellow-200 border-yellow-300 text-gray-700 max-w-[80%]': msg.metadata?._response_for === 'status'
+        'bg-gradient-to-br from-yellow-100 to-yellow-200 border-yellow-300 text-gray-700 max-w-[80%]': msg.metadata?._task_ref === 'status'
       }">
         <!-- Image Display -->
         <div v-if="getImageUrlFromMessage(msg)" class="mb-3 w-full">

@@ -17,18 +17,6 @@ from nanobot.bus.events import InboundMessage, OutboundMessage
 from nanobot.config.schema import SessionConfig
 from nanobot.utils.helpers import ensure_dir, safe_filename
 
-WAKEUP_RESPONSE = [
-    "我一直都在呢，您请说。",
-    "在的呢，请随时吩咐我。",
-    "来啦来啦，请告诉我吧。",
-    "您请说，我正听着。",
-    "请您讲话，我准备好了。",
-    "请您说出指令吧。",
-    "我认真听着呢，请讲。",
-    "请问您需要什么帮助？",
-    "我在这里，等候您的指令。",
-]
-
 
 class ChatStatus(Enum):
     """Chat status enum."""
@@ -63,8 +51,9 @@ class Session:
     def setup(self, config: SessionConfig):
         self.wakeup_words = config.wakeup_words
         self.wakeup_response = config.wakeup_response
-        self.goodbye_words = config.goodbye_words
-        self.goodbye_response = config.goodbye_response
+        if self.wakeup_words:
+            self.goodbye_words = config.goodbye_words
+            self.goodbye_response = config.goodbye_response
         self._status = ChatStatus.MUTE if self.wakeup_words else ChatStatus.LISTEN
         self._default_channel = None
         self._default_chat_id = None
