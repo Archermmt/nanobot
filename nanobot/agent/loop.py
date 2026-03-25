@@ -484,7 +484,7 @@ class AgentLoop:
                 _add_msg(message)
                 if len(history) >= self.memory_window:
                     break
-            metadata = {"_task_ref": "history"}
+            metadata = {"_task_ref": "history", "_hide_message": True}
             return OutboundMessage(
                 channel=msg.channel,
                 chat_id=msg.chat_id,
@@ -510,9 +510,7 @@ class AgentLoop:
                 "enable_asr": "asr" in self.bus.handlers,
                 "enable_tts": "tts" in self.bus.handlers,
             }
-            metadata = {"_task_ref": "status"}
-            if msg.metadata.get("_hide_from_ui", False):
-                metadata.update({"_hide_from_ui": True})
+            metadata = {"_task_ref": "status", "_hide_message": True}
             return OutboundMessage(
                 channel=msg.channel,
                 chat_id=msg.chat_id,

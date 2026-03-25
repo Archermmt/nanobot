@@ -19,7 +19,7 @@ interface Message {
     msg_type?: string
     file_type?: string
     _task_ref?: string
-    _hide_from_ui?: boolean
+    _hide_message?: boolean
     _progress?: boolean
     need_tts?: boolean
     isPlayingOpus?: boolean
@@ -140,7 +140,7 @@ const handleWebSocketMessage = (event: MessageEvent) => {
             // Also display all history messages in the chat window
             historyData.forEach((msg: any) => {
               // Skip messages marked as hidden
-              if (msg.metadata?._hide_from_ui) {
+              if (msg.metadata?._hide_message) {
                 return
               }
 
@@ -222,7 +222,7 @@ const handleWebSocketMessage = (event: MessageEvent) => {
       }
 
       // Don't display messages marked as hidden (like /history command)
-      if (!data.metadata?._hide_from_ui) {
+      if (!data.metadata?._hide_message) {
         const newMessage: Message = {
           role: 'assistant',
           content: data.content || 'Message received',
@@ -337,7 +337,6 @@ const sendMessage = async (data: string | { text: string; images: Array<{ data: 
         need_tts?: boolean
         msg_type?: string
         file_type?: string
-        _hide_from_ui?: boolean
       }
     } = {
       type: 'message',
@@ -350,8 +349,7 @@ const sendMessage = async (data: string | { text: string; images: Array<{ data: 
         source: 'web_dashboard',
         timestamp: Date.now(),
         session_id: sessionId.value,
-        need_tts: props.enableSpeak,  // Add need_tts flag based on global enableSpeak
-        _hide_from_ui: hideFromUI  // Add hide flag for control commands
+        need_tts: props.enableSpeak  // Add need_tts flag based on global enableSpeak
       }
     }
 
@@ -473,8 +471,7 @@ const handleSendStatus = () => {
       metadata: {
         source: 'web_dashboard',
         timestamp: Date.now(),
-        session_id: sessionId.value,
-        _hide_from_ui: true
+        session_id: sessionId.value
       }
     }
     console.log('📤 Sending /status command:', statusMsg)
@@ -520,8 +517,7 @@ const handleConnected = () => {
     metadata: {
       source: 'web_dashboard',
       timestamp: Date.now(),
-      session_id: sessionId.value,
-      _hide_from_ui: true
+      session_id: sessionId.value
     }
   }
   console.log('📤 Sending /status for initialization:', statusMsg)
@@ -540,8 +536,7 @@ const handleConnected = () => {
         metadata: {
           source: 'web_dashboard',
           timestamp: Date.now(),
-          session_id: sessionId.value,
-          _hide_from_ui: true
+          session_id: sessionId.value
         }
       }
       console.log('📤 Sending /history for initialization:', historyMsg)
