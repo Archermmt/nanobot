@@ -320,7 +320,6 @@ const sendMessage = async (data: string | { text: string; images: Array<{ data: 
       ...images.map(img => ({ data: img.data, file_name: img.name })),
       ...files.map(file => ({ data: file.data, file_name: file.name }))
     ]
-    console.log('[TMINFO] Sending message with enableSpeak: ', props.enableSpeak)
 
     const messageData: {
       type: string

@@ -53,11 +53,9 @@ const showThinking = computed(() => {
   const hasProgressFlag = lastMessage.metadata?._progress === true
 
   // Always show thinking when loading
-  //console.log('[TMINFO] Checking Loading with length:', props.isLoading, props.messages.length)
   if (props.isLoading && props.messages.length > 0) return true
 
   // When not loading, only show progress messages if showProgressMessages is enabled
-  //console.log('[TMINFO] Checking hasProgressFlag:', hasProgressFlag)
   if (hasProgressFlag) {
     return props.showProgressMessages !== false
   }
