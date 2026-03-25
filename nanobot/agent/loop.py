@@ -29,7 +29,7 @@ from nanobot.bus.queue import MessageBus
 from nanobot.config.loader import load_config
 from nanobot.providers.base import LLMProvider
 from nanobot.providers.providers_manager import ProvidersManager
-from nanobot.session.manager import Session, SessionManager
+from nanobot.session.manager import ChatStatus, Session, SessionManager
 
 if TYPE_CHECKING:
     from nanobot.config.schema import ChannelsConfig, ExecToolConfig
@@ -556,6 +556,16 @@ class AgentLoop:
         if msg.metadata and msg.metadata.get("passby", False):
             return OutboundMessage(
                 channel=msg.channel, chat_id=msg.chat_id, content=msg.content, metadata=msg.metadata
+            )
+        s_info = session.check_status(msg)
+        if s_info["status"] == ChatStatus.MUTE:
+            return
+        if s_info.get("response"):
+            return OutboundMessage(
+                channel=msg.channel,
+                chat_id=msg.chat_id,
+                content=s_info["response"],
+                metadata=msg.metadata,
             )
 
         unconsolidated = len(session.messages) - session.last_consolidated

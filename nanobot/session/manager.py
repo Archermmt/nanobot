@@ -1,8 +1,10 @@
 """Session management for conversation history."""
 
+import asyncio
 import json
 import random
 import shutil
+import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -31,7 +33,6 @@ WAKEUP_RESPONSE = [
 class ChatStatus(Enum):
     """Chat status enum."""
 
-    WAKEUP = "wakeup"
     LISTEN = "listen"
     MUTE = "mute"
 
@@ -54,11 +55,26 @@ class Session:
     updated_at: datetime = field(default_factory=datetime.now)
     metadata: dict[str, Any] = field(default_factory=dict)
     last_consolidated: int = 0  # Number of messages already consolidated to files
+    last_activity_time: float = 0.0  # Last activity timestamp in milliseconds
+    _status: ChatStatus = field(default=ChatStatus.MUTE)  # Current chat status
+    _timeout_task: Any = None  # Background timeout check task
+    _stop_timeout_check: bool = False  # Flag to stop timeout checking
 
     def setup(self, config: SessionConfig):
         self.wakeup_words = config.wakeup_words
         self.wakeup_response = config.wakeup_response
+        self.goodbye_words = config.goodbye_words
+        self.goodbye_response = config.goodbye_response
         self._status = ChatStatus.MUTE if self.wakeup_words else ChatStatus.LISTEN
+        # Start background timeout checking task
+        import asyncio
+
+        self._stop_timeout_check = False
+        self._timeout_task = asyncio.create_task(
+            self._check_timeout_loop(
+                timeout_seconds=config.timeout_seconds, check_interval=config.check_interval
+            )
+        )
 
     def add_message(self, role: str, content: str, **kwargs: Any) -> None:
         """Add a message to the session."""
@@ -95,14 +111,59 @@ class Session:
     def check_status(self, msg: InboundMessage) -> dict[str, Any]:
         """Check the chat status based on the message content."""
         response = ""
-        if self._status == ChatStatus.LISTEN:
-            self._status = ChatStatus.LISTEN
-        elif self._status == ChatStatus.WAKEUP:
-            self._status = ChatStatus.LISTEN
+        if self._status == ChatStatus.LISTEN and msg.content in self.goodbye_words:
+            self._status = ChatStatus.MUTE
+            response = random.choice(self.goodbye_response)
         elif self._status == ChatStatus.MUTE and msg.content in self.wakeup_words:
-            self._status = ChatStatus.WAKEUP
+            self._status = ChatStatus.LISTEN
             response = random.choice(self.wakeup_response)
-        return {"status": ChatStatus.WAKEUP, "response": response}
+
+        # Update last activity time when in LISTEN state and received a message
+        if self._status == ChatStatus.LISTEN:
+            self.last_activity_time = time.time() * 1000
+
+        return {"status": self._status, "response": response}
+
+    async def _check_timeout_loop(
+        self, timeout_seconds: int = 300, check_interval: float = 10.0
+    ) -> None:
+        """
+        Background task to continuously check for connection timeout.
+
+        Args:
+            timeout_seconds: Timeout threshold in seconds (default: 5 minutes)
+            check_interval: How often to check for timeout in seconds (default: 10 seconds)
+        """
+        try:
+            while not self._stop_timeout_check:
+                await asyncio.sleep(check_interval)
+
+                # Only check timeout if last_activity_time has been initialized
+                if self.last_activity_time > 0.0:
+                    current_time = time.time() * 1000
+                    if current_time - self.last_activity_time > timeout_seconds * 1000:
+                        logger.info(f"Session {self.key} timed out, setting status to MUTE")
+                        self._status = ChatStatus.MUTE
+                        # Reset last_activity_time to avoid repeated triggers
+                        self.last_activity_time = 0.0
+        except asyncio.CancelledError:
+            logger.debug(f"Timeout check loop cancelled for session {self.key}")
+        except Exception as e:
+            logger.error(f"Error in timeout check loop for session {self.key}: {e}")
+
+    async def stop_timeout_check(self) -> None:
+        """Stop the background timeout checking task."""
+        self._stop_timeout_check = True
+        if self._timeout_task:
+            try:
+                self._timeout_task.cancel()
+                await self._timeout_task
+            except asyncio.CancelledError:
+                pass
+            except Exception as e:
+                logger.error(f"Error stopping timeout check: {e}")
+            finally:
+                self._timeout_task = None
 
 
 class SessionManager:

@@ -468,6 +468,12 @@ class SessionConfig(BaseSettings):
 
     wakeup_words: list[str] = Field(default_factory=list)  # Wake words to trigger response
     wakeup_response: list[str] = Field(default_factory=list)  # Responses when wake word detected
+    goodbye_words: list[str] = Field(default_factory=list)  # Goodbye words to trigger response
+    goodbye_response: list[str] = Field(
+        default_factory=list
+    )  # Responses when goodbye word detected
+    timeout_seconds: int = 300  # Timeout threshold in seconds (default: 5 minutes)
+    check_interval: float = 10.0  # How often to check for timeout in seconds (default: 10 seconds)
 
 
 class Config(BaseSettings):
