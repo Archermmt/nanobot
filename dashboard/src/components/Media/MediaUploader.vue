@@ -88,8 +88,7 @@ const startRecording = async () => {
           data: e.target?.result as string,
           type: 'audio/webm',
           name: `recording_${Date.now()}.webm`,
-          isRecording: true,
-          needTts: props.enableSpeak // Add need_tts flag based on enableSpeak
+          isRecording: true
         })
       }
       reader.readAsDataURL(audioBlob)

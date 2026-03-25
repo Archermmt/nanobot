@@ -320,6 +320,7 @@ const sendMessage = async (data: string | { text: string; images: Array<{ data: 
       ...images.map(img => ({ data: img.data, file_name: img.name })),
       ...files.map(file => ({ data: file.data, file_name: file.name }))
     ]
+    console.log('[TMINFO] Sending message with enableSpeak: ', props.enableSpeak)
 
     const messageData: {
       type: string
@@ -397,7 +398,7 @@ const handleFileUpload = async (fileData: { data: string; type: string; name: st
   console.log('File queued for upload:', fileData.name)
 }
 
-const handleAudioUpload = async (audioData: { data: string; type: string; isRecording?: boolean; needTts?: boolean }) => {
+const handleAudioUpload = async (audioData: { data: string; type: string; isRecording?: boolean }) => {
   // Add audio to messages
   messages.value.push({
     role: 'user',
@@ -425,7 +426,7 @@ const handleAudioUpload = async (audioData: { data: string; type: string; isReco
         msg_type: 'audio',  // Indicate this is an audio message
         file_type: audioData.type,
         is_recording: audioData.isRecording,
-        need_tts: audioData.needTts || false  // Add need_tts flag
+        need_tts: props.enableSpeak
       }
     }
 

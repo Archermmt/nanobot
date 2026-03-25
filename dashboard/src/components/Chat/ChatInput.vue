@@ -31,10 +31,6 @@ const pendingImages = ref<PendingMedia[]>([])
 const pendingFiles = ref<PendingMedia[]>([])
 const userHistoryMessages = ref<string[]>([])
 
-const hasChineseCharacters = computed(() => {
-  return /[\u4e00-\u9fa5]/.test(input.value);
-})
-
 // Use userHistoryMessages ref directly instead of computed from props
 const userHistory = computed(() => {
   return userHistoryMessages.value.slice().reverse()
