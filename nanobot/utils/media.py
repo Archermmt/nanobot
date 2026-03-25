@@ -12,7 +12,9 @@ import numpy as np
 from loguru import logger
 
 
-def save_media(media_data: str, media_dir: Path, filename: str | None = None) -> tuple[Path, str]:
+def save_media(
+    media_data: str, filename: str | None = None, media_dir: Path | None = None
+) -> tuple[Path, str]:
     """
     保存媒体文件到指定目录
 
@@ -24,9 +26,14 @@ def save_media(media_data: str, media_dir: Path, filename: str | None = None) ->
     Returns:
         tuple[Path, str]: (文件路径，MIME 类型)
     """
+
     # Parse data URI
     header, b64_data = media_data.split(",", 1)
     mime_type = header.split(";")[0].replace("data:", "")
+
+    if not media_dir:
+        media_dir = Path.home() / ".nanobot" / "media"
+        media_dir.mkdir(parents=True, exist_ok=True)
 
     # Decode base64
     file_data = base64.b64decode(b64_data)

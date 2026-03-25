@@ -2,7 +2,6 @@
 
 import asyncio
 import json
-import random
 import uuid
 from collections import OrderedDict
 from enum import Enum
@@ -29,19 +28,6 @@ class TextMessageType(Enum):
     MCP = "mcp"
     SERVER = "server"
     PING = "ping"
-
-
-WAKEUP_RESPONSE = [
-    "我一直都在呢，您请说。",
-    "在的呢，请随时吩咐我。",
-    "来啦来啦，请告诉我吧。",
-    "您请说，我正听着。",
-    "请您讲话，我准备好了。",
-    "请您说出指令吧。",
-    "我认真听着呢，请讲。",
-    "请问您需要什么帮助？",
-    "我在这里，等候您的指令。",
-]
 
 
 class AuthenticationError(Exception):
@@ -104,8 +90,8 @@ class XiaoZhiChannel(BaseChannel):
         self._processed_message_ids: OrderedDict[str, None] = OrderedDict()  # Ordered dedup cache
         self.config_lock = asyncio.Lock()
         self.session_id = str(uuid.uuid4())[:8]
-        self.audio_format = "opus"
         self.features = {}
+        self._mcp_result_queue: asyncio.Queue = asyncio.Queue()  # Queue for MCP results
 
     async def start(self) -> None:
         """Start the WebSocket server and begin listening for connections."""
@@ -371,14 +357,6 @@ class XiaoZhiChannel(BaseChannel):
             logger.warning("No text in msg_data, nothing to response")
             return
 
-        if msg_data["text"] in self.config.wakeup_words:
-            await self._handle_message(
-                sender_id=self.session_id,
-                chat_id=msg_data.get("chat_id", client_info["client_id"]),
-                content=random.choice(WAKEUP_RESPONSE),
-                metadata={"need_tts": True, "passby": True},
-            )
-            return
         await self._start_to_chat(msg_data, client_info)
         return
 
@@ -399,7 +377,6 @@ class XiaoZhiChannel(BaseChannel):
         }
         audio_params = msg_data.get("audio_params")
         if audio_params:
-            self.audio_format = audio_params.get("format")
             response["audio_params"] = audio_params
         self.features = msg_data.get("features", {})
         if self.features.get("mcp"):
@@ -463,6 +440,7 @@ class XiaoZhiChannel(BaseChannel):
                         "name": name,
                         "description": description,
                         "inputSchema": input_schema,
+                        "tool_id": i + 3,
                     }
                     mcp_tools.append(new_tool)
                     logger.debug(f"客户端工具 #{i + 1}: {name}")
@@ -472,10 +450,25 @@ class XiaoZhiChannel(BaseChannel):
                 content="/register_extern_tools",
                 metadata={
                     "type": "xiaozhi",
-                    "kwargs": {"websocket": self._ws, "timeout": 30},
+                    "kwargs": {
+                        "websocket": self._ws,
+                        "timeout": 30,
+                        "result_queue": self._mcp_result_queue,
+                    },
                     "tools": mcp_tools,
                 },
             )
+            return
+
+        # Handle tool call results (msg_id > 2)
+        if msg_id > 2:
+            logger.debug(f"收到 MCP 工具调用结果，msg_id={msg_id}")
+            # Put result into queue for tool to fetch
+            try:
+                await self._mcp_result_queue.put({"msg_id": msg_id, "result": result})
+                logger.debug(f"已将工具调用结果放入队列，msg_id={msg_id}")
+            except Exception as e:
+                logger.error(f"放置工具调用结果到队列失败：{e}")
 
     async def _send_mcp_initialize_message(self):
         """发送MCP初始化消息"""
@@ -549,7 +542,7 @@ class XiaoZhiChannel(BaseChannel):
         # Ignore some cases
         if msg.metadata.get("_response_for", "") == "register_extern_tools":
             return
-        if msg.metadata.get("_progress", False) or msg.metadata.get("mode_hint", ""):
+        if msg.metadata.get("_progress", False) or msg.metadata.get("_hide_from_ui", False):
             return
 
         # Find the appropriate client connection
@@ -572,7 +565,7 @@ class XiaoZhiChannel(BaseChannel):
             play_time = len(msg.media) * self.config.frame_duration / 1000.0
             await asyncio.sleep(play_time)
             await self._send_tts_message("stop", websocket=target_ws)
-        elif "mode_hint" not in msg.metadata:
+        else:
             target_ws.send(
                 json.dumps({"type": "stt", "text": msg.content, "session_id": self.session_id})
             )

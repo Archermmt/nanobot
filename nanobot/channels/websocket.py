@@ -54,6 +54,7 @@ class WebSocketChannel(BaseChannel):
         self._heartbeat_task: asyncio.Task | None = None
         self._reconnect_task: asyncio.Task | None = None
         self._connected = False
+        self._mcp_result_queue: asyncio.Queue = asyncio.Queue()  # Queue for MCP results
 
     async def start(self) -> None:
         """Start the WebSocket channel with reconnection logic."""
@@ -330,8 +331,12 @@ class WebSocketChannel(BaseChannel):
                 chat_id=chat_id,
                 content="/register_extern_tools",
                 metadata={
-                    "type": "xiaozhi",
-                    "kwargs": {"websocket": self._ws, "timeout": 30},
+                    "type": "websocket",
+                    "kwargs": {
+                        "websocket": self._ws,
+                        "timeout": 30,
+                        "result_queue": self._mcp_result_queue,
+                    },
                     "tools": mcp_tools,
                 },
             )
@@ -340,7 +345,16 @@ class WebSocketChannel(BaseChannel):
             # Respond to heartbeat
             await self._send_heartbeat_response()
             return
-        elif msg_type != "message":
+        if msg_type == "tool_call":
+            print("[TMNIFO] get tool_call result " + str(msg_data))
+            # Put result into queue for tool to fetch
+            try:
+                tool_name = metadata["tool_name"]
+                await self._mcp_result_queue.put({"tool_name": tool_name, "message": msg_data})
+                logger.debug(f"已将工具调用结果放入队列，tool_name={tool_name}")
+            except Exception as e:
+                logger.error(f"放置工具调用结果到队列失败：{e}")
+        if msg_type != "message":
             # Ignore unknown message types
             return
 
@@ -372,7 +386,7 @@ class WebSocketChannel(BaseChannel):
                     media_data, filename = media_item["data"], media_item.get("file_name", "")
                     if isinstance(media_data, str) and media_data.startswith("data:"):
                         try:
-                            file_path, filename = save_media(media_data, media_dir, filename)
+                            file_path, filename = save_media(media_data, filename)
                             logger.info("Saved audio file to: {}", file_path)
                         except Exception as e:
                             logger.error("Failed to save audio media: {}", e)
@@ -400,7 +414,7 @@ class WebSocketChannel(BaseChannel):
                 # Check if media is base64 data (data URL format: data:<mime>;base64,<data>)
                 if isinstance(media_data, str) and media_data.startswith("data:"):
                     try:
-                        file_path, filename = save_media(media_data, media_dir, filename)
+                        file_path, filename = save_media(media_data, filename)
                         media_paths.append(str(file_path))
                         content_parts.append(f"{filename}({meta_type}) saved to {file_path}")
                     except Exception as e:

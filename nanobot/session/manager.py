@@ -13,7 +13,7 @@ from typing import Any
 
 from loguru import logger
 
-from nanobot.bus.events import InboundMessage
+from nanobot.bus.events import InboundMessage, OutboundMessage
 from nanobot.config.schema import SessionConfig
 from nanobot.utils.helpers import ensure_dir, safe_filename
 
@@ -55,7 +55,7 @@ class Session:
     updated_at: datetime = field(default_factory=datetime.now)
     metadata: dict[str, Any] = field(default_factory=dict)
     last_consolidated: int = 0  # Number of messages already consolidated to files
-    last_activity_time: float = 0.0  # Last activity timestamp in milliseconds
+    _last_activity_time: float = 0.0  # Last activity timestamp in milliseconds
     _status: ChatStatus = field(default=ChatStatus.MUTE)  # Current chat status
     _timeout_task: Any = None  # Background timeout check task
     _stop_timeout_check: bool = False  # Flag to stop timeout checking
@@ -66,6 +66,11 @@ class Session:
         self.goodbye_words = config.goodbye_words
         self.goodbye_response = config.goodbye_response
         self._status = ChatStatus.MUTE if self.wakeup_words else ChatStatus.LISTEN
+        self._default_channel = None
+        self._default_chat_id = None
+        self._default_message_id = None
+        self._send_callback = None
+        self._last_meta = None
         # Start background timeout checking task
         if self.wakeup_words:
             self._stop_timeout_check = False
@@ -121,7 +126,8 @@ class Session:
 
         # Update last activity time when in LISTEN state and received a message
         if self._status == ChatStatus.LISTEN:
-            self.last_activity_time = time.time() * 1000
+            self._last_meta = msg.metadata
+            self._last_activity_time = time.time() * 1000
 
         return {"status": self._status, "response": response}
 
@@ -139,14 +145,25 @@ class Session:
             while not self._stop_timeout_check:
                 await asyncio.sleep(check_interval)
 
-                # Only check timeout if last_activity_time has been initialized
-                if self.last_activity_time > 0.0:
+                # Only check timeout if _last_activity_time has been initialized
+                if self._last_activity_time > 0.0:
                     current_time = time.time() * 1000
-                    if current_time - self.last_activity_time > timeout_seconds * 1000:
+                    if current_time - self._last_activity_time > timeout_seconds * 1000:
                         logger.info(f"Session {self.key} timed out, setting status to MUTE")
                         self._status = ChatStatus.MUTE
-                        # Reset last_activity_time to avoid repeated triggers
-                        self.last_activity_time = 0.0
+                        # Reset _last_activity_time to avoid repeated triggers
+                        self._last_activity_time = 0.0
+                        if self.goodbye_response:
+                            content = random.choice(self.goodbye_response)
+                        else:
+                            content = "GoodBye"
+                        msg = OutboundMessage(
+                            channel=self._default_channel,
+                            chat_id=self._default_chat_id,
+                            content=content,
+                            metadata=self._last_meta,
+                        )
+                        await self._send_callback(msg)
         except asyncio.CancelledError:
             logger.debug(f"Timeout check loop cancelled for session {self.key}")
         except Exception as e:
@@ -165,6 +182,16 @@ class Session:
                 logger.error(f"Error stopping timeout check: {e}")
             finally:
                 self._timeout_task = None
+
+    def set_send_callback(self, send_callback) -> None:
+        """Set the callback for sending messages."""
+        self._send_callback = send_callback
+
+    def set_context(self, channel: str, chat_id: str, message_id: str | None = None) -> None:
+        """Set the current message context."""
+        self._default_channel = channel
+        self._default_chat_id = chat_id
+        self._default_message_id = message_id
 
 
 class SessionManager:
@@ -252,13 +279,15 @@ class SessionManager:
                     else:
                         messages.append(data)
 
-            return Session(
+            session = Session(
                 key=key,
                 messages=messages,
                 created_at=created_at or datetime.now(),
                 metadata=metadata,
                 last_consolidated=last_consolidated,
             )
+            session.setup(self._config)
+            return session
         except Exception as e:
             logger.warning("Failed to load session {}: {}", key, e)
             return None

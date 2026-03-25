@@ -15,25 +15,21 @@ class ExternTool(Tool):
 
     _registered_types: dict[str, Type["ExternTool"]] = {}
 
-    def __init__(self, spec: dict[str, Any], **kwargs) -> None:
+    def __init__(self, **kwargs) -> None:
         """
         Initialize the external tool.
 
         Args:
-            workspace: The workspace path for tool execution context.
-            spec: Tool specification containing:
-                - name: Tool name used in function calls.
-                - description: Description of what the tool does.
-                - inputSchema: JSON Schema for tool parameters (maps to parameters).
+            **kwargs: Tool-specific parameters.
         """
 
         required = ["name", "description", "inputSchema"]
         for key in required:
-            if key not in spec:
+            if key not in kwargs:
                 raise ValueError(f"Missing required key in spec: {key}")
-        self._name = spec["name"]
-        self._description = spec["description"]
-        self._parameters = spec["inputSchema"]
+        self._name = kwargs["name"]
+        self._description = kwargs["description"]
+        self._parameters = kwargs["inputSchema"]
         self.setup(kwargs)
 
     def setup(self, kwargs: dict[str, Any]) -> None:

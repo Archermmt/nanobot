@@ -234,7 +234,6 @@ class XiaoZhiConfig(Base):
     mqtt_signature_key: str = ""  # MQTT signature key for password generation
     read_config_from_api: bool = False
     depends_folder: str = "~/.nanobot/depends/xiaozhi"
-    wakeup_words: list[str] = Field(default_factory=lambda: ["你好小智"])  # Wakeup words list
     frame_duration: int = 60  # Frame duration in milliseconds
 
 

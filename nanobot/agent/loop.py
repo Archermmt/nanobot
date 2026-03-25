@@ -536,7 +536,8 @@ class AgentLoop:
                 # Register each tool spec as an instance of the ExternTool subclass
                 for spec in metadata["tools"]:
                     try:
-                        tool_instance = tool_class(spec=spec, **kwargs)
+                        spec.update(kwargs)
+                        tool_instance = tool_class(**spec)
                         self.tools.register(tool_instance)
                         logger.info(f"Registered extern tool({tool_type}): {tool_instance.name}")
                         tools.append(tool_instance.name)
@@ -557,15 +558,32 @@ class AgentLoop:
             return OutboundMessage(
                 channel=msg.channel, chat_id=msg.chat_id, content=msg.content, metadata=msg.metadata
             )
+        if msg.metadata.get("_as_input", False):
+            msg.metadata.pop("_as_input")
+            meta = dict(msg.metadata)
+            await self.bus.publish_outbound(
+                OutboundMessage(
+                    channel=msg.channel,
+                    chat_id=msg.chat_id,
+                    content=msg.content,
+                    metadata={**meta, "_as_input": True, "_progress": True},
+                )
+            )
+        session.set_send_callback(send_callback=self.bus.publish_outbound)
+        session.set_context(msg.channel, msg.chat_id)
         s_info = session.check_status(msg)
-        if s_info["status"] == ChatStatus.MUTE:
-            return
         if s_info.get("response"):
             return OutboundMessage(
                 channel=msg.channel,
                 chat_id=msg.chat_id,
                 content=s_info["response"],
                 metadata=msg.metadata,
+            )
+        if s_info["status"] == ChatStatus.MUTE:
+            return OutboundMessage(
+                channel=msg.channel,
+                chat_id=msg.chat_id,
+                content="Session muted, please wake up the assistant.",
             )
 
         unconsolidated = len(session.messages) - session.last_consolidated
@@ -601,18 +619,6 @@ class AgentLoop:
             channel=msg.channel,
             chat_id=msg.chat_id,
         )
-
-        if msg.metadata.get("_as_input", False):
-            msg.metadata.pop("_as_input")
-            meta = dict(msg.metadata)
-            await self.bus.publish_outbound(
-                OutboundMessage(
-                    channel=msg.channel,
-                    chat_id=msg.chat_id,
-                    content=msg.content,
-                    metadata={**meta, "_as_input": True, "_progress": True},
-                )
-            )
 
         async def _bus_progress(content: str, *, tool_hint: bool = False) -> None:
             meta = dict(msg.metadata or {})

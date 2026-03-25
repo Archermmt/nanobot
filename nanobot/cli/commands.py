@@ -321,7 +321,7 @@ def gateway(
     sync_workspace_templates(config.workspace_path)
     bus = MessageBus(config.bus)
     provider = _make_provider(config)
-    session_manager = SessionManager(config.workspace_path)
+    session_manager = SessionManager(config.workspace_path, config.session)
 
     # Create cron service first (callback set after agent creation)
     # Use workspace path for per-instance cron store

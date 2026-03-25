@@ -16,39 +16,13 @@ class XiaozhiTool(ExternTool):
     allowing remote tool execution on Xiaozhi devices.
     """
 
-    def __init__(self, spec: dict[str, Any], **kwargs) -> None:
-        super().__init__(spec, **kwargs)
-        self._websocket = None
-        self._timeout = 30
-        self._next_id = 1
-        self._lock = asyncio.Lock()
-
-    @classmethod
-    def __init_subclass__(cls, **kwargs):
-        """Automatically register subclasses with type 'xiaozhi'."""
-        super().__init_subclass__(**kwargs)
-        ExternTool.register_type("xiaozhi", cls)
-
     def setup(self, kwargs: dict[str, Any]) -> None:
         """Setup the tool with WebSocket connection from kwargs."""
         if "websocket" in kwargs:
             self._websocket = kwargs["websocket"]
         self._timeout = kwargs.get("timeout", 30)
-
-    async def _get_next_id(self) -> int:
-        """Get next unique ID for tool calls."""
-        async with self._lock:
-            current_id = self._next_id
-            self._next_id += 1
-            return current_id
-
-    async def _send_mcp_message(self, payload: dict) -> None:
-        """Send MCP message via WebSocket."""
-        if not self._websocket:
-            raise RuntimeError("WebSocket not initialized")
-
-        message = json.dumps({"type": "mcp", "payload": payload})
-        await self._websocket.send(message)
+        self._result_queue = kwargs.get("result_queue")  # Queue for fetching MCP results
+        self._tool_id = kwargs.get("tool_id", 1)
 
     async def execute(self, **kwargs: Any) -> str:
         """
@@ -71,9 +45,6 @@ class XiaozhiTool(ExternTool):
         args = kwargs.get("args", "{}")
         if not self._websocket:
             raise RuntimeError("WebSocket not initialized")
-
-        # Get next ID and create future for result
-        tool_call_id = await self._get_next_id()
 
         # Process arguments
         try:
@@ -120,17 +91,29 @@ class XiaozhiTool(ExternTool):
         # Send tool call request
         payload = {
             "jsonrpc": "2.0",
-            "id": tool_call_id,
+            "id": self._tool_id,
             "method": "tools/call",
             "params": {"name": self.name, "arguments": arguments},
         }
 
-        await self._send_mcp_message(payload)
-        result_future = asyncio.Future()
+        message = json.dumps({"type": "mcp", "payload": payload})
+        await self._websocket.send(message)
 
         try:
-            # Wait for response or timeout
-            raw_result = await asyncio.wait_for(result_future, timeout=self._timeout)
+            raw_result = None
+            while True:
+                # Get result from queue
+                result_data = await asyncio.wait_for(
+                    self._result_queue.get(), timeout=self._timeout
+                )
+                # Check if msg_id matches
+                if result_data["msg_id"] == self._tool_id:
+                    raw_result = result_data["result"]
+                    break
+                else:
+                    # Put back to queue if not matching
+                    await self._result_queue.put(result_data)
+                    await asyncio.sleep(0.1)
 
             if isinstance(raw_result, dict):
                 if raw_result.get("isError") is True:
