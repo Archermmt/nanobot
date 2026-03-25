@@ -38,6 +38,8 @@ const emit = defineEmits(['send', 'new-chat', 'clear-chat', 'upload-image', 'upl
 const messages = ref<Message[]>([])
 const isLoading = ref(false)
 const sessionId = ref(`session_${Date.now()}`)
+const senderId = ref('web_user')  // Global sender ID
+const chatId = ref('default_room')  // Global chat ID
 const currentAudio = ref<HTMLAudioElement | null>(null)
 const currentTimeoutId = ref<number | null>(null)
 const chatInputRef = ref<InstanceType<typeof ChatInput> | null>(null)
@@ -340,8 +342,8 @@ const sendMessage = async (data: string | { text: string; images: Array<{ data: 
     } = {
       type: 'message',
       message_id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      sender_id: 'web_user',
-      chat_id: 'default_room',
+      sender_id: senderId.value,
+      chat_id: chatId.value,
       content: text,
       media: mediaItems,
       metadata: {
@@ -411,8 +413,8 @@ const handleAudioUpload = async (audioData: { data: string; type: string; isReco
     const messageData = {
       type: 'message',
       message_id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      sender_id: 'web_user',
-      chat_id: 'default_room',
+      sender_id: senderId.value,
+      chat_id: chatId.value,
       content: '',  // Empty content for audio-only messages
       media: [{
         data: audioData.data,
@@ -464,8 +466,8 @@ const handleSendStatus = () => {
     const statusMsg = {
       type: 'message',
       message_id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      sender_id: 'web_user',
-      chat_id: 'default_room',
+      sender_id: senderId.value,
+      chat_id: chatId.value,
       content: '/status',
       media: [],
       metadata: {
@@ -511,8 +513,8 @@ const handleConnected = () => {
   const statusMsg = {
     type: 'message',
     message_id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-    sender_id: 'web_user',
-    chat_id: 'default_room',
+    sender_id: senderId.value,
+    chat_id: chatId.value,
     content: '/status',
     media: [],
     metadata: {
@@ -531,8 +533,8 @@ const handleConnected = () => {
       const historyMsg = {
         type: 'message',
         message_id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        sender_id: 'web_user',
-        chat_id: 'default_room',
+        sender_id: senderId.value,
+        chat_id: chatId.value,
         content: '/history',
         media: [],
         metadata: {
@@ -560,8 +562,8 @@ const handleNewChat = () => {
     const newChatMsg = {
       type: 'message',
       message_id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      sender_id: 'web_user',
-      chat_id: 'default_room',
+      sender_id: senderId.value,
+      chat_id: chatId.value,
       content: '/new',
       media: [],
       metadata: {
@@ -599,8 +601,8 @@ const handleClearChat = () => {
     const clearMsg = {
       type: 'message',
       message_id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      sender_id: 'web_user',
-      chat_id: 'default_room',
+      sender_id: senderId.value,
+      chat_id: chatId.value,
       content: '/clear',
       media: [],
       metadata: {
