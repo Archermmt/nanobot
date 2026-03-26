@@ -34,7 +34,7 @@ interface Message {
 
 interface Props {
   messages: Message[]
-  isLoading: boolean
+  isThinking: boolean
   showProgressMessages?: boolean
   playingAudioUrl?: string | null
 }
@@ -301,7 +301,7 @@ const scrollToBottom = () => {
 
 // Watch for messages changes and scroll to bottom
 watch(() => props.messages, scrollToBottom, { deep: true })
-watch(() => props.isLoading, scrollToBottom)
+watch(() => props.isThinking, scrollToBottom)
 watch(() => props.showProgressMessages, scrollToBottom)
 </script>
 
@@ -402,7 +402,7 @@ watch(() => props.showProgressMessages, scrollToBottom)
     </div>
 
     <!-- Loading Indicator -->
-    <div v-if="props.isLoading" class="flex justify-start">
+    <div v-if="props.isThinking" class="flex justify-start">
       <div
         class="bg-gradient-to-br from-yellow-100 to-yellow-200 border border-yellow-300 rounded shadow-[4px_4px_0_rgba(0,0,0,0.5)] px-4 py-3">
         <div class="flex items-center space-x-2">

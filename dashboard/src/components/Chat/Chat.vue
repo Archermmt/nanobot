@@ -36,7 +36,7 @@ const props = defineProps<{
 const emit = defineEmits(['send', 'new-chat', 'clear-chat', 'upload-image', 'upload-audio', 'upload-file', 'ws-status-change', 'send-status', 'status-update', 'thinking-change', 'stop-audio'])
 
 const messages = ref<Message[]>([])
-const isLoading = ref(false)
+const isThinking = ref(false)
 const sessionId = ref(`session_${Date.now()}`)
 const senderId = ref('web_user')  // Global sender ID
 const chatId = ref('default_room')  // Global chat ID
@@ -246,9 +246,9 @@ const handleWebSocketMessage = (event: MessageEvent) => {
         handleSendStatus()
       }
 
-      // Only set isLoading to false if _progress is not true
+      // Only set isThinking to false if _progress is not true
       if (!data.metadata?._progress) {
-        isLoading.value = false
+        isThinking.value = false
       }
     } else if (data.type === 'heartbeat') {
       // Reply to heartbeat
@@ -265,15 +265,15 @@ const handleWebSocketMessage = (event: MessageEvent) => {
         content: `Error: ${data.message || data.data}`,
         timestamp: Date.now()
       })
-      isLoading.value = false
+      isThinking.value = false
     }
   } catch (e) {
     console.error('Failed to parse message:', e)
   }
 }
 
-// Unified message sending function
-const sendMessage = async (data: string | { text: string; images: Array<{ data: string; type: string; name: string }>; files: Array<{ data: string; type: string; name: string }> }, hideFromUI = false) => {
+// Unified message sending function for all types of messages
+const sendMessage = async (data: string | { text: string; images?: Array<{ data: string; type: string; name: string }>; files?: Array<{ data: string; type: string; name: string }> }, hideFromUI = false, extraMetadata?: Record<string, any>) => {
   // Handle both old string format and new object format
   let text = ''
   let images: Array<{ data: string; type: string; name: string }> = []
@@ -320,7 +320,7 @@ const sendMessage = async (data: string | { text: string; images: Array<{ data: 
     ]
 
     const messageData: {
-      type: string
+      type: 'message' | 'mcp'
       message_id: string
       sender_id: string
       chat_id: string
@@ -334,9 +334,10 @@ const sendMessage = async (data: string | { text: string; images: Array<{ data: 
         file_type?: string
         features?: { need_tts: boolean }
         reset?: boolean
-      }
+        payload?: any
+      } & Record<string, any>
     } = {
-      type: 'message',
+      type: "message",
       message_id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       sender_id: senderId.value,
       chat_id: chatId.value,
@@ -346,6 +347,7 @@ const sendMessage = async (data: string | { text: string; images: Array<{ data: 
         source: 'web_dashboard',
         timestamp: Date.now(),
         session_id: sessionId.value,
+        ...extraMetadata
       }
     }
 
@@ -360,12 +362,12 @@ const sendMessage = async (data: string | { text: string; images: Array<{ data: 
 
     console.log('📤 Sending message:', messageData)
     ws.send(JSON.stringify(messageData))
-    isLoading.value = true
+    isThinking.value = true
 
     // Set timeout: if no response within 30 seconds, stop loading
     const timeoutId = setTimeout(() => {
-      if (isLoading.value) {
-        isLoading.value = false
+      if (isThinking.value) {
+        isThinking.value = false
         console.warn('No response received within 30 seconds')
       }
     }, 30000)
@@ -380,58 +382,18 @@ const sendMessage = async (data: string | { text: string; images: Array<{ data: 
       content: 'WebSocket not connected. Please connect first.',
       timestamp: Date.now()
     })
-    isLoading.value = false
-  }
-}
-
-// Helper function to send control commands
-const sendCommand = (command: string, hideFromUI = false, extraMetadata?: Record<string, any>) => {
-  if (!ws || ws.readyState !== WebSocket.OPEN) {
-    console.log(`⚠️ Cannot send ${command}: WebSocket not connected`)
-    messages.value.push({
-      role: 'system',
-      content: 'WebSocket not connected. Please connect first.',
-      timestamp: Date.now()
-    })
-    return
-  }
-
-  const messageData = {
-    type: 'message',
-    message_id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-    sender_id: senderId.value,
-    chat_id: chatId.value,
-    content: command,
-    media: [],
-    metadata: {
-      source: 'web_dashboard',
-      timestamp: Date.now(),
-      session_id: sessionId.value,
-      ...extraMetadata
-    }
-  }
-
-  console.log(`📤 Sending ${command} command:`, messageData)
-  ws.send(JSON.stringify(messageData))
-
-  // Add to UI if not hidden
-  if (!hideFromUI) {
-    messages.value.push({
-      role: 'user',
-      content: command,
-      timestamp: Date.now()
-    })
+    isThinking.value = false
   }
 }
 
 // Wrapper for status command
 const handleSendStatus = () => {
-  sendCommand('/status')
+  sendMessage('/status', true)
 }
 
 // Wrapper for new chat command
 const handleNewChat = () => {
-  sendCommand('/new')
+  sendMessage('/new', true)
   // Clear messages and input history
   messages.value = []
   if (chatInputRef.value) {
@@ -441,83 +403,13 @@ const handleNewChat = () => {
 
 // Wrapper for clear chat command
 const handleClearChat = () => {
-  sendCommand('/clear')
+  sendMessage('/clear', true)
   // Clear messages and input history
   messages.value = []
   if (chatInputRef.value) {
     chatInputRef.value.handleUpdateUserHistory([])
   }
 }
-
-// Wrapper for history command (always hidden)
-const sendHistoryCommand = () => {
-  sendCommand('/history', true)
-}
-
-const handleImageUpload = async (imageData: { data: string; type: string; name: string }) => {
-  // This is now handled by ChatInput - images are queued and sent with text
-  console.log('Image queued for upload:', imageData.name)
-}
-
-const handleFileUpload = async (fileData: { data: string; type: string; name: string }) => {
-  // This is now handled by ChatInput - files are queued and sent with text
-  console.log('File queued for upload:', fileData.name)
-}
-
-const handleAudioUpload = async (audioData: { data: string; type: string; isRecording?: boolean }) => {
-  // Add audio to messages
-  messages.value.push({
-    role: 'user',
-    content: audioData.isRecording ? 'Recorded voice message' : 'Uploaded audio',
-    timestamp: Date.now(),
-    audioUrl: audioData.data
-  })
-
-  // Send audio using unified sendCommand helper
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    const messageData = {
-      type: 'message',
-      message_id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      sender_id: senderId.value,
-      chat_id: chatId.value,
-      content: '',
-      media: [{
-        data: audioData.data,
-        file_name: `audio_${Date.now()}.${audioData.type.split('/').pop()}`
-      }],
-      metadata: {
-        source: 'web_dashboard',
-        timestamp: Date.now(),
-        session_id: sessionId.value,
-        msg_type: 'audio',
-        file_type: audioData.type,
-      }
-    }
-
-    console.log('📤 Sending audio message:', messageData)
-    isLoading.value = true
-    ws.send(JSON.stringify(messageData))
-
-    // Set timeout: if no response within 30 seconds, stop loading
-    const timeoutId = setTimeout(() => {
-      if (isLoading.value) {
-        isLoading.value = false
-        console.warn('No response received within 30 seconds')
-      }
-    }, 30000)
-
-    // Store timeout ID in a ref so we can clear it on message receive
-    currentTimeoutId.value = timeoutId
-  } else {
-    messages.value.push({
-      role: 'system',
-      content: 'WebSocket not connected. Please connect first.',
-      timestamp: Date.now()
-    })
-  }
-}
-
-
 
 const handleConnected = () => {
   if (!ws || ws.readyState !== WebSocket.OPEN) {
@@ -530,6 +422,7 @@ const handleConnected = () => {
     return
   }
 
+  isThinking.value = false
   // Clear messages on successful connection
   messages.value = []
 
@@ -541,40 +434,16 @@ const handleConnected = () => {
   })
 
   // Send /status for initialization (hidden from chat)
-  sendCommand('/status', true)
+  sendMessage('/status', true)
 
   // Send /history after 500ms to load history for input cache
-  setTimeout(() => {
-    sendHistoryCommand()
-  }, 500)
-
-  // Send MCP tools list to backend
-  const mcpTools = defaultMcpTools
-  const mcpMessageData = {
-    type: 'mcp',
-    message_id: `mcp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-    sender_id: senderId.value,
-    chat_id: chatId.value,
-    content: 'register_mcp_tools',
-    media: [],
-    metadata: {
-      source: 'web_dashboard',
-      timestamp: Date.now(),
-      session_id: sessionId.value,
-      payload: {
-        jsonrpc: '2.0',
-        id: 2, // Using ID 2 for tools/list request
-        result: {
-          tools: mcpTools
-        }
-      }
-    }
-  }
-  console.log('📦 Sending MCP tools list to backend:', mcpMessageData)
-  ws.send(JSON.stringify(mcpMessageData))
+  setTimeout(() => { sendMessage('/history', true) }, 500)
 
   // Send /update_features with reset flag on connection
-  sendCommand('/update_features', false, { reset: true })
+  sendMessage('/update_features', true, { reset: true })
+
+  // Send tools list to backend
+  sendMessage('/register_extern_tools', true, { tools: defaultMcpTools })
 }
 
 // Toggle speak feature and send update to backend
@@ -585,16 +454,12 @@ const toggleSpeak = (need_tts: boolean) => {
   }
 
   // Send /update_features message with need_tts in features
-  sendCommand('/update_features', false, {
+  sendMessage('/update_features', true, {
     features: {
       need_tts: need_tts
     }
   })
 }
-
-
-
-
 
 const handleThinkingChange = (isThinking: boolean) => {
   emit('thinking-change', isThinking)
@@ -626,7 +491,7 @@ const stopAudio = () => {
     currentAudio.value.pause()
     playingAudioUrl.value = null
     currentAudio.value = null
-    isLoading.value = false
+    isThinking.value = false
   }
 
   // Stop remote speaking (opus playback)
@@ -645,7 +510,7 @@ const stopAudio = () => {
           lastMsg.metadata.isPlayingOpus = false
         }
       }
-      isLoading.value = false
+      isThinking.value = false
     }, 1000)
   }
 }
@@ -673,7 +538,7 @@ const handleTTSMessage = async (data: any) => {
     }
   } else if (state === 'sentence_end') {
     console.log(`语音段结束`)
-    isLoading.value = false
+    isThinking.value = false
   } else if (state === 'stop') {
     stopAudio()
   }
@@ -703,8 +568,6 @@ const handleOpusAudioFrame = async (data: Blob | ArrayBuffer) => {
   }
 }
 
-
-
 // No longer automatically connect on mounted
 onMounted(() => {
   // Don't automatically connect on initialization
@@ -725,7 +588,7 @@ onUnmounted(() => {
 
 // Expose reactive state and methods to parent component
 defineExpose({
-  isLoading,
+  isThinking,
   isRemoteSpeaking,
   playingAudioUrl,
   setWebSocket,
@@ -739,15 +602,14 @@ defineExpose({
 <template>
   <div class="flex flex-col h-full chat-container">
     <!-- Messages -->
-    <MessageList :messages="messages" :isLoading="isLoading" @play-audio="playAudio" @stop-audio="stopAudio"
+    <MessageList :messages="messages" :isThinking="isThinking" @play-audio="playAudio" @stop-audio="stopAudio"
       :show-progress-messages="props.showProgressMessages" :playing-audio-url="playingAudioUrl"
       @thinking-change="handleThinkingChange" />
 
     <!-- Input -->
-    <ChatInput ref="chatInputRef" :isLoading="isLoading" :disabled="!isConnected"
+    <ChatInput ref="chatInputRef" :isThinking="isThinking" :disabled="!isConnected"
       :is-microphone-on="props.isMicrophoneOn" :enable-audio="props.enableASR" :enable-speak="props.enableSpeak"
       :messages="messages" @send="sendMessage" @new-chat="handleNewChat" @clear-chat="handleClearChat"
-      @upload-image="handleImageUpload" @upload-audio="handleAudioUpload" @upload-file="handleFileUpload"
       @send-status="handleSendStatus" @stop-audio="stopAudio" />
   </div>
 </template>

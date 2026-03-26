@@ -325,18 +325,18 @@ const startOnlineChat = async () => {
         audioRecorder.setShouldSendAudioCallback(() => {
           // Don't send audio if:
           // 1. Remote is speaking (isPlayingOpus = true)
-          // 2. AI is thinking (isLoading = true)
+          // 2. AI is thinking (isThinking = true)
           // 3. Local audio is playing (playingAudioUrl != null)
           const isRemoteSpeaking = chatComponentRef.value?.isRemoteSpeaking === true
-          const isLoading = chatComponentRef.value?.isLoading === true
+          const isThinking = chatComponentRef.value?.isThinking === true
           const isPlayingAudio = chatComponentRef.value?.playingAudioUrl !== null && chatComponentRef.value?.playingAudioUrl !== undefined
 
-          const shouldBlock = isRemoteSpeaking || isLoading || isPlayingAudio
+          const shouldBlock = isRemoteSpeaking || isThinking || isPlayingAudio
 
           if (shouldBlock) {
             console.debug('⏸️ 暂停发送音频：', {
               isRemoteSpeaking,
-              isLoading,
+              isThinking,
               isPlayingAudio
             })
           }
