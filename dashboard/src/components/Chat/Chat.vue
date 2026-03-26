@@ -247,13 +247,10 @@ const handleWebSocketMessage = (event: MessageEvent) => {
       }
 
       // Only set isThinking to false if _progress is not true
-      if (!data.metadata?._progress) {
-        isThinking.value = false
-      }
-
-      // Set isThinking to true if _as_input is not true
-      if (!data.metadata?._as_input) {
+      if (data.metadata?._as_input) {
         isThinking.value = true
+      } else if (!data.metadata?._progress) {
+        isThinking.value = false
       }
     } else if (data.type === 'heartbeat') {
       // Reply to heartbeat
@@ -582,6 +579,7 @@ const handleOpusAudioFrame = async (data: Blob | ArrayBuffer) => {
   }
 }
 
+/*
 const handleAudioUpload = async (audioData: { data: string; type: string; isRecording?: boolean }) => {
   // Add audio to messages
   messages.value.push({
@@ -603,6 +601,60 @@ const handleAudioUpload = async (audioData: { data: string; type: string; isReco
     msg_type: 'audio',
     file_type: audioData.type
   })
+}
+*/
+
+const handleAudioUpload = async (audioData: { data: string; type: string; isRecording?: boolean }) => {
+  // Add audio to messages
+  messages.value.push({
+    role: 'user',
+    content: audioData.isRecording ? 'Recorded voice message' : 'Uploaded audio',
+    timestamp: Date.now(),
+    audioUrl: audioData.data
+  })
+
+  // Send audio using unified sendCommand helper
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    const messageData = {
+      type: 'message',
+      message_id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      sender_id: senderId.value,
+      chat_id: chatId.value,
+      content: '',
+      media: [{
+        data: audioData.data,
+        file_name: `audio_${Date.now()}.${audioData.type.split('/').pop()}`
+      }],
+      metadata: {
+        source: 'web_dashboard',
+        timestamp: Date.now(),
+        session_id: sessionId.value,
+        msg_type: 'audio',
+        file_type: audioData.type,
+      }
+    }
+
+    console.log('📤 Sending audio message:', messageData)
+    isThinking.value = true
+    ws.send(JSON.stringify(messageData))
+
+    // Set timeout: if no response within 30 seconds, stop loading
+    const timeoutId = setTimeout(() => {
+      if (isThinking.value) {
+        isThinking.value = false
+        console.warn('No response received within 30 seconds')
+      }
+    }, 30000)
+
+    // Store timeout ID in a ref so we can clear it on message receive
+    currentTimeoutId.value = timeoutId
+  } else {
+    messages.value.push({
+      role: 'system',
+      content: 'WebSocket not connected. Please connect first.',
+      timestamp: Date.now()
+    })
+  }
 }
 
 // No longer automatically connect on mounted
