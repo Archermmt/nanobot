@@ -319,8 +319,9 @@ const sendMessage = async (
     userMessage.imageUrl = images[0].data
   }
 
-  // Only add message to UI if not hidden
-  if (!isCommand) {
+  // Only add message to UI if not hidden and has text content
+  // For audio-only messages, don't show empty user message, only show ASR result
+  if (!isCommand && (text.trim() || audios.length === 0)) {
     messages.value.push(userMessage)
   }
 
@@ -387,8 +388,12 @@ const sendMessage = async (
 
     console.log('📤 Sending message:', messageData)
     ws.send(JSON.stringify(messageData))
-    if (!isCommand && audios.length == 0) {
-      chatStatus.value = "Thinking"
+    if (!isCommand) {
+      if (audios.length == 0) {
+        chatStatus.value = "Thinking"
+      } else {
+        chatStatus.value = "Listening"
+      }
     }
 
     // Set timeout: if no response within 30 seconds, stop loading
@@ -654,7 +659,7 @@ const handleAudioUpload = async (audioData: { data: string; type: string; isReco
 }
 */
 
-const handleAudioUpload = async (audioData: { data: string; type: string; isRecording?: boolean }) => {
+const handleAudioUploadCorrect = async (audioData: { data: string; type: string; isRecording?: boolean }) => {
   // Send audio using unified sendCommand helper
   if (ws && ws.readyState === WebSocket.OPEN) {
     const messageData = {
@@ -697,6 +702,22 @@ const handleAudioUpload = async (audioData: { data: string; type: string; isReco
       timestamp: Date.now()
     })
   }
+}
+
+// New implementation using sendMessage
+const handleAudioUpload = async (audioData: { data: string; type: string; isRecording?: boolean }) => {
+  // Use the unified sendMessage function to send audio
+  sendMessage({
+    text: '',
+    audios: [{
+      data: audioData.data,
+      type: audioData.type,
+      name: `audio_${Date.now()}.${audioData.type.split('/').pop()}`
+    }]
+  }, false, {
+    msg_type: 'audio',
+    file_type: audioData.type
+  })
 }
 
 // No longer automatically connect on mounted
