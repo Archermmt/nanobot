@@ -180,8 +180,8 @@ onMounted(() => {
   initApp()
 })
 
-const handleThinkingChange = (chatStatus: string) => {
-  if (chatStatus) {
+const handleChatStatusChange = (chatStatus: string) => {
+  if (chatStatus && ["Thinking", "Speaking", "Listening"].includes(chatStatus)) {
     // Start blinking effect with suffix
     let dots = 0
     thinkingInterval = window.setInterval(() => {
@@ -329,26 +329,30 @@ const startOnlineChat = async () => {
 
         // Set callback to check if audio should be sent
         audioRecorder.setShouldSendAudioCallback(() => {
-          // Don't send audio if:
-          // 1. Remote is speaking (isPlayingOpus = true)
-          // 2. AI is thinking (isThinking = true)
-          // 3. Local audio is playing (playingAudioUrl != null)
-          const isRemoteSpeaking = chatComponentRef.value?.isRemoteSpeaking === true
-          const isThinking = chatComponentRef.value?.isThinking === true
-          const isPlayingAudio = chatComponentRef.value?.playingAudioUrl !== null && chatComponentRef.value?.playingAudioUrl !== undefined
+          // Only check chatStatus, allow recording if status is not Thinking, Speaking, or Listening
+          const chatStatus = chatComponentRef.value?.chatStatus || ""
+          const canRecord = !["Thinking", "Speaking"].includes(chatStatus)
 
-          const shouldBlock = isRemoteSpeaking || isThinking || isPlayingAudio
-
-          if (shouldBlock) {
-            console.debug('⏸️ 暂停发送音频：', {
-              isRemoteSpeaking,
-              isThinking,
-              isPlayingAudio
-            })
+          if (!canRecord) {
+            console.debug('⏸️ 暂停发送音频，当前状态:', chatStatus)
+          } else {
+            // If can record and currently not in Listening state, set it to Listening
+            if (chatStatus !== "Listening") {
+              if (chatComponentRef.value) {
+                chatComponentRef.value.chatStatus = "Listening"
+              }
+            }
           }
 
-          return !shouldBlock
+          return canRecord
         })
+
+        // Set callback for recording stop to clear chatStatus
+        audioRecorder.onRecordingStop = () => {
+          if (chatComponentRef.value) {
+            chatComponentRef.value.chatStatus = ""
+          }
+        }
 
         await audioRecorder.start()
       }
@@ -458,7 +462,7 @@ document.addEventListener('mouseup', stopDragCamera)
       <!-- Content Area -->
       <main class="flex-1 overflow-hidden bg-gray-900">
         <Chat ref="chatComponentRef" v-show="currentSection === 'chat'" @status-update="handleStatusUpdate"
-          @ws-status-change="handleWsStatusChange" @chat-status-change="handleThinkingChange"
+          @ws-status-change="handleWsStatusChange" @chat-status-change="handleChatStatusChange"
           :show-progress-messages="!hideProgress" :is-online-chat-on="isOnlineChatOn" :enable-audio="enableASR"
           :enable-tts="enableTTS" :enable-speak="enableSpeak" />
         <div v-show="currentSection !== 'chat'" class="p-6 text-gray-500 text-center">

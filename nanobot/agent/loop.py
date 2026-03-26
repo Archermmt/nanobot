@@ -562,9 +562,12 @@ class AgentLoop:
                 self._features = {}
             else:
                 self._features.update(msg.metadata.get("features", {}))
-            logger.info("Updated features: {}", self._features)
             return OutboundMessage(
-                channel=msg.channel, chat_id=msg.chat_id, content="", metadata={"passby": True}
+                channel=msg.channel,
+                chat_id=msg.chat_id,
+                content="Update features: "
+                + ",".join([f"{k}={v}" for k, v in self._features.items()]),
+                metadata={"_task_ref": "update_features"},
             )
         if msg.metadata and msg.metadata.get("passby", False):
             return OutboundMessage(
