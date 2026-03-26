@@ -472,10 +472,6 @@ const toggleSpeak = (need_tts: boolean) => {
   })
 }
 
-const handleStopChat = () => {
-  emit('stop-audio')
-}
-
 const handleRecordingStart = () => {
   chatStatus.value = "Listening"
 }
@@ -621,14 +617,6 @@ const handleAudioUpload = async (audioData: { data: string; type: string; isReco
 */
 
 const handleAudioUpload = async (audioData: { data: string; type: string; isRecording?: boolean }) => {
-  // Add audio to messages
-  messages.value.push({
-    role: 'user',
-    content: audioData.isRecording ? 'Recorded voice message' : 'Uploaded audio',
-    timestamp: Date.now(),
-    audioUrl: audioData.data
-  })
-
   // Send audio using unified sendCommand helper
   if (ws && ws.readyState === WebSocket.OPEN) {
     const messageData = {
@@ -701,7 +689,6 @@ defineExpose({
   handleSendStatus,
   handleConnected,
   toggleSpeak,
-  handleStopChat
 })
 </script>
 
