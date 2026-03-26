@@ -483,7 +483,6 @@ const handleRecordingStop = () => {
 }
 
 const playAudio = (audioUrl: string) => {
-  chatStatus.value = "Speaking"
   if (currentAudio.value) {
     if (currentAudio.value.src === audioUrl && !currentAudio.value.paused) {
       currentAudio.value.pause()
@@ -536,6 +535,15 @@ const stopAudio = () => {
 // Watch for chatStatus changes and emit to parent
 watch(chatStatus, (newStatus) => {
   emit('chat-status-change', newStatus)
+})
+
+// Watch for playingAudioUrl changes and update chatStatus
+watch(playingAudioUrl, (newUrl) => {
+  if (newUrl) {
+    chatStatus.value = "Speaking"
+  } else {
+    chatStatus.value = ""
+  }
 })
 
 // Handle TTS message - same as xiaozhi-esp32-server implementation
