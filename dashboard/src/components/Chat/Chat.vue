@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
 import MessageList from './MessageList.vue'
 import ChatInput from './ChatInput.vue'
 import { getAudioPlayer } from '../../js/audio/player.js'
@@ -33,7 +33,7 @@ const props = defineProps<{
   enableSpeak?: boolean
 }>()
 
-const emit = defineEmits(['send', 'new-chat', 'clear-chat', 'upload-image', 'upload-audio', 'upload-file', 'ws-status-change', 'send-status', 'status-update', 'stop-audio', 'recording-start', 'recording-stop'])
+const emit = defineEmits(['send', 'new-chat', 'clear-chat', 'upload-image', 'upload-audio', 'upload-file', 'ws-status-change', 'send-status', 'status-update', 'stop-audio', 'recording-start', 'recording-stop', 'chat-status-change'])
 
 const messages = ref<Message[]>([])
 const chatStatus = ref<string>("")
@@ -536,6 +536,11 @@ const stopAudio = () => {
     }, 1000)
   }
 }
+
+// Watch for chatStatus changes and emit to parent
+watch(chatStatus, (newStatus) => {
+  emit('chat-status-change', newStatus)
+})
 
 // Handle TTS message - same as xiaozhi-esp32-server implementation
 const handleTTSMessage = async (data: any) => {

@@ -174,13 +174,13 @@ onMounted(() => {
   initApp()
 })
 
-const handleThinkingChange = (isThinkingState: boolean) => {
-  if (isThinkingState) {
-    // Start blinking effect
+const handleThinkingChange = (chatStatus: string) => {
+  if (chatStatus) {
+    // Start blinking effect with suffix
     let dots = 0
     thinkingInterval = window.setInterval(() => {
       dots = (dots + 1) % 4
-      document.title = 'Thinking ' + '.'.repeat(dots)
+      document.title = chatStatus + ' ' + '.'.repeat(dots)
     }, 500)
   } else {
     // Stop blinking effect and reset title
@@ -452,7 +452,7 @@ document.addEventListener('mouseup', stopDragCamera)
       <!-- Content Area -->
       <main class="flex-1 overflow-hidden bg-gray-900">
         <Chat ref="chatComponentRef" v-show="currentSection === 'chat'" @status-update="handleStatusUpdate"
-          @ws-status-change="handleWsStatusChange" @thinking-change="handleThinkingChange"
+          @ws-status-change="handleWsStatusChange" @chat-status-change="handleThinkingChange"
           :show-progress-messages="!hideProgress" :is-online-chat-on="isOnlineChatOn" :enable-audio="enableASR"
           :enable-tts="enableTTS" :enable-speak="enableSpeak" />
         <div v-show="currentSection !== 'chat'" class="p-6 text-gray-500 text-center">
