@@ -43,6 +43,7 @@ const chatId = ref('default_room')  // Global chat ID
 const currentAudio = ref<HTMLAudioElement | null>(null)
 const currentTimeoutId = ref<number | null>(null)
 const chatInputRef = ref<InstanceType<typeof ChatInput> | null>(null)
+const pendingCommandsCount = ref(0)  // Track pending commands during connection
 
 // Global audio playing state shared across components
 const playingAudioUrl = ref<string | null>(null)
@@ -100,6 +101,16 @@ const handleWebSocketMessage = (event: MessageEvent) => {
           console.log('🔊 Status update:', statusData)
           // Emit to parent component (App.vue) to update global state
           emit('status-update', statusData)
+          // Decrement pending commands count
+          if (pendingCommandsCount.value > 0) {
+            pendingCommandsCount.value--
+            console.log('⏳ Pending commands:', pendingCommandsCount.value)
+            // Clear status when all commands are completed
+            if (pendingCommandsCount.value === 0) {
+              chatStatus.value = ""
+              console.log('✅ All initialization commands completed')
+            }
+          }
         } catch (e) {
           console.log('Status message content:', data.content)
         }
@@ -169,6 +180,17 @@ const handleWebSocketMessage = (event: MessageEvent) => {
               content: `📊 History loaded: ${userMsgCount} user messages, ${assistantMsgCount} assistant messages${systemMsgCount > 0 ? `, ${systemMsgCount} system messages` : ''}`,
               timestamp: Date.now()
             })
+
+            // Decrement pending commands count for history
+            if (pendingCommandsCount.value > 0) {
+              pendingCommandsCount.value--
+              console.log('⏳ Pending commands:', pendingCommandsCount.value)
+              // Clear status when all commands are completed
+              if (pendingCommandsCount.value === 0) {
+                chatStatus.value = ""
+                console.log('✅ All initialization commands completed')
+              }
+            }
           }
         } catch (e) {
           console.error('Failed to parse history:', e)
@@ -365,13 +387,25 @@ const sendMessage = async (
 
     console.log('📤 Sending message:', messageData)
     ws.send(JSON.stringify(messageData))
-    chatStatus.value = !isCommand ? "Thinking" : ""
+    if (!isCommand && audios.length == 0) {
+      chatStatus.value = "Thinking"
+    }
 
     // Set timeout: if no response within 30 seconds, stop loading
     const timeoutId = setTimeout(() => {
       if (chatStatus.value === "Thinking") {
         chatStatus.value = ""
         console.warn('No response received within 30 seconds')
+      }
+      // Also handle command timeout
+      if (isCommand && pendingCommandsCount.value > 0) {
+        pendingCommandsCount.value--
+        console.warn('⏰ Command timed out, remaining:', pendingCommandsCount.value)
+        // Clear status when all commands are completed or timed out
+        if (pendingCommandsCount.value === 0) {
+          chatStatus.value = ""
+          console.log('✅ All initialization commands completed or timed out')
+        }
       }
     }, 30000)
 
@@ -425,6 +459,9 @@ const handleConnected = () => {
     return
   }
 
+  // Set status to Loading at the beginning
+  chatStatus.value = "Loading"
+
   // Clear messages on successful connection
   messages.value = []
 
@@ -437,15 +474,19 @@ const handleConnected = () => {
 
   // Send /status for initialization (hidden from chat)
   sendMessage('/status', true)
+  pendingCommandsCount.value++
 
   // Send /update_features with reset flag on connection
   sendMessage('/update_features', true, { reset: true })
+  pendingCommandsCount.value++
 
   // Send tools list to backend
   sendMessage('/register_extern_tools', true, { tools: defaultMcpTools })
+  pendingCommandsCount.value++
 
   // Send /history after 500ms to load history for input cache
-  setTimeout(() => { sendMessage('/history', true) }, 500)
+  sendMessage('/history', true)
+  pendingCommandsCount.value++
 }
 
 // Toggle speak feature and send update to backend

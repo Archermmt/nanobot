@@ -70,7 +70,9 @@ class WebsocketTool(ExternTool):
                     await self._result_queue.put(result_data)
                     await asyncio.sleep(0.1)
             if "image_data" in raw_result:
-                raw_result["image_data"] = save_media(raw_result["image_data"], "photo.jpg")[0]
+                raw_result["image_data"] = save_media(raw_result["image_data"], self.name + ".jpg")[
+                    0
+                ]
             return str(raw_result)
 
         except asyncio.TimeoutError:
