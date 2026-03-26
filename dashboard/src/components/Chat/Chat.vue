@@ -272,6 +272,7 @@ const handleWebSocketMessage = (event: MessageEvent) => {
   }
 }
 
+// Unified message sending function
 const sendMessage = async (data: string | { text: string; images: Array<{ data: string; type: string; name: string }>; files: Array<{ data: string; type: string; name: string }> }, hideFromUI = false) => {
   // Handle both old string format and new object format
   let text = ''
@@ -331,6 +332,8 @@ const sendMessage = async (data: string | { text: string; images: Array<{ data: 
         session_id: string
         msg_type?: string
         file_type?: string
+        features?: { need_tts: boolean }
+        reset?: boolean
       }
     } = {
       type: 'message',
@@ -381,6 +384,76 @@ const sendMessage = async (data: string | { text: string; images: Array<{ data: 
   }
 }
 
+// Helper function to send control commands
+const sendCommand = (command: string, hideFromUI = false, extraMetadata?: Record<string, any>) => {
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    console.log(`⚠️ Cannot send ${command}: WebSocket not connected`)
+    messages.value.push({
+      role: 'system',
+      content: 'WebSocket not connected. Please connect first.',
+      timestamp: Date.now()
+    })
+    return
+  }
+
+  const messageData = {
+    type: 'message',
+    message_id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    sender_id: senderId.value,
+    chat_id: chatId.value,
+    content: command,
+    media: [],
+    metadata: {
+      source: 'web_dashboard',
+      timestamp: Date.now(),
+      session_id: sessionId.value,
+      ...extraMetadata
+    }
+  }
+
+  console.log(`📤 Sending ${command} command:`, messageData)
+  ws.send(JSON.stringify(messageData))
+
+  // Add to UI if not hidden
+  if (!hideFromUI) {
+    messages.value.push({
+      role: 'user',
+      content: command,
+      timestamp: Date.now()
+    })
+  }
+}
+
+// Wrapper for status command
+const handleSendStatus = () => {
+  sendCommand('/status')
+}
+
+// Wrapper for new chat command
+const handleNewChat = () => {
+  sendCommand('/new')
+  // Clear messages and input history
+  messages.value = []
+  if (chatInputRef.value) {
+    chatInputRef.value.handleUpdateUserHistory([])
+  }
+}
+
+// Wrapper for clear chat command
+const handleClearChat = () => {
+  sendCommand('/clear')
+  // Clear messages and input history
+  messages.value = []
+  if (chatInputRef.value) {
+    chatInputRef.value.handleUpdateUserHistory([])
+  }
+}
+
+// Wrapper for history command (always hidden)
+const sendHistoryCommand = () => {
+  sendCommand('/history', true)
+}
+
 const handleImageUpload = async (imageData: { data: string; type: string; name: string }) => {
   // This is now handled by ChatInput - images are queued and sent with text
   console.log('Image queued for upload:', imageData.name)
@@ -400,23 +473,23 @@ const handleAudioUpload = async (audioData: { data: string; type: string; isReco
     audioUrl: audioData.data
   })
 
-  // Send audio to backend with msg_type
+  // Send audio using unified sendCommand helper
   if (ws && ws.readyState === WebSocket.OPEN) {
     const messageData = {
       type: 'message',
       message_id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       sender_id: senderId.value,
       chat_id: chatId.value,
-      content: '',  // Empty content for audio-only messages
+      content: '',
       media: [{
         data: audioData.data,
         file_name: `audio_${Date.now()}.${audioData.type.split('/').pop()}`
-      }],  // Send base64 data as media with filename
+      }],
       metadata: {
         source: 'web_dashboard',
         timestamp: Date.now(),
         session_id: sessionId.value,
-        msg_type: 'audio',  // Indicate this is an audio message
+        msg_type: 'audio',
         file_type: audioData.type,
       }
     }
@@ -444,38 +517,7 @@ const handleAudioUpload = async (audioData: { data: string; type: string; isReco
   }
 }
 
-const handleSendStatus = () => {
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    const userMessage: Message = {
-      role: 'user',
-      content: '/status',
-      timestamp: Date.now()
-    }
-    messages.value.push(userMessage)
 
-    const statusMsg = {
-      type: 'message',
-      message_id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      sender_id: senderId.value,
-      chat_id: chatId.value,
-      content: '/status',
-      media: [],
-      metadata: {
-        source: 'web_dashboard',
-        timestamp: Date.now(),
-        session_id: sessionId.value
-      }
-    }
-    console.log('📤 Sending /status command:', statusMsg)
-    ws.send(JSON.stringify(statusMsg))
-  } else {
-    messages.value.push({
-      role: 'system',
-      content: 'WebSocket not connected. Please connect first.',
-      timestamp: Date.now()
-    })
-  }
-}
 
 const handleConnected = () => {
   if (!ws || ws.readyState !== WebSocket.OPEN) {
@@ -499,41 +541,11 @@ const handleConnected = () => {
   })
 
   // Send /status for initialization (hidden from chat)
-  const statusMsg = {
-    type: 'message',
-    message_id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-    sender_id: senderId.value,
-    chat_id: chatId.value,
-    content: '/status',
-    media: [],
-    metadata: {
-      source: 'web_dashboard',
-      timestamp: Date.now(),
-      session_id: sessionId.value
-    }
-  }
-  console.log('📤 Sending /status for initialization:', statusMsg)
-  ws.send(JSON.stringify(statusMsg))
+  sendCommand('/status', true)
 
   // Send /history after 500ms to load history for input cache
   setTimeout(() => {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      const historyMsg = {
-        type: 'message',
-        message_id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        sender_id: senderId.value,
-        chat_id: chatId.value,
-        content: '/history',
-        media: [],
-        metadata: {
-          source: 'web_dashboard',
-          timestamp: Date.now(),
-          session_id: sessionId.value
-        }
-      }
-      console.log('📤 Sending /history for initialization:', historyMsg)
-      ws.send(JSON.stringify(historyMsg))
-    }
+    sendHistoryCommand()
   }, 500)
 
   // Send MCP tools list to backend
@@ -562,23 +574,7 @@ const handleConnected = () => {
   ws.send(JSON.stringify(mcpMessageData))
 
   // Send /update_features with reset flag on connection
-  const resetFeaturesMsg = {
-    type: 'message',
-    message_id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-    sender_id: senderId.value,
-    chat_id: chatId.value,
-    content: '/update_features',
-    media: [],
-    metadata: {
-      source: 'web_dashboard',
-      timestamp: Date.now(),
-      session_id: sessionId.value,
-      reset: true
-    }
-  }
-
-  console.log('📤 Sending /update_features with reset:', resetFeaturesMsg)
-  ws.send(JSON.stringify(resetFeaturesMsg))
+  sendCommand('/update_features', false, { reset: true })
 }
 
 // Toggle speak feature and send update to backend
@@ -589,104 +585,16 @@ const toggleSpeak = (need_tts: boolean) => {
   }
 
   // Send /update_features message with need_tts in features
-  const updateFeaturesMsg = {
-    type: 'message',
-    message_id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-    sender_id: senderId.value,
-    chat_id: chatId.value,
-    content: '/update_features',
-    media: [],
-    metadata: {
-      source: 'web_dashboard',
-      timestamp: Date.now(),
-      session_id: sessionId.value,
-      features: {
-        need_tts: need_tts
-      }
+  sendCommand('/update_features', false, {
+    features: {
+      need_tts: need_tts
     }
-  }
-
-  console.log('📤 Sending /update_features:', updateFeaturesMsg)
-  ws.send(JSON.stringify(updateFeaturesMsg))
+  })
 }
 
-const handleNewChat = () => {
-  const userMessage: Message = {
-    role: 'user',
-    content: '/new',
-    timestamp: Date.now()
-  }
-  messages.value.push(userMessage)
 
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    const newChatMsg = {
-      type: 'message',
-      message_id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      sender_id: senderId.value,
-      chat_id: chatId.value,
-      content: '/new',
-      media: [],
-      metadata: {
-        source: 'web_dashboard',
-        timestamp: Date.now(),
-        session_id: sessionId.value
-      }
-    }
-    console.log('📤 Sending /new command:', newChatMsg)
-    ws.send(JSON.stringify(newChatMsg))
 
-    // Clear messages and input history
-    messages.value = []
-    if (chatInputRef.value) {
-      chatInputRef.value.handleUpdateUserHistory([])
-    }
-  } else {
-    messages.value.push({
-      role: 'system',
-      content: 'WebSocket not connected. Please connect first.',
-      timestamp: Date.now()
-    })
-  }
-}
 
-const handleClearChat = () => {
-  const userMessage: Message = {
-    role: 'user',
-    content: '/clear',
-    timestamp: Date.now()
-  }
-  messages.value.push(userMessage)
-
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    const clearMsg = {
-      type: 'message',
-      message_id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      sender_id: senderId.value,
-      chat_id: chatId.value,
-      content: '/clear',
-      media: [],
-      metadata: {
-        source: 'web_dashboard',
-        timestamp: Date.now(),
-        session_id: sessionId.value
-      }
-    }
-    console.log('📤 Sending /clear command:', clearMsg)
-    ws.send(JSON.stringify(clearMsg))
-
-    // Clear messages and input history
-    messages.value = []
-    if (chatInputRef.value) {
-      chatInputRef.value.handleUpdateUserHistory([])
-    }
-  } else {
-    messages.value.push({
-      role: 'system',
-      content: 'WebSocket not connected. Please connect first.',
-      timestamp: Date.now()
-    })
-  }
-}
 
 const handleThinkingChange = (isThinking: boolean) => {
   emit('thinking-change', isThinking)
