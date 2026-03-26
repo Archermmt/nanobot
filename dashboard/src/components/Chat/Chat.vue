@@ -560,6 +560,25 @@ const handleConnected = () => {
   }
   console.log('📦 Sending MCP tools list to backend:', mcpMessageData)
   ws.send(JSON.stringify(mcpMessageData))
+
+  // Send /update_features with reset flag on connection
+  const resetFeaturesMsg = {
+    type: 'message',
+    message_id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    sender_id: senderId.value,
+    chat_id: chatId.value,
+    content: '/update_features',
+    media: [],
+    metadata: {
+      source: 'web_dashboard',
+      timestamp: Date.now(),
+      session_id: sessionId.value,
+      reset: true
+    }
+  }
+
+  console.log('📤 Sending /update_features with reset:', resetFeaturesMsg)
+  ws.send(JSON.stringify(resetFeaturesMsg))
 }
 
 // Toggle speak feature and send update to backend

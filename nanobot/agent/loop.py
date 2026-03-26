@@ -558,7 +558,10 @@ class AgentLoop:
                 metadata={"_task_ref": "register_extern_tools"},
             )
         if cmd == "/update_features":
-            self._features.update(msg.metadata.get("features", {}))
+            if msg.metadata.get("reset", False):
+                self._features = {}
+            else:
+                self._features.update(msg.metadata.get("features", {}))
             logger.info("Updated features: {}", self._features)
             return OutboundMessage(
                 channel=msg.channel, chat_id=msg.chat_id, content="", metadata={"passby": True}
