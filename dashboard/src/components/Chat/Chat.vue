@@ -273,7 +273,11 @@ const handleWebSocketMessage = (event: MessageEvent) => {
 }
 
 // Unified message sending function for all types of messages
-const sendMessage = async (data: string | { text: string; images?: Array<{ data: string; type: string; name: string }>; files?: Array<{ data: string; type: string; name: string }> }, hideFromUI = false, extraMetadata?: Record<string, any>) => {
+const sendMessage = async (
+  data: string | { text: string; images?: Array<{ data: string; type: string; name: string }>; files?: Array<{ data: string; type: string; name: string }> },
+  isCommand: boolean = false,
+  extraMetadata?: Record<string, any>
+) => {
   // Handle both old string format and new object format
   let text = ''
   let images: Array<{ data: string; type: string; name: string }> = []
@@ -299,7 +303,7 @@ const sendMessage = async (data: string | { text: string; images?: Array<{ data:
   }
 
   // Only add message to UI if not hidden
-  if (!hideFromUI) {
+  if (!isCommand) {
     messages.value.push(userMessage)
   }
 
@@ -362,7 +366,7 @@ const sendMessage = async (data: string | { text: string; images?: Array<{ data:
 
     console.log('📤 Sending message:', messageData)
     ws.send(JSON.stringify(messageData))
-    isThinking.value = true
+    isThinking.value = !isCommand
 
     // Set timeout: if no response within 30 seconds, stop loading
     const timeoutId = setTimeout(() => {
@@ -422,7 +426,6 @@ const handleConnected = () => {
     return
   }
 
-  isThinking.value = false
   // Clear messages on successful connection
   messages.value = []
 
@@ -436,14 +439,14 @@ const handleConnected = () => {
   // Send /status for initialization (hidden from chat)
   sendMessage('/status', true)
 
-  // Send /history after 500ms to load history for input cache
-  setTimeout(() => { sendMessage('/history', true) }, 500)
-
   // Send /update_features with reset flag on connection
   sendMessage('/update_features', true, { reset: true })
 
   // Send tools list to backend
   sendMessage('/register_extern_tools', true, { tools: defaultMcpTools })
+
+  // Send /history after 500ms to load history for input cache
+  setTimeout(() => { sendMessage('/history', true) }, 500)
 }
 
 // Toggle speak feature and send update to backend
