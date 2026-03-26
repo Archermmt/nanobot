@@ -10,7 +10,7 @@ interface Props {
 }
 
 const props = defineProps<Props>()
-const emit = defineEmits(['upload-image', 'upload-audio', 'upload-file'])
+const emit = defineEmits(['upload-image', 'upload-audio', 'upload-file', 'recording-start', 'recording-stop'])
 
 const imageInput = ref<HTMLInputElement | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
@@ -96,6 +96,7 @@ const startRecording = async () => {
 
     mediaRecorder.value.start()
     isRecording.value = true
+    emit('recording-start')
   } catch (error) {
     console.error('Error accessing microphone:', error)
   }
@@ -105,6 +106,7 @@ const stopRecording = () => {
   if (mediaRecorder.value && isRecording.value) {
     mediaRecorder.value.stop()
     isRecording.value = false
+    emit('recording-stop')
 
     // Stop all tracks
     mediaRecorder.value.stream.getTracks().forEach(track => track.stop())

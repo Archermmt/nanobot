@@ -4,7 +4,7 @@ import MediaUploader from '../Media/MediaUploader.vue'
 import { mdiSend, mdiMessagePlus, mdiDeleteSweep, mdiStopCircle } from '@mdi/js'
 
 interface Props {
-  isThinking: boolean
+  chatStatus: string
   disabled?: boolean
   isMicrophoneOn?: boolean
   enableSpeak?: boolean
@@ -15,7 +15,7 @@ const props = withDefaults(defineProps<Props>(), {
   messages: () => []
 })
 
-const emit = defineEmits(['send', 'new-chat', 'clear-chat', 'stop-chat', 'upload-image', 'upload-audio', 'upload-file'])
+const emit = defineEmits(['send', 'new-chat', 'clear-chat', 'stop-chat', 'upload-image', 'upload-audio', 'upload-file', 'recording-start', 'recording-stop'])
 
 interface PendingMedia {
   data: string
@@ -100,7 +100,7 @@ const handleKeydown = (event: KeyboardEvent) => {
 }
 
 const sendMessage = () => {
-  if ((!input.value.trim() && pendingImages.value.length === 0 && pendingFiles.value.length === 0) || props.isThinking || props.disabled) return
+  if ((!input.value.trim() && pendingImages.value.length === 0 && pendingFiles.value.length === 0) || props.chatStatus === "Thinking" || props.disabled) return
 
   // Send text, images and files together
   emit('send', {
@@ -168,6 +168,14 @@ const handleFileUpload = (fileData: { data: string; type: string; name: string }
   pendingFiles.value.push(fileData)
 }
 
+const handleRecordingStart = () => {
+  emit('recording-start')
+}
+
+const handleRecordingStop = () => {
+  emit('recording-stop')
+}
+
 const removePendingImage = (index: number) => {
   pendingImages.value.splice(index, 1)
 }
@@ -187,9 +195,9 @@ defineExpose({
   <div class="border-t-4 border-gray-700 bg-gray-800 p-4">
     <div class="flex items-center space-x-3">
       <!-- Media Upload Buttons on the left of input -->
-      <MediaUploader :disabled="props.disabled || isThinking" :is-microphone-on="props.isMicrophoneOn"
+      <MediaUploader :disabled="props.disabled || chatStatus === 'Thinking'" :is-microphone-on="props.isMicrophoneOn"
         :enable-speak="props.enableSpeak" @upload-image="handleImageUpload" @upload-audio="handleAudioUpload"
-        @upload-file="handleFileUpload" />
+        @upload-file="handleFileUpload" @recording-start="handleRecordingStart" @recording-stop="handleRecordingStop" />
 
       <!-- Text Input -->
       <form id="message-form" @submit.prevent="sendMessage" class="flex-1 flex flex-col space-y-2">
@@ -222,35 +230,36 @@ defineExpose({
         <textarea ref="textareaRef" v-model="input"
           :placeholder="props.disabled ? 'Please connect WebSocket first' : 'Type a message... (or attach images/files above)'"
           class="flex-1 border-2 border-gray-600 rounded shadow-[inset_2px_2px_4px_rgba(0,0,0,0.3)] px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-700 disabled:text-gray-500 resize-none min-h-[48px] max-h-[200px] overflow-y-auto nes-input text-xs chat-input-textarea zh"
-          :disabled="isThinking || props.disabled" rows="1" @input="autoResize" @keydown="handleKeydown" />
+          :disabled="chatStatus === 'Thinking' || props.disabled" rows="1" @input="autoResize"
+          @keydown="handleKeydown" />
       </form>
 
       <!-- Action Buttons -->
       <div class="flex items-center space-x-2">
         <button type="submit" form="message-form"
           class="nes-btn is-primary p-2 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          :disabled="isThinking || (!input.trim() && pendingImages.length === 0 && pendingFiles.length === 0) || props.disabled">
+          :disabled="chatStatus === 'Thinking' || (!input.trim() && pendingImages.length === 0 && pendingFiles.length === 0) || props.disabled">
           <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
             <path :d="mdiSend" />
           </svg>
         </button>
         <button @click="handleNewChat"
           class="nes-btn is-success p-2 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          :disabled="props.disabled || isThinking" title="Start New Chat">
+          :disabled="props.disabled || chatStatus === 'Thinking'" title="Start New Chat">
           <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
             <path :d="mdiMessagePlus" />
           </svg>
         </button>
         <button @click="handleClearChat"
           class="nes-btn is-warning p-2 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          :disabled="props.disabled || isThinking" title="Clear Chat History">
+          :disabled="props.disabled || chatStatus === 'Thinking'" title="Clear Chat History">
           <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
             <path :d="mdiDeleteSweep" />
           </svg>
         </button>
         <button @click="handleStopChat"
           class="nes-btn is-error p-2 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          :disabled="props.disabled || !isThinking" title="Stop Current Chat">
+          :disabled="props.disabled || chatStatus !== 'Thinking'" title="Stop Current Chat">
           <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
             <path :d="mdiStopCircle" />
           </svg>

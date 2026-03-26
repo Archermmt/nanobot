@@ -33,10 +33,10 @@ const props = defineProps<{
   enableSpeak?: boolean
 }>()
 
-const emit = defineEmits(['send', 'new-chat', 'clear-chat', 'upload-image', 'upload-audio', 'upload-file', 'ws-status-change', 'send-status', 'status-update', 'thinking-change', 'stop-audio'])
+const emit = defineEmits(['send', 'new-chat', 'clear-chat', 'upload-image', 'upload-audio', 'upload-file', 'ws-status-change', 'send-status', 'status-update', 'stop-audio', 'recording-start', 'recording-stop'])
 
 const messages = ref<Message[]>([])
-const isThinking = ref(false)
+const chatStatus = ref<string>("")
 const sessionId = ref(`session_${Date.now()}`)
 const senderId = ref('web_user')  // Global sender ID
 const chatId = ref('default_room')  // Global chat ID
@@ -246,11 +246,11 @@ const handleWebSocketMessage = (event: MessageEvent) => {
         handleSendStatus()
       }
 
-      // Only set isThinking to false if _progress is not true
-      if (data.metadata?._as_input) {
-        isThinking.value = true
-      } else if (!data.metadata?._progress) {
-        isThinking.value = false
+      // Only set chatStatus based on _progress and _as_input
+      if (data.metadata?._progress) {
+        chatStatus.value = "Thinking"
+      } else {
+        chatStatus.value = ""
       }
     } else if (data.type === 'heartbeat') {
       // Reply to heartbeat
@@ -267,7 +267,7 @@ const handleWebSocketMessage = (event: MessageEvent) => {
         content: `Error: ${data.message || data.data}`,
         timestamp: Date.now()
       })
-      isThinking.value = false
+      chatStatus.value = ""
     }
   } catch (e) {
     console.error('Failed to parse message:', e)
@@ -374,12 +374,12 @@ const sendMessage = async (
 
     console.log('📤 Sending message:', messageData)
     ws.send(JSON.stringify(messageData))
-    isThinking.value = !isCommand
+    chatStatus.value = !isCommand ? "Thinking" : ""
 
     // Set timeout: if no response within 30 seconds, stop loading
     const timeoutId = setTimeout(() => {
-      if (isThinking.value) {
-        isThinking.value = false
+      if (chatStatus.value === "Thinking") {
+        chatStatus.value = ""
         console.warn('No response received within 30 seconds')
       }
     }, 30000)
@@ -394,7 +394,7 @@ const sendMessage = async (
       content: 'WebSocket not connected. Please connect first.',
       timestamp: Date.now()
     })
-    isThinking.value = false
+    chatStatus.value = ""
   }
 }
 
@@ -472,11 +472,22 @@ const toggleSpeak = (need_tts: boolean) => {
   })
 }
 
-const handleThinkingChange = (isThinking: boolean) => {
-  emit('thinking-change', isThinking)
+const handleStopChat = () => {
+  emit('stop-audio')
+}
+
+const handleRecordingStart = () => {
+  chatStatus.value = "Listening"
+}
+
+const handleRecordingStop = () => {
+  if (chatStatus.value === "Listening") {
+    chatStatus.value = ""
+  }
 }
 
 const playAudio = (audioUrl: string) => {
+  chatStatus.value = "Speaking"
   if (currentAudio.value) {
     if (currentAudio.value.src === audioUrl && !currentAudio.value.paused) {
       currentAudio.value.pause()
@@ -502,7 +513,7 @@ const stopAudio = () => {
     currentAudio.value.pause()
     playingAudioUrl.value = null
     currentAudio.value = null
-    isThinking.value = false
+    chatStatus.value = ""
   }
 
   // Stop remote speaking (opus playback)
@@ -521,7 +532,7 @@ const stopAudio = () => {
           lastMsg.metadata.isPlayingOpus = false
         }
       }
-      isThinking.value = false
+      chatStatus.value = ""
     }, 1000)
   }
 }
@@ -535,6 +546,7 @@ const handleTTSMessage = async (data: any) => {
     ttsSentenceCount.value = 0
   } else if (state === 'sentence_start') {
     console.debug(`服务器发送语音段：${data.text}`)
+    chatStatus.value = "Speaking"
     ttsSentenceCount.value++
     // Add message to chat immediately
     if (data.text && !data.text.trim().startsWith('/')) {
@@ -549,7 +561,7 @@ const handleTTSMessage = async (data: any) => {
     }
   } else if (state === 'sentence_end') {
     console.log(`语音段结束`)
-    isThinking.value = false
+    chatStatus.value = ""
   } else if (state === 'stop') {
     stopAudio()
   }
@@ -635,13 +647,13 @@ const handleAudioUpload = async (audioData: { data: string; type: string; isReco
     }
 
     console.log('📤 Sending audio message:', messageData)
-    isThinking.value = true
+    chatStatus.value = "Thinking"
     ws.send(JSON.stringify(messageData))
 
     // Set timeout: if no response within 30 seconds, stop loading
     const timeoutId = setTimeout(() => {
-      if (isThinking.value) {
-        isThinking.value = false
+      if (chatStatus.value === "Thinking") {
+        chatStatus.value = ""
         console.warn('No response received within 30 seconds')
       }
     }, 30000)
@@ -677,28 +689,29 @@ onUnmounted(() => {
 
 // Expose reactive state and methods to parent component
 defineExpose({
-  isThinking,
+  chatStatus,
   isRemoteSpeaking,
   playingAudioUrl,
   setWebSocket,
   handleWebSocketMessage,
   handleSendStatus,
   handleConnected,
-  toggleSpeak
+  toggleSpeak,
+  handleStopChat
 })
 </script>
 
 <template>
   <div class="flex flex-col h-full chat-container">
     <!-- Messages -->
-    <MessageList :messages="messages" :isThinking="isThinking" @play-audio="playAudio" @stop-audio="stopAudio"
-      :show-progress-messages="props.showProgressMessages" :playing-audio-url="playingAudioUrl"
-      @thinking-change="handleThinkingChange" />
+    <MessageList :messages="messages" :chat-status="chatStatus" @play-audio="playAudio" @stop-audio="stopAudio"
+      :show-progress-messages="props.showProgressMessages" :playing-audio-url="playingAudioUrl" />
 
     <!-- Input -->
-    <ChatInput ref="chatInputRef" :isThinking="isThinking" :disabled="!isConnected"
-      :is-microphone-on="props.isMicrophoneOn" :enable-audio="props.enableASR" :enable-speak="props.enableSpeak"
-      :messages="messages" @send="sendMessage" @new-chat="handleNewChat" @clear-chat="handleClearChat"
-      @send-status="handleSendStatus" @stop-audio="stopAudio" @upload-audio="handleAudioUpload" />
+    <ChatInput ref="chatInputRef" :chat-status="chatStatus" :disabled="!isConnected"
+      :is-microphone-on="props.isMicrophoneOn" :enable-speak="props.enableSpeak" :messages="messages"
+      @send="sendMessage" @new-chat="handleNewChat" @clear-chat="handleClearChat" @send-status="handleSendStatus"
+      @stop-audio="stopAudio" @upload-audio="handleAudioUpload" @recording-start="handleRecordingStart"
+      @recording-stop="handleRecordingStop" />
   </div>
 </template>
