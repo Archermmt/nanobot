@@ -250,6 +250,11 @@ const handleWebSocketMessage = (event: MessageEvent) => {
       if (!data.metadata?._progress) {
         isThinking.value = false
       }
+
+      // Set isThinking to true if _as_input is not true
+      if (!data.metadata?._as_input) {
+        isThinking.value = true
+      }
     } else if (data.type === 'heartbeat') {
       // Reply to heartbeat
       if (ws) {
@@ -274,7 +279,7 @@ const handleWebSocketMessage = (event: MessageEvent) => {
 
 // Unified message sending function for all types of messages
 const sendMessage = async (
-  data: string | { text: string; images?: Array<{ data: string; type: string; name: string }>; files?: Array<{ data: string; type: string; name: string }> },
+  data: string | { text: string; images?: Array<{ data: string; type: string; name: string }>; files?: Array<{ data: string; type: string; name: string }>; audios?: Array<{ data: string; type: string; name: string }> },
   isCommand: boolean = false,
   extraMetadata?: Record<string, any>
 ) => {
@@ -282,6 +287,7 @@ const sendMessage = async (
   let text = ''
   let images: Array<{ data: string; type: string; name: string }> = []
   let files: Array<{ data: string; type: string; name: string }> = []
+  let audios: Array<{ data: string; type: string; name: string }> = []
 
   if (typeof data === 'string') {
     text = data
@@ -289,6 +295,7 @@ const sendMessage = async (
     text = data.text || ''
     images = data.images || []
     files = data.files || []
+    audios = data.audios || []
   }
 
   const userMessage: Message = {
@@ -320,7 +327,8 @@ const sendMessage = async (
   if (ws && ws.readyState === WebSocket.OPEN) {
     const mediaItems = [
       ...images.map(img => ({ data: img.data, file_name: img.name })),
-      ...files.map(file => ({ data: file.data, file_name: file.name }))
+      ...files.map(file => ({ data: file.data, file_name: file.name })),
+      ...audios.map(audio => ({ data: audio.data, file_name: audio.name }))
     ]
 
     const messageData: {
@@ -356,7 +364,10 @@ const sendMessage = async (
     }
 
     // Set msg_type based on content
-    if (images.length > 0) {
+    if (audios.length > 0) {
+      messageData.metadata.msg_type = 'audio'
+      messageData.metadata.file_type = audios[0].type
+    } else if (images.length > 0) {
       messageData.metadata.msg_type = 'image'
       messageData.metadata.file_type = images[0].type
     } else if (files.length > 0) {
@@ -571,6 +582,29 @@ const handleOpusAudioFrame = async (data: Blob | ArrayBuffer) => {
   }
 }
 
+const handleAudioUpload = async (audioData: { data: string; type: string; isRecording?: boolean }) => {
+  // Add audio to messages
+  messages.value.push({
+    role: 'user',
+    content: audioData.isRecording ? 'Recorded voice message' : 'Uploaded audio',
+    timestamp: Date.now(),
+    audioUrl: audioData.data
+  })
+
+  // Send audio using unified sendMessage function
+  sendMessage({
+    text: '',
+    audios: [{
+      data: audioData.data,
+      type: audioData.type,
+      name: `audio_${Date.now()}.${audioData.type.split('/').pop()}`
+    }]
+  }, false, {
+    msg_type: 'audio',
+    file_type: audioData.type
+  })
+}
+
 // No longer automatically connect on mounted
 onMounted(() => {
   // Don't automatically connect on initialization
@@ -613,6 +647,6 @@ defineExpose({
     <ChatInput ref="chatInputRef" :isThinking="isThinking" :disabled="!isConnected"
       :is-microphone-on="props.isMicrophoneOn" :enable-audio="props.enableASR" :enable-speak="props.enableSpeak"
       :messages="messages" @send="sendMessage" @new-chat="handleNewChat" @clear-chat="handleClearChat"
-      @send-status="handleSendStatus" @stop-audio="stopAudio" />
+      @send-status="handleSendStatus" @stop-audio="stopAudio" @upload-audio="handleAudioUpload" />
   </div>
 </template>
