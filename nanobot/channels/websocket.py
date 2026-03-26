@@ -360,11 +360,6 @@ class WebSocketChannel(BaseChannel):
             return
 
         meta_type = metadata.get("msg_type", "text")
-        if content == "/stop_audio":
-            logger.debug("Stop audio sending")
-            await self._ws.send(json.dumps({"type": "tts", "state": "stop", "session_id": chat_id}))
-            return
-
         # Deduplication check
         if message_id in self._processed_message_ids:
             return
@@ -485,6 +480,9 @@ class WebSocketChannel(BaseChannel):
             )
             for media in msg.media:
                 await self._ws.send(media)
+            await self._ws.send(
+                json.dumps({"type": "tts", "state": "sentence_end", "session_id": msg.chat_id})
+            )
             play_time = len(msg.media) * self.config.frame_duration / 1000.0
             logger.debug(f"Sending audio message as opus frames, wait {play_time} s")
             await asyncio.sleep(play_time)

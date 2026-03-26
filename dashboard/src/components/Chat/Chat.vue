@@ -4,6 +4,7 @@ import MessageList from './MessageList.vue'
 import ChatInput from './ChatInput.vue'
 import { getAudioPlayer } from '../../js/audio/player.js'
 import { handleToolCallMessage } from '../../js/tools/tools.js'
+import defaultMcpTools from '../../js/tools/default-mcp-tools.json'
 
 interface Message {
   role: 'user' | 'assistant' | 'system'
@@ -21,7 +22,6 @@ interface Message {
     _task_ref?: string
     _hide_message?: boolean
     _progress?: boolean
-    need_tts?: boolean
     isPlayingOpus?: boolean
   }
 }
@@ -230,10 +230,7 @@ const handleWebSocketMessage = (event: MessageEvent) => {
           imageUrl: imageUrl,
           audioUrl: audioUrl,
           media: data.media,
-          metadata: {
-            ...data.metadata,
-            _progress: data.metadata?._progress
-          }
+          metadata: data.metadata
         }
         messages.value.push(newMessage)
 
@@ -314,8 +311,6 @@ const sendMessage = async (data: string | { text: string; images: Array<{ data: 
     }
   }
 
-  isLoading.value = true
-
   // Send message through WebSocketChannel
   if (ws && ws.readyState === WebSocket.OPEN) {
     const mediaItems = [
@@ -334,7 +329,6 @@ const sendMessage = async (data: string | { text: string; images: Array<{ data: 
         source: string
         timestamp: number
         session_id: string
-        need_tts?: boolean
         msg_type?: string
         file_type?: string
       }
@@ -349,7 +343,6 @@ const sendMessage = async (data: string | { text: string; images: Array<{ data: 
         source: 'web_dashboard',
         timestamp: Date.now(),
         session_id: sessionId.value,
-        need_tts: props.enableSpeak  // Add need_tts flag based on global enableSpeak
       }
     }
 
@@ -364,6 +357,7 @@ const sendMessage = async (data: string | { text: string; images: Array<{ data: 
 
     console.log('📤 Sending message:', messageData)
     ws.send(JSON.stringify(messageData))
+    isLoading.value = true
 
     // Set timeout: if no response within 30 seconds, stop loading
     const timeoutId = setTimeout(() => {
@@ -424,8 +418,6 @@ const handleAudioUpload = async (audioData: { data: string; type: string; isReco
         session_id: sessionId.value,
         msg_type: 'audio',  // Indicate this is an audio message
         file_type: audioData.type,
-        is_recording: audioData.isRecording,
-        need_tts: props.enableSpeak
       }
     }
 
@@ -543,6 +535,60 @@ const handleConnected = () => {
       ws.send(JSON.stringify(historyMsg))
     }
   }, 500)
+
+  // Send MCP tools list to backend
+  const mcpTools = defaultMcpTools
+  const mcpMessageData = {
+    type: 'mcp',
+    message_id: `mcp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    sender_id: senderId.value,
+    chat_id: chatId.value,
+    content: 'register_mcp_tools',
+    media: [],
+    metadata: {
+      source: 'web_dashboard',
+      timestamp: Date.now(),
+      session_id: sessionId.value,
+      payload: {
+        jsonrpc: '2.0',
+        id: 2, // Using ID 2 for tools/list request
+        result: {
+          tools: mcpTools
+        }
+      }
+    }
+  }
+  console.log('📦 Sending MCP tools list to backend:', mcpMessageData)
+  ws.send(JSON.stringify(mcpMessageData))
+}
+
+// Toggle speak feature and send update to backend
+const toggleSpeak = (need_tts: boolean) => {
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    console.log('⚠️ Cannot send /update_features: WebSocket not connected')
+    return
+  }
+
+  // Send /update_features message with need_tts in features
+  const updateFeaturesMsg = {
+    type: 'message',
+    message_id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    sender_id: senderId.value,
+    chat_id: chatId.value,
+    content: '/update_features',
+    media: [],
+    metadata: {
+      source: 'web_dashboard',
+      timestamp: Date.now(),
+      session_id: sessionId.value,
+      features: {
+        need_tts: need_tts
+      }
+    }
+  }
+
+  console.log('📤 Sending /update_features:', updateFeaturesMsg)
+  ws.send(JSON.stringify(updateFeaturesMsg))
 }
 
 const handleNewChat = () => {
@@ -647,54 +693,46 @@ const playAudio = (audioUrl: string) => {
 }
 
 const stopAudio = () => {
-  if (currentAudio.value) {
-    currentAudio.value.pause()
-    playingAudioUrl.value = null
-    currentAudio.value = null
-  }
-}
-
-const handleStopAudio = () => {
   // Stop normal audio playback first
   if (currentAudio.value) {
+    console.log('Stopping normal audio playback')
     currentAudio.value.pause()
     playingAudioUrl.value = null
     currentAudio.value = null
+    isLoading.value = false
   }
 
   // Stop remote speaking (opus playback)
   if (isRemoteSpeaking.value) {
+    console.log('Stopping remote speaking (opus playback)')
     // Clear all audio buffers and stop playback
     audioPlayer.clearAllAudio()
     isRemoteSpeaking.value = false
-    ttsSentenceCount.value = 0
-
-    // Update message playing state
-    messages.value.forEach(msg => {
-      if (msg.metadata?.isPlayingOpus) {
-        msg.metadata.isPlayingOpus = false
+    // Delay stop to let remaining audio play
+    setTimeout(() => {
+      ttsSentenceCount.value = 0
+      // Update the last message's playing state
+      if (messages.value.length > 0) {
+        const lastMsg = messages.value[messages.value.length - 1]
+        if (lastMsg.metadata?.isPlayingOpus !== undefined) {
+          lastMsg.metadata.isPlayingOpus = false
+        }
       }
-    })
+      isLoading.value = false
+    }, 1000)
   }
-
-  // Send /stop_audio command to backend
-  sendMessage('/stop_audio', true)
 }
 
 // Handle TTS message - same as xiaozhi-esp32-server implementation
 const handleTTSMessage = async (data: any) => {
   const state = data.state
-  console.log('🎵 TTS message:', state, data.text)
-
   if (state === 'start') {
-    console.log('服务器开始发送语音', 'info')
+    console.log('语音段开始')
     isRemoteSpeaking.value = true
     ttsSentenceCount.value = 0
   } else if (state === 'sentence_start') {
-    console.log(`服务器发送语音段：${data.text}`, 'info')
+    console.debug(`服务器发送语音段：${data.text}`)
     ttsSentenceCount.value++
-    // Set thinking state to true when sentence starts
-    isLoading.value = true
     // Add message to chat immediately
     if (data.text && !data.text.trim().startsWith('/')) {
       messages.value.push({
@@ -707,28 +745,10 @@ const handleTTSMessage = async (data: any) => {
       })
     }
   } else if (state === 'sentence_end') {
-    console.log(`语音段结束：${data.text}`, 'info')
-    // Don't clear animation at sentence end, wait for next sentence or final stop
-  } else if (state === 'stop') {
-    // Clear thinking state when stop is received
+    console.log(`语音段结束`)
     isLoading.value = false
-    // Clear all audio buffers and stop playback
-    audioPlayer.clearAllAudio()
-    isRemoteSpeaking.value = false
-    // Delay stop to let remaining audio play
-    setTimeout(() => {
-      ttsSentenceCount.value = 0
-
-      // Update the last message's playing state
-      if (messages.value.length > 0) {
-        const lastMsg = messages.value[messages.value.length - 1]
-        if (lastMsg.metadata?.isPlayingOpus !== undefined) {
-          lastMsg.metadata.isPlayingOpus = false
-        }
-      }
-
-      isLoading.value = false
-    }, 1000)
+  } else if (state === 'stop') {
+    stopAudio()
   }
 }
 
@@ -784,14 +804,15 @@ defineExpose({
   setWebSocket,
   handleWebSocketMessage,
   handleSendStatus,
-  handleConnected
+  handleConnected,
+  toggleSpeak
 })
 </script>
 
 <template>
   <div class="flex flex-col h-full chat-container">
     <!-- Messages -->
-    <MessageList :messages="messages" :isLoading="isLoading" @play-audio="playAudio" @stop-audio="handleStopAudio"
+    <MessageList :messages="messages" :isLoading="isLoading" @play-audio="playAudio" @stop-audio="stopAudio"
       :show-progress-messages="props.showProgressMessages" :playing-audio-url="playingAudioUrl"
       @thinking-change="handleThinkingChange" />
 

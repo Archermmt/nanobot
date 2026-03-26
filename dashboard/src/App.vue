@@ -7,7 +7,6 @@ import { mdiPhone, mdiWebcam, mdiMicrophone, mdiVolumeHigh, mdiEyeOff } from '@m
 import { getAudioPlayer } from './js/audio/player.js'
 import { checkOpusLoaded, initOpusEncoder } from './js/audio/opus-codec.js';
 import { getAudioRecorder } from './js/audio/recorder.js';
-import defaultMcpTools from './js/tools/default-mcp-tools.json'
 
 // Audio player instance
 let audioPlayer: any = null
@@ -21,38 +20,7 @@ const isConnecting = ref(false)
 const connectionError = ref<string | null>(null)
 let ws: WebSocket | null = null
 
-// Send MCP tools list to backend
-const sendMcpToolsList = () => {
-  if (!ws) return
 
-  // Load default MCP tools from JSON file
-  const mcpTools = defaultMcpTools
-
-  // Send MCP tools list message (using the same format as Chat.vue)
-  const messageData = {
-    type: 'mcp',
-    message_id: `mcp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-    sender_id: 'web_dashboard',
-    chat_id: 'default_room',
-    content: 'register_mcp_tools',
-    media: [],
-    metadata: {
-      source: 'web_dashboard',
-      timestamp: Date.now(),
-      session_id: 'default_session',
-      payload: {
-        jsonrpc: '2.0',
-        id: 2, // Using ID 2 for tools/list request
-        result: {
-          tools: mcpTools
-        }
-      }
-    }
-  }
-
-  console.log('📦 Sending MCP tools list to backend:', messageData)
-  ws.send(JSON.stringify(messageData))
-}
 
 // Other states
 const wsConnectionStatus = ref({
@@ -125,8 +93,6 @@ const connectWebSocket = () => {
     // Initialize connection: send /status and /history commands (hidden from chat)
     if (chatComponentRef.value && chatComponentRef.value.handleConnected) {
       chatComponentRef.value.handleConnected()
-      // Send MCP tools list to backend
-      sendMcpToolsList()
     }
   }
 
@@ -223,6 +189,16 @@ const handleThinkingChange = (isThinkingState: boolean) => {
       thinkingInterval = null
     }
     document.title = 'NanoBoard'
+  }
+}
+
+// Handle toggle speak from button click
+const handleToggleSpeak = () => {
+  enableSpeak.value = !enableSpeak.value
+
+  // Call Chat component's toggleSpeak method
+  if (chatComponentRef.value && chatComponentRef.value.toggleSpeak) {
+    chatComponentRef.value.toggleSpeak(enableSpeak.value)
   }
 }
 
@@ -451,7 +427,7 @@ document.addEventListener('mouseup', stopDragCamera)
             </svg>
           </button>
 
-          <button @click="enableSpeak = !enableSpeak" class="nes-btn"
+          <button @click="handleToggleSpeak" class="nes-btn"
             :class="{ 'is-success': enableSpeak, 'is-disabled': !isConnected || !enableTTS }"
             :title="enableSpeak ? '关闭语音输出' : '开启语音输出'">
             <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">

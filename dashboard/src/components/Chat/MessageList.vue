@@ -43,30 +43,6 @@ const props = defineProps<Props>()
 const emit = defineEmits(['play-audio', 'stop-audio', 'thinking-change'])
 
 const messageContainer = ref<HTMLElement | null>(null)
-
-const showThinking = computed(() => {
-  // Show thinking if isLoading is true and there are messages
-  // OR if the last message has _progress: true in metadata
-  if (props.messages.length === 0) return false
-
-  const lastMessage = props.messages[props.messages.length - 1]
-  const hasProgressFlag = lastMessage.metadata?._progress === true
-
-  // Always show thinking when loading
-  if (props.isLoading && props.messages.length > 0) return true
-
-  // When not loading, only show progress messages if showProgressMessages is enabled
-  if (hasProgressFlag) {
-    return props.showProgressMessages !== false
-  }
-
-  return false
-})
-
-watch(showThinking, (newValue) => {
-  emit('thinking-change', newValue)
-}, { immediate: true })
-
 const currentAudio = ref<HTMLAudioElement | null>(null)
 const expandedImages = ref<string[]>([])
 const currentModeHint = ref<string | null>(null)
@@ -400,7 +376,7 @@ watch(() => props.showProgressMessages, scrollToBottom)
               class="nes-btn is-primary">
               {{ isPlaying(msg.audioUrl!) ? '⏹️' : '▶️' }}
             </button>
-            <span class="text-xs opacity-70">{{ isPlaying(msg.audioUrl!) ? '播放中...' : '语音消息' }}</span>
+            <span class="text-xs opacity-70">{{ isPlaying(msg.audioUrl!) ? '播放中...' : '已停止' }}</span>
           </div>
         </div>
 
@@ -410,7 +386,7 @@ watch(() => props.showProgressMessages, scrollToBottom)
             <button @click="emit('stop-audio')" class="nes-btn is-primary">
               {{ msg.metadata.isPlayingOpus ? '⏹️' : '✅' }}
             </button>
-            <span class="text-xs opacity-70">{{ msg.metadata.isPlayingOpus ? '播放中...' : '已停止' }}</span>
+            <span class="text-xs opacity-70">{{ msg.metadata.isPlayingOpus ? '（流）播放中...' : '（流）已停止' }}</span>
           </div>
         </div>
 
@@ -426,7 +402,7 @@ watch(() => props.showProgressMessages, scrollToBottom)
     </div>
 
     <!-- Loading Indicator -->
-    <div v-if="showThinking" class="flex justify-start">
+    <div v-if="props.isLoading" class="flex justify-start">
       <div
         class="bg-gradient-to-br from-yellow-100 to-yellow-200 border border-yellow-300 rounded shadow-[4px_4px_0_rgba(0,0,0,0.5)] px-4 py-3">
         <div class="flex items-center space-x-2">

@@ -437,10 +437,6 @@ class ImageTool(Tool):
             raise ValueError(f"Invalid IMAGE_GEN_PROVIDER: {provider}")
         if error:
             return "Failed generate image: " + str(error)
-        """
-        for img_path in image_paths:
-            await self._execute_display(f"Generated image:\n{os.path.basename(img_path)}", img_path)
-        """
         return f"Generated {len(image_paths)} images by {provider} successfully."
 
     def _convert_svg_to_png(self, svg_path: str) -> str:

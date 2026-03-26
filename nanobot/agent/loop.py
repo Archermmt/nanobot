@@ -122,6 +122,7 @@ class AgentLoop:
         self._register_default_tools()
         if isinstance(self.provider, ProvidersManager):
             self.provider.set_send_callback(send_callback=self.bus.publish_outbound)
+        self._features = {}
 
     def _register_default_tools(self) -> None:
         """Register the default set of tools."""
@@ -422,6 +423,10 @@ class AgentLoop:
         key = session_key or msg.session_key
         session = self.sessions.get_or_create(key)
 
+        # Add features
+        if self._features:
+            msg.metadata.update(self._features)
+
         # Slash commands
         cmd = msg.content.strip().lower()
         if cmd == "/new":
@@ -551,6 +556,12 @@ class AgentLoop:
                 chat_id=msg.chat_id,
                 content="Registered extern tools: " + ",".join(tools),
                 metadata={"_task_ref": "register_extern_tools"},
+            )
+        if cmd == "/update_features":
+            self._features.update(msg.metadata.get("features", {}))
+            logger.info("Updated features: {}", self._features)
+            return OutboundMessage(
+                channel=msg.channel, chat_id=msg.chat_id, content="", metadata={"passby": True}
             )
         if msg.metadata and msg.metadata.get("passby", False):
             return OutboundMessage(
