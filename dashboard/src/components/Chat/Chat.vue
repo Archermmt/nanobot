@@ -561,7 +561,6 @@ const handleTTSMessage = async (data: any) => {
     }
   } else if (state === 'sentence_end') {
     console.log(`语音段结束`)
-    chatStatus.value = ""
   } else if (state === 'stop') {
     stopAudio()
   }
