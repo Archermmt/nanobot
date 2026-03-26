@@ -43,8 +43,6 @@ const chatId = ref('default_room')  // Global chat ID
 const currentAudio = ref<HTMLAudioElement | null>(null)
 const currentTimeoutId = ref<number | null>(null)
 const chatInputRef = ref<InstanceType<typeof ChatInput> | null>(null)
-const enableASR = ref(false)
-const enableTTS = ref(false)
 
 // Global audio playing state shared across components
 const playingAudioUrl = ref<string | null>(null)
@@ -55,7 +53,6 @@ const isConnected = ref(false)
 
 // Audio player instance
 const audioPlayer = getAudioPlayer()
-const isRemoteSpeaking = ref(false)
 const ttsSentenceCount = ref(0)
 
 // Method to set WebSocket instance from App.vue
@@ -97,17 +94,11 @@ const handleWebSocketMessage = (event: MessageEvent) => {
     if (data.type === 'message') {
       // Check if this is a status response
       if (data.content && data.metadata?._task_ref === 'status') {
-        // This is a status update, emit it for StatusBar
+        // This is a status update, emit it for StatusBar and App.vue
         try {
           const statusData = JSON.parse(data.content)
-          // Update global audio/tts state
-          if (statusData.enable_asr !== undefined) {
-            enableASR.value = statusData.enable_asr
-          }
-          if (statusData.enable_tts !== undefined) {
-            enableTTS.value = statusData.enable_tts
-          }
-          console.log('🔊 ASR enabled:', enableASR.value, 'TTS enabled:', enableTTS.value)
+          console.log('🔊 Status update:', statusData)
+          // Emit to parent component (App.vue) to update global state
           emit('status-update', statusData)
         } catch (e) {
           console.log('Status message content:', data.content)
@@ -235,7 +226,7 @@ const handleWebSocketMessage = (event: MessageEvent) => {
         messages.value.push(newMessage)
 
         // Auto-play audio if it's an audio message and TTS is enabled
-        if (audioUrl && enableTTS.value) {
+        if (audioUrl) {
           playAudio(audioUrl)
         }
       }
@@ -249,7 +240,7 @@ const handleWebSocketMessage = (event: MessageEvent) => {
       // Only set chatStatus based on _progress and _as_input
       if (data.metadata?._progress) {
         chatStatus.value = "Thinking"
-      } else {
+      } else if (!data.audioUrl) {
         chatStatus.value = ""
       }
     } else if (data.type === 'heartbeat') {
@@ -512,11 +503,10 @@ const stopAudio = () => {
   }
 
   // Stop remote speaking (opus playback)
-  if (isRemoteSpeaking.value) {
+  if (chatStatus.value === "Speaking") {
     console.log('Stopping remote speaking (opus playback)')
     // Clear all audio buffers and stop playback
     audioPlayer.clearAllAudio()
-    isRemoteSpeaking.value = false
     // Delay stop to let remaining audio play
     setTimeout(() => {
       ttsSentenceCount.value = 0
@@ -551,11 +541,10 @@ const handleTTSMessage = async (data: any) => {
   const state = data.state
   if (state === 'start') {
     console.log('语音段开始')
-    isRemoteSpeaking.value = true
     ttsSentenceCount.value = 0
+    chatStatus.value = "Speaking"
   } else if (state === 'sentence_start') {
     console.debug(`服务器发送语音段：${data.text}`)
-    chatStatus.value = "Speaking"
     ttsSentenceCount.value++
     // Add message to chat immediately
     if (data.text && !data.text.trim().startsWith('/')) {
@@ -577,7 +566,7 @@ const handleTTSMessage = async (data: any) => {
 
 // Handle opus audio frame - enqueue to player
 const handleOpusAudioFrame = async (data: Blob | ArrayBuffer) => {
-  if (!isRemoteSpeaking.value) {
+  if (chatStatus.value !== "Speaking") {
     console.warn('⚠️ Received opus frame but not speaking')
     return
   }
@@ -690,7 +679,6 @@ onUnmounted(() => {
 // Expose reactive state and methods to parent component
 defineExpose({
   chatStatus,
-  isRemoteSpeaking,
   playingAudioUrl,
   setWebSocket,
   handleWebSocketMessage,

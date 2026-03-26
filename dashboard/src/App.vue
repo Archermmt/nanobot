@@ -69,6 +69,12 @@ const connectWebSocket = () => {
     isConnected.value = true
     connectionError.value = null
 
+    // Reset button states to default values
+    isCameraOn.value = false
+    isOnlineChatOn.value = false
+    enableSpeak.value = false
+    hideProgress.value = false
+
     // Update status for header display
     wsConnectionStatus.value = {
       isConnected: true,
