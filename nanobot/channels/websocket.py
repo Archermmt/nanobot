@@ -295,7 +295,7 @@ class WebSocketChannel(BaseChannel):
                 sender_id=sender_id,
                 chat_id=chat_id,
                 content=msg_data["bytes"],
-                metadata={"msg_type": "audio_clip", "need_tts": True},
+                metadata={"msg_type": "audio_clip"},
             )
             return
         if msg_type == "mcp":
