@@ -205,10 +205,29 @@ const handleToggleSpeak = () => {
   }
 }
 
-// Helper methods to check handler availability
-const hasASRHandler = () => msgHandlers.value.includes('asr')
-const hasVADHandler = () => msgHandlers.value.includes('vad')
-const hasTTSHandler = () => msgHandlers.value.includes('tts')
+// Check if chat component is in processing state (Thinking/Speaking)
+const isChatProcessing = () => {
+  return !!chatComponentRef.value?.chatStatus
+}
+
+// Check if button should be disabled
+// @param isConnected - Whether WebSocket is connected
+// @param requiredHandlers - Array of required handlers (e.g., ['asr', 'vad', 'tts'])
+const isButtonDisabled = (isConnected: boolean, requiredHandlers?: string[]) => {
+  // Always disable if not connected
+  if (!isConnected) return true
+
+  // Disable if chat is processing
+  if (isChatProcessing()) return true
+
+  // Check if all required handlers are available
+  if (requiredHandlers && requiredHandlers.length > 0) {
+    const hasAllHandlers = requiredHandlers.every(handler => msgHandlers.value.includes(handler))
+    if (!hasAllHandlers) return true
+  }
+
+  return false
+}
 
 onUnmounted(() => {
   if (ws) {
@@ -423,14 +442,15 @@ document.addEventListener('mouseup', stopDragCamera)
           </button>
 
           <button @click="toggleCamera" class="nes-btn"
-            :class="{ 'is-success': isCameraOn, 'is-disabled': !isConnected }" :title="isCameraOn ? '关闭摄像头' : '开启摄像头'">
+            :class="{ 'is-success': isCameraOn, 'is-disabled': isButtonDisabled(isConnected) }"
+            :title="isCameraOn ? '关闭摄像头' : '开启摄像头'">
             <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
               <path :d="mdiWebcam" />
             </svg>
           </button>
 
           <button @click="startOnlineChat" class="nes-btn"
-            :class="{ 'is-success': isOnlineChatOn, 'is-disabled': !isConnected || !hasASRHandler() || !hasVADHandler() }"
+            :class="{ 'is-success': isOnlineChatOn, 'is-disabled': isButtonDisabled(isConnected, ['asr', 'vad']) }"
             :title="isOnlineChatOn ? '关闭在线聊天' : '开启在线聊天'">
             <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
               <path :d="mdiMicrophone" />
@@ -438,7 +458,7 @@ document.addEventListener('mouseup', stopDragCamera)
           </button>
 
           <button @click="handleToggleSpeak" class="nes-btn"
-            :class="{ 'is-success': enableSpeak, 'is-disabled': !isConnected || !hasTTSHandler() }"
+            :class="{ 'is-success': enableSpeak, 'is-disabled': isButtonDisabled(isConnected, ['tts']) }"
             :title="enableSpeak ? '关闭语音输出' : '开启语音输出'">
             <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
               <path :d="mdiVolumeHigh" />
@@ -446,7 +466,7 @@ document.addEventListener('mouseup', stopDragCamera)
           </button>
 
           <button @click="hideProgress = !hideProgress" class="nes-btn"
-            :class="{ 'is-success': hideProgress, 'is-disabled': !isConnected }"
+            :class="{ 'is-success': hideProgress, 'is-disabled': isButtonDisabled(isConnected) }"
             :title="hideProgress ? '开启思考模式' : '关闭思考模式'">
             <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
               <path :d="mdiEyeOff" />
