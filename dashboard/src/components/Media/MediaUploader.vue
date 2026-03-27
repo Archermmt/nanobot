@@ -10,7 +10,7 @@ interface Props {
 }
 
 const props = defineProps<Props>()
-const emit = defineEmits(['upload-image', 'upload-audio', 'upload-file', 'recording-start', 'recording-stop'])
+const emit = defineEmits(['upload-image', 'upload-audio', 'upload-file', 'recording-start'])
 
 const imageInput = ref<HTMLInputElement | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
