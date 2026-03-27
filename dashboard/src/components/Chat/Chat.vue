@@ -32,8 +32,7 @@ const props = defineProps<{
   msgHandlers?: string[]
 }>()
 
-const emit = defineEmits(['send', 'new-chat', 'clear-chat', 'upload-image', 'upload-audio', 'upload-file', 'ws-status-change', 'send-status', 'status-update', 'stop-audio', 'recording-start', 'chat-status-change'])
-
+const emit = defineEmits(['status-update', 'chat-status-change'])
 const messages = ref<Message[]>([])
 const chatStatus = ref<string>("")
 const sessionId = ref(`session_${Date.now()}`)

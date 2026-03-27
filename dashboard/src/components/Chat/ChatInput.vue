@@ -15,7 +15,7 @@ const props = withDefaults(defineProps<Props>(), {
   messages: () => []
 })
 
-const emit = defineEmits(['send', 'new-chat', 'clear-chat', 'stop-chat', 'upload-image', 'upload-audio', 'upload-file', 'recording-start'])
+const emit = defineEmits(['send', 'new-chat', 'clear-chat', 'upload-image', 'upload-audio', 'upload-file', 'recording-start'])
 
 interface PendingMedia {
   data: string
