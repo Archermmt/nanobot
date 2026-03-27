@@ -4,7 +4,7 @@ import { mdiImage, mdiFileUploadOutline, mdiChat, mdiStop } from '@mdi/js'
 
 interface Props {
   disabled?: boolean
-  isMicrophoneOn?: boolean
+  isOnlineChatOn?: boolean
   enableASR?: boolean // Track if audio input handler is enabled
   enableSpeak?: boolean // Track if speech output is enabled
 }
@@ -138,7 +138,7 @@ const stopRecording = () => {
     </button>
 
     <!-- Voice Recording -->
-    <button @click="isRecording ? stopRecording() : startRecording()" :disabled="props.disabled || isMicrophoneOn"
+    <button @click="isRecording ? stopRecording() : startRecording()" :disabled="props.disabled || isOnlineChatOn"
       class="nes-btn p-2 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
       :class="isRecording ? 'is-danger' : 'is-primary'" :title="isRecording ? '停止录音' : '开始录音'">
       <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">

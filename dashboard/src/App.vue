@@ -20,8 +20,6 @@ const isConnecting = ref(false)
 const connectionError = ref<string | null>(null)
 let ws: WebSocket | null = null
 
-
-
 // Other states
 const wsConnectionStatus = ref({
   isConnected: false,

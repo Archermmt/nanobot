@@ -28,7 +28,7 @@ interface Message {
 
 const props = defineProps<{
   showProgressMessages?: boolean
-  isMicrophoneOn?: boolean
+  isOnlineChatOn?: boolean
   enableASR?: boolean
   enableSpeak?: boolean
 }>()
@@ -673,7 +673,7 @@ defineExpose({
 
     <!-- Input -->
     <ChatInput ref="chatInputRef" :chat-status="chatStatus" :disabled="!isConnected"
-      :is-microphone-on="props.isMicrophoneOn" :enable-speak="props.enableSpeak" :messages="messages"
+      :is-online-chat-on="props.isOnlineChatOn" :enable-speak="props.enableSpeak" :messages="messages"
       @send="sendMessage" @new-chat="handleNewChat" @clear-chat="handleClearChat" @send-status="handleSendStatus"
       @stop-audio="stopAudio" @upload-audio="handleAudioUpload" @recording-start="handleRecordingStart" />
   </div>
