@@ -389,11 +389,7 @@ const sendMessage = async (
     console.log('📤 Sending message:', messageData)
     ws.send(JSON.stringify(messageData))
     if (!isCommand) {
-      if (audios.length == 0) {
-        chatStatus.value = "Thinking"
-      } else {
-        chatStatus.value = "Listening"
-      }
+      chatStatus.value = "Thinking"
     }
 
     // Set timeout: if no response within 30 seconds, stop loading
@@ -510,13 +506,7 @@ const toggleSpeak = (need_tts: boolean) => {
 }
 
 const handleRecordingStart = () => {
-  chatStatus.value = "Listening"
-}
-
-const handleRecordingStop = () => {
-  if (chatStatus.value === "Listening") {
-    chatStatus.value = ""
-  }
+  chatStatus.value = "Recording"
 }
 
 const handleAudioUpload = async (audioData: { data: string; type: string; isRecording?: boolean }) => {
@@ -559,7 +549,6 @@ const stopAudio = () => {
     currentAudio.value.pause()
     playingAudioUrl.value = null
     currentAudio.value = null
-    chatStatus.value = ""
   }
 
   // Stop remote speaking (opus playback)
@@ -568,18 +557,16 @@ const stopAudio = () => {
     // Clear all audio buffers and stop playback
     audioPlayer.clearAllAudio()
     // Delay stop to let remaining audio play
-    setTimeout(() => {
-      ttsSentenceCount.value = 0
-      // Update the last message's playing state
-      if (messages.value.length > 0) {
-        const lastMsg = messages.value[messages.value.length - 1]
-        if (lastMsg.metadata?.isPlayingOpus !== undefined) {
-          lastMsg.metadata.isPlayingOpus = false
-        }
+    ttsSentenceCount.value = 0
+    // Update the last message's playing state
+    if (messages.value.length > 0) {
+      const lastMsg = messages.value[messages.value.length - 1]
+      if (lastMsg.metadata?.isPlayingOpus !== undefined) {
+        lastMsg.metadata.isPlayingOpus = false
       }
-      chatStatus.value = ""
-    }, 1000)
+    }
   }
+  chatStatus.value = ""
 }
 
 // Watch for chatStatus changes and emit to parent
@@ -688,7 +675,6 @@ defineExpose({
     <ChatInput ref="chatInputRef" :chat-status="chatStatus" :disabled="!isConnected"
       :is-microphone-on="props.isMicrophoneOn" :enable-speak="props.enableSpeak" :messages="messages"
       @send="sendMessage" @new-chat="handleNewChat" @clear-chat="handleClearChat" @send-status="handleSendStatus"
-      @stop-audio="stopAudio" @upload-audio="handleAudioUpload" @recording-start="handleRecordingStart"
-      @recording-stop="handleRecordingStop" />
+      @stop-audio="stopAudio" @upload-audio="handleAudioUpload" @recording-start="handleRecordingStart" />
   </div>
 </template>

@@ -13,6 +13,7 @@ from loguru import logger
 from nanobot.bus.events import InboundMessage, OutboundMessage
 from nanobot.bus.handlers.base_handler import BaseHandler
 from nanobot.config.schema import VADHandlerConfig
+from nanobot.utils.message import RetType
 
 
 class BaseVADHandler(BaseHandler, ABC):
@@ -66,7 +67,7 @@ class BaseVADHandler(BaseHandler, ABC):
         """
         if msg.metadata.get("_progress", False):
             return False
-        if not self._waiting_id or msg.metadata.get("audio_id", "") != self._waiting_id:
+        if not self._waiting_id or msg.metadata.get("vad_id", "") != self._waiting_id:
             return False
         if msg.metadata.get("need_tts", False):
             return msg.metadata.get("msg_type", "") == "audio"
@@ -97,14 +98,14 @@ class BaseVADHandler(BaseHandler, ABC):
         """
         if not msg.content or self._waiting_id:
             msg.content = ""
-            msg.metadata["passby"] = True
+            msg.metadata["ret_type"] = RetType.IGNORE
             return msg
 
         self._asr_audio.append(msg.content)
         audio_have_voice, msg.content = self.is_vad(msg.content), ""
         if not audio_have_voice and not self._client_have_voice:
             self._asr_audio = self._asr_audio[-10:]
-            msg.metadata["passby"] = True
+            msg.metadata["ret_type"] = RetType.IGNORE
             return msg
 
         if len(self._asr_audio) > 30 and not audio_have_voice and self._client_voice_stop:
@@ -112,12 +113,12 @@ class BaseVADHandler(BaseHandler, ABC):
             if self.audio_format == "opus":
                 pcm_data = self.decode_opus(pcm_data)
             msg.media = [{"data": b"".join(pcm_data)}]
-            msg.metadata["msg_type"] = "audio"
-            msg.metadata["audio_format"] = "pcm"
             self._waiting_id = str(uuid.uuid4())[:8]
-            msg.metadata["audio_id"] = self._waiting_id
+            msg.metadata.update(
+                {"msg_type": "audio", "audio_format": "pcm", "vad_id": self._waiting_id}
+            )
         else:
-            msg.metadata["passby"] = True
+            msg.metadata["ret_type"] = RetType.IGNORE
         return msg
 
     async def handle_output(self, msg: OutboundMessage) -> OutboundMessage:

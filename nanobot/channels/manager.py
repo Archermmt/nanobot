@@ -11,6 +11,7 @@ from nanobot.bus.events import OutboundMessage
 from nanobot.bus.queue import MessageBus
 from nanobot.channels.base import BaseChannel
 from nanobot.config.schema import Config
+from nanobot.utils.message import RetType
 
 
 class ChannelManager:
@@ -228,7 +229,7 @@ class ChannelManager:
         while True:
             try:
                 msg = await asyncio.wait_for(self.bus.consume_outbound(), timeout=1.0)
-                if msg.metadata.get("passby", False):
+                if msg.metadata.get("ret_type", RetType.NORMAL) == RetType.IGNORE:
                     continue
 
                 if msg.metadata.get("_progress"):

@@ -16,6 +16,7 @@ from nanobot.bus.events import InboundMessage
 from nanobot.bus.handlers.base_handler import BaseHandler
 from nanobot.config.schema import ASRHandlerConfig
 from nanobot.utils.log import CaptureOutput
+from nanobot.utils.message import RetType
 
 
 class BaseASRHandler(BaseHandler):
@@ -73,17 +74,21 @@ class BaseASRHandler(BaseHandler):
 
             # Recognize speech from audio
             audio_format = msg.metadata.get("audio_format", "wav")
+            msg.media = []
+            msg.metadata.update({"msg_type": "text"})
             transcribed_text = await self._process_audio(media_data, audio_format)
-
             if transcribed_text:
-                logger.debug(f"Recognized speech from audio: '{transcribed_text}'")
+                logger.debug(f"Recognized speech: '{transcribed_text}'")
                 msg.content = transcribed_text
-                msg.media = []
-                msg.metadata.update({"_as_input": True, "msg_type": "text"})
+                msg.metadata.update({"_as_input": True})
             else:
-                logger.warning("No speech recognized, skipping message")
-                msg.content = ""
-                msg.metadata["passby"] = True
+                msg.content = "No speech recognized"
+                logger.debug(msg.content)
+                msg.metadata.update({"need_tts": False})
+                if "vad_id" in msg.metadata:
+                    msg.metadata.update({"ret_type": RetType.IGNORE})
+                else:
+                    msg.metadata.update({"ret_type": RetType.PASSBY, "_hide_message": False})
         except Exception as e:
             logger.error(f"Audio processing error: {e}")
             msg.content = f"Error processing audio: {e}"

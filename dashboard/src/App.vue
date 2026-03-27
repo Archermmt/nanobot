@@ -181,20 +181,19 @@ onMounted(() => {
 })
 
 const handleChatStatusChange = (chatStatus: string) => {
-  if (chatStatus && ["Thinking", "Speaking", "Listening"].includes(chatStatus)) {
+  if (thinkingInterval) {
+    clearInterval(thinkingInterval)
+    thinkingInterval = null
+  }
+  if (!chatStatus) {
+    document.title = 'NanoBoard'
+  } else {
     // Start blinking effect with suffix
     let dots = 0
     thinkingInterval = window.setInterval(() => {
       dots = (dots + 1) % 4
       document.title = chatStatus + ' ' + '.'.repeat(dots)
     }, 500)
-  } else {
-    // Stop blinking effect and reset title
-    if (thinkingInterval) {
-      clearInterval(thinkingInterval)
-      thinkingInterval = null
-    }
-    document.title = 'NanoBoard'
   }
 }
 

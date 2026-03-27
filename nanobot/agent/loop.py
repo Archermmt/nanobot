@@ -30,6 +30,7 @@ from nanobot.config.loader import load_config
 from nanobot.providers.base import LLMProvider
 from nanobot.providers.providers_manager import ProvidersManager
 from nanobot.session.manager import ChatStatus, Session, SessionManager
+from nanobot.utils.message import RetType
 
 if TYPE_CHECKING:
     from nanobot.config.schema import ChannelsConfig, ExecToolConfig
@@ -417,7 +418,7 @@ class AgentLoop:
             )
 
         preview = msg.content[:80] + "..." if len(msg.content) > 80 else msg.content
-        if msg.content and not msg.metadata.get("passby", False):
+        if msg.content and msg.metadata.get("ret_type", RetType.NORMAL) == RetType.NORMAL:
             logger.info("Processing message from {}:{}: {}", msg.channel, msg.sender_id, preview)
 
         key = session_key or msg.session_key
@@ -425,7 +426,7 @@ class AgentLoop:
 
         # Add features
         if self._features:
-            msg.metadata.update(self._features)
+            msg.metadata.update({k: v for k, v in self._features.items() if k not in msg.metadata})
 
         # Slash commands
         cmd = msg.content.strip().lower()
@@ -572,7 +573,9 @@ class AgentLoop:
                 content="",
                 metadata={"_task_ref": "update_features", "_hide_message": True},
             )
-        if msg.metadata and msg.metadata.get("passby", False):
+        if msg.metadata.get("ret_type", RetType.NORMAL) != RetType.NORMAL:
+            if msg.metadata.get("ret_type", RetType.NORMAL) == RetType.PASSBY:
+                msg.metadata.setdefault("_hide_message", True)
             return OutboundMessage(
                 channel=msg.channel, chat_id=msg.chat_id, content=msg.content, metadata=msg.metadata
             )

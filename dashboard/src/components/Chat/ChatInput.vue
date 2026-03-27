@@ -15,7 +15,7 @@ const props = withDefaults(defineProps<Props>(), {
   messages: () => []
 })
 
-const emit = defineEmits(['send', 'new-chat', 'clear-chat', 'stop-chat', 'upload-image', 'upload-audio', 'upload-file', 'recording-start', 'recording-stop'])
+const emit = defineEmits(['send', 'new-chat', 'clear-chat', 'stop-chat', 'upload-image', 'upload-audio', 'upload-file', 'recording-start'])
 
 interface PendingMedia {
   data: string
@@ -148,7 +148,7 @@ const handleStopChat = () => {
     text: '/stop',
     images: [],
     files: []
-  })
+  }, true)
 }
 
 const handleImageUpload = (imageData: { data: string; type: string; name: string }) => {
@@ -172,10 +172,6 @@ const handleRecordingStart = () => {
   emit('recording-start')
 }
 
-const handleRecordingStop = () => {
-  emit('recording-stop')
-}
-
 const removePendingImage = (index: number) => {
   pendingImages.value.splice(index, 1)
 }
@@ -197,7 +193,7 @@ defineExpose({
       <!-- Media Upload Buttons on the left of input -->
       <MediaUploader :disabled="props.disabled || chatStatus === 'Thinking'" :is-microphone-on="props.isMicrophoneOn"
         :enable-speak="props.enableSpeak" @upload-image="handleImageUpload" @upload-audio="handleAudioUpload"
-        @upload-file="handleFileUpload" @recording-start="handleRecordingStart" @recording-stop="handleRecordingStop" />
+        @upload-file="handleFileUpload" @recording-start="handleRecordingStart" />
 
       <!-- Text Input -->
       <form id="message-form" @submit.prevent="sendMessage" class="flex-1 flex flex-col space-y-2">
