@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import Sidebar from './components/Sidebar/Sidebar.vue'
 import StatusBar from './components/StatusBar/StatusBar.vue'
 import Chat from './components/Chat/Chat.vue'
@@ -34,9 +34,8 @@ const statusBarComponentRef = ref<any>(null)
 const hideProgress = ref(false)
 const isCameraOn = ref(false)
 const isOnlineChatOn = ref(false)
-const enableASR = ref(false) // Track if audio input handler is enabled
 const enableSpeak = ref(false) // Track if speech output is enabled
-const enableTTS = ref(false) // Track if TTS is available
+const msgHandlers = ref<string[]>([]) // Track available msgHandlers from backend
 const videoStream = ref<MediaStream | null>(null)
 const videoElement = ref<HTMLVideoElement | null>(null)
 
@@ -72,6 +71,7 @@ const connectWebSocket = () => {
     isOnlineChatOn.value = false
     enableSpeak.value = false
     hideProgress.value = false
+    msgHandlers.value = []
 
     // Update status for header display
     wsConnectionStatus.value = {
@@ -205,6 +205,11 @@ const handleToggleSpeak = () => {
   }
 }
 
+// Helper methods to check handler availability
+const hasASRHandler = () => msgHandlers.value.includes('asr')
+const hasVADHandler = () => msgHandlers.value.includes('vad')
+const hasTTSHandler = () => msgHandlers.value.includes('tts')
+
 onUnmounted(() => {
   if (ws) {
     ws.close()
@@ -249,12 +254,10 @@ const handleSendStatus = () => {
 // Handle status update from Chat component
 const handleStatusUpdate = (data: any) => {
   console.log('📊 Status update received in App.vue:', data)
-  // Update global enable_asr and enable_tts state
-  if (data.enable_asr !== undefined) {
-    enableASR.value = data.enable_asr
-  }
-  if (data.enable_tts !== undefined) {
-    enableTTS.value = data.enable_tts
+  // Update handlers list from status response
+  if (data.msg_handlers !== undefined && Array.isArray(data.msg_handlers)) {
+    msgHandlers.value = data.msg_handlers
+    console.log('✅ Available msg_handlers:', msgHandlers.value)
   }
   // Pass the status data to StatusBar via a custom event or prop
   // We'll use a ref to call StatusBar's method
@@ -427,7 +430,7 @@ document.addEventListener('mouseup', stopDragCamera)
           </button>
 
           <button @click="startOnlineChat" class="nes-btn"
-            :class="{ 'is-success': isOnlineChatOn, 'is-disabled': !isConnected || !enableASR }"
+            :class="{ 'is-success': isOnlineChatOn, 'is-disabled': !isConnected || !hasASRHandler() || !hasVADHandler() }"
             :title="isOnlineChatOn ? '关闭在线聊天' : '开启在线聊天'">
             <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
               <path :d="mdiMicrophone" />
@@ -435,7 +438,7 @@ document.addEventListener('mouseup', stopDragCamera)
           </button>
 
           <button @click="handleToggleSpeak" class="nes-btn"
-            :class="{ 'is-success': enableSpeak, 'is-disabled': !isConnected || !enableTTS }"
+            :class="{ 'is-success': enableSpeak, 'is-disabled': !isConnected || !hasTTSHandler() }"
             :title="enableSpeak ? '关闭语音输出' : '开启语音输出'">
             <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
               <path :d="mdiVolumeHigh" />
@@ -460,8 +463,7 @@ document.addEventListener('mouseup', stopDragCamera)
       <main class="flex-1 overflow-hidden bg-gray-900">
         <Chat ref="chatComponentRef" v-show="currentSection === 'chat'" @status-update="handleStatusUpdate"
           @ws-status-change="handleWsStatusChange" @chat-status-change="handleChatStatusChange"
-          :show-progress-messages="!hideProgress" :is-online-chat-on="isOnlineChatOn" :enable-audio="enableASR"
-          :enable-tts="enableTTS" :enable-speak="enableSpeak" />
+          :show-progress-messages="!hideProgress" :is-online-chat-on="isOnlineChatOn" :msg-handlers="msgHandlers" />
         <div v-show="currentSection !== 'chat'" class="p-6 text-gray-500 text-center">
           <p class="text-lg">Section under construction</p>
           <p class="text-sm mt-2">{{ currentSection }} view coming soon...</p>

@@ -6,6 +6,7 @@ interface Props {
   disabled?: boolean
   isOnlineChatOn?: boolean
   enableASR?: boolean // Track if audio input handler is enabled
+  msgHandlers?: string[]
 }
 
 const props = defineProps<Props>()
@@ -105,12 +106,12 @@ const stopRecording = () => {
   if (mediaRecorder.value && isRecording.value) {
     mediaRecorder.value.stop()
     isRecording.value = false
-    emit('recording-stop')
-
     // Stop all tracks
     mediaRecorder.value.stream.getTracks().forEach(track => track.stop())
   }
 }
+
+const hasASRHandler = () => props.msgHandlers?.includes('asr') || false
 
 </script>
 
@@ -137,7 +138,8 @@ const stopRecording = () => {
     </button>
 
     <!-- Voice Recording -->
-    <button @click="isRecording ? stopRecording() : startRecording()" :disabled="props.disabled || isOnlineChatOn"
+    <button @click="isRecording ? stopRecording() : startRecording()"
+      :disabled="props.disabled || isOnlineChatOn || !hasASRHandler()"
       class="nes-btn p-2 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
       :class="isRecording ? 'is-danger' : 'is-primary'" :title="isRecording ? '停止录音' : '开始录音'">
       <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">

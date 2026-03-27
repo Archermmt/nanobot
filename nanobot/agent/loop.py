@@ -513,8 +513,7 @@ class AgentLoop:
                 "history": len(session.messages),
                 "skills": len(self.context.skills.list_skills()),
                 "tools": len(self.tools),
-                "enable_asr": "asr" in self.bus.handlers,
-                "enable_tts": "tts" in self.bus.handlers,
+                "msg_handlers": list(self.bus.handlers.keys()),
             }
             metadata = {"_task_ref": "status", "_hide_message": True}
             return OutboundMessage(

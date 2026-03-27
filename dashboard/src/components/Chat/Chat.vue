@@ -29,7 +29,7 @@ interface Message {
 const props = defineProps<{
   showProgressMessages?: boolean
   isOnlineChatOn?: boolean
-  enableASR?: boolean
+  msgHandlers?: string[]
 }>()
 
 const emit = defineEmits(['send', 'new-chat', 'clear-chat', 'upload-image', 'upload-audio', 'upload-file', 'ws-status-change', 'send-status', 'status-update', 'stop-audio', 'recording-start', 'recording-stop', 'chat-status-change'])
@@ -662,6 +662,7 @@ defineExpose({
   handleConnected,
   toggleSpeak,
 })
+
 </script>
 
 <template>
@@ -672,8 +673,8 @@ defineExpose({
 
     <!-- Input -->
     <ChatInput ref="chatInputRef" :chat-status="chatStatus" :disabled="!isConnected"
-      :is-online-chat-on="props.isOnlineChatOn" :messages="messages" @send="sendMessage" @new-chat="handleNewChat"
-      @clear-chat="handleClearChat" @send-status="handleSendStatus" @stop-audio="stopAudio"
-      @upload-audio="handleAudioUpload" @recording-start="handleRecordingStart" />
+      :is-online-chat-on="props.isOnlineChatOn" :msg-handlers="props.msgHandlers" :messages="messages"
+      @send="sendMessage" @new-chat="handleNewChat" @clear-chat="handleClearChat" @send-status="handleSendStatus"
+      @stop-audio="stopAudio" @upload-audio="handleAudioUpload" @recording-start="handleRecordingStart" />
   </div>
 </template>
