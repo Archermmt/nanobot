@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, nextTick } from 'vue'
 import { mdiImage, mdiFileUploadOutline, mdiChat, mdiStop } from '@mdi/js'
 
 interface Props {
@@ -20,7 +20,7 @@ const mediaRecorder = ref<MediaRecorder | null>(null)
 const audioChunks = ref<Blob[]>([])
 const audioContext = ref<AudioContext | null>(null)
 const analyser = ref<AnalyserNode | null>(null)
-const volumeLevel = ref(0)
+const canvasRef = ref<HTMLCanvasElement | null>(null)
 const animationFrameId = ref<number | null>(null)
 
 const triggerImageUpload = () => {
@@ -119,8 +119,11 @@ const startRecording = async () => {
     showRecordingDialog.value = true
     emit('recording-start')
 
-    // Start volume monitoring
-    monitorVolume()
+    // Wait for dialog to render, then start visualization
+    await nextTick()
+    setTimeout(() => {
+      monitorVolume()
+    }, 100)
   } catch (error) {
     console.error('Error accessing microphone:', error)
   }
@@ -137,25 +140,79 @@ const stopRecording = () => {
 }
 
 const monitorVolume = () => {
-  if (!analyser.value) return
-
-  const dataArray = new Uint8Array(analyser.value.frequencyBinCount)
-
-  const updateVolume = () => {
-    analyser.value!.getByteFrequencyData(dataArray)
-
-    // Calculate average volume
-    let sum = 0
-    for (let i = 0; i < dataArray.length; i++) {
-      sum += dataArray[i]
-    }
-    const average = sum / dataArray.length
-    volumeLevel.value = Math.min(100, (average / 255) * 100)
-
-    animationFrameId.value = requestAnimationFrame(updateVolume)
+  if (!analyser.value || !canvasRef.value) {
+    console.log('Canvas or analyser not ready:', {
+      analyser: !!analyser.value,
+      canvas: !!canvasRef.value
+    })
+    return
   }
 
-  updateVolume()
+  const canvas = canvasRef.value
+  const ctx = canvas.getContext('2d')
+  if (!ctx) {
+    console.log('Could not get 2D context')
+    return
+  }
+
+  console.log('Starting linear spectrum visualization')
+  console.log('Canvas size:', canvas.width, 'x', canvas.height)
+  console.log('Analyser fftSize:', analyser.value.fftSize)
+
+  const bufferLength = analyser.value.frequencyBinCount
+  const dataArray = new Uint8Array(bufferLength)
+
+  console.log('Buffer length:', bufferLength)
+
+  const drawLinearSpectrum = () => {
+    if (!analyser.value || !canvasRef.value) return
+
+    analyser.value.getByteFrequencyData(dataArray)
+
+    const width = canvas.width
+    const height = canvas.height
+    const centerY = height / 2
+
+    // Clear canvas
+    ctx.fillStyle = 'rgb(17, 24, 39)' // bg-gray-900
+    ctx.fillRect(0, 0, width, height)
+
+    // Draw center line
+    ctx.strokeStyle = 'rgba(75, 85, 99, 0.5)' // gray-600 with opacity
+    ctx.lineWidth = 1
+    ctx.beginPath()
+    ctx.moveTo(0, centerY)
+    ctx.lineTo(width, centerY)
+    ctx.stroke()
+
+    // Draw waveform from frequency data
+    ctx.lineWidth = 2
+    ctx.strokeStyle = '#ef4444' // red-500
+    ctx.beginPath()
+
+    const sliceWidth = width / bufferLength
+    let x = 0
+
+    for (let i = 0; i < bufferLength; i++) {
+      const v = dataArray[i] / 128.0
+      const y = centerY + (v - 1) * (height / 2)
+
+      if (i === 0) {
+        ctx.moveTo(x, y)
+      } else {
+        ctx.lineTo(x, y)
+      }
+
+      x += sliceWidth
+    }
+
+    ctx.lineTo(canvas.width, centerY)
+    ctx.stroke()
+
+    animationFrameId.value = requestAnimationFrame(drawLinearSpectrum)
+  }
+
+  drawLinearSpectrum()
 }
 
 const handleDialogClick = (event: MouseEvent) => {
@@ -163,12 +220,6 @@ const handleDialogClick = (event: MouseEvent) => {
   if (target.classList.contains('recording-dialog-overlay')) {
     stopRecording()
   }
-}
-
-const getVolumeColor = () => {
-  if (volumeLevel.value < 30) return 'bg-green-500'
-  if (volumeLevel.value < 70) return 'bg-yellow-500'
-  return 'bg-red-500'
 }
 
 const hasASRHandler = () => props.msgHandlers?.includes('asr') || false
@@ -221,12 +272,9 @@ const hasASRHandler = () => props.msgHandlers?.includes('asr') || false
         <h3 class="text-white text-lg font-bold mb-2">正在录音...</h3>
         <p class="text-gray-400 text-xs mb-4">点击任意空白处停止录音</p>
 
-        <!-- Volume Meter -->
-        <div class="volume-meter-container bg-gray-900 rounded-lg p-4 mb-4">
-          <div class="volume-bar h-4 rounded-full transition-all duration-100 ease-out" :class="getVolumeColor()"
-            :style="{ width: volumeLevel + '%' }">
-          </div>
-          <p class="text-gray-500 text-xs mt-2">音量：{{ Math.round(volumeLevel) }}%</p>
+        <!-- Linear Spectrum Visualizer -->
+        <div class="bg-gray-900 rounded-lg p-4 mb-4">
+          <canvas ref="canvasRef" width="400" height="100" class="w-full rounded"></canvas>
         </div>
 
         <button @click.stop="stopRecording()" class="nes-btn is-error w-full py-2">
@@ -241,16 +289,6 @@ const hasASRHandler = () => props.msgHandlers?.includes('asr') || false
 </template>
 
 <style scoped>
-.volume-meter-container {
-  position: relative;
-  overflow: hidden;
-}
-
-.volume-bar {
-  min-width: 4px;
-  box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
-}
-
 .recording-dialog-overlay {
   backdrop-filter: blur(2px);
 }
