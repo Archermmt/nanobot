@@ -4,7 +4,7 @@ import MessageList from './MessageList.vue'
 import ChatInput from './ChatInput.vue'
 import { getAudioPlayer } from '../../js/audio/player.js'
 import { handleToolCallMessage } from '../../js/tools/tools.js'
-import defaultMcpTools from '../../js/tools/default-mcp-tools.json'
+import WebsocketTools from '../../js/tools/websocket_tools.json'
 
 interface Message {
   role: 'user' | 'assistant' | 'system'
@@ -486,7 +486,7 @@ const handleConnected = () => {
   pendingCommandsCount.value++
 
   // Send tools list to backend
-  sendMessage('/register_extern_tools', true, { tools: defaultMcpTools })
+  sendMessage('/register_extern_tools', true, { tools: WebsocketTools })
   pendingCommandsCount.value++
 
   // Send /history after 500ms to load history for input cache

@@ -1,5 +1,5 @@
 // Tools manager for handling tool call messages
-import defaultTools from './default-mcp-tools.json'
+import defaultTools from './websocket_tools.json'
 
 /**
  * Get all available tools
@@ -56,7 +56,7 @@ export async function handleToolCallMessage(message, websocket) {
     let result
 
     // Handle specific tools
-    if (toolName === 'self_camera_take_photo') {
+    if (toolName === 'camera_take_photo') {
       // Capture photo from camera and get result
       result = await captureAndSendPhoto(toolKwargs)
     } else {
