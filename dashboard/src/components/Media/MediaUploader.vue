@@ -6,7 +6,6 @@ interface Props {
   disabled?: boolean
   isOnlineChatOn?: boolean
   enableASR?: boolean // Track if audio input handler is enabled
-  enableSpeak?: boolean // Track if speech output is enabled
 }
 
 const props = defineProps<Props>()
