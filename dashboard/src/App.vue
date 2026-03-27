@@ -427,7 +427,7 @@ document.addEventListener('mouseup', stopDragCamera)
           </button>
 
           <button @click="startOnlineChat" class="nes-btn"
-            :class="{ 'is-success': isOnlineChatOn, 'is-disabled': !isConnected }"
+            :class="{ 'is-success': isOnlineChatOn, 'is-disabled': !isConnected || !enableASR }"
             :title="isOnlineChatOn ? '关闭在线聊天' : '开启在线聊天'">
             <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
               <path :d="mdiMicrophone" />
