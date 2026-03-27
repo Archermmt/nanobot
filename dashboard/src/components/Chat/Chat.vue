@@ -253,8 +253,7 @@ const handleWebSocketMessage = (event: MessageEvent) => {
 
       // Check if message contains _mode_hint and is not a progress message
       if (data.metadata?._mode_hint && !data.metadata?._progress) {
-        // Call handleSendStatus to update status bar
-        handleSendStatus()
+        sendMessage('/status', true)
       }
 
       // Only set chatStatus based on _progress and _as_input
@@ -422,11 +421,6 @@ const sendMessage = async (
   }
 }
 
-// Wrapper for status command
-const handleSendStatus = () => {
-  sendMessage('/status', true)
-}
-
 // Wrapper for new chat command
 const handleNewChat = () => {
   sendMessage('/new', true)
@@ -486,21 +480,6 @@ const handleConnected = () => {
   // Send /history after 500ms to load history for input cache
   sendMessage('/history', true)
   pendingCommandsCount.value++
-}
-
-// Toggle speak feature and send update to backend
-const toggleSpeak = (need_tts: boolean) => {
-  if (!ws || ws.readyState !== WebSocket.OPEN) {
-    console.log('⚠️ Cannot send /update_features: WebSocket not connected')
-    return
-  }
-
-  // Send /update_features message with need_tts in features
-  sendMessage('/update_features', true, {
-    features: {
-      need_tts: need_tts
-    }
-  })
 }
 
 const handleRecordingStart = () => {
@@ -657,9 +636,8 @@ defineExpose({
   playingAudioUrl,
   setWebSocket,
   handleWebSocketMessage,
-  handleSendStatus,
   handleConnected,
-  toggleSpeak,
+  sendMessage,
 })
 
 </script>
@@ -673,7 +651,7 @@ defineExpose({
     <!-- Input -->
     <ChatInput ref="chatInputRef" :chat-status="chatStatus" :disabled="!isConnected"
       :is-online-chat-on="props.isOnlineChatOn" :msg-handlers="props.msgHandlers" :messages="messages"
-      @send="sendMessage" @new-chat="handleNewChat" @clear-chat="handleClearChat" @send-status="handleSendStatus"
-      @stop-audio="stopAudio" @upload-audio="handleAudioUpload" @recording-start="handleRecordingStart" />
+      @send="sendMessage" @new-chat="handleNewChat" @clear-chat="handleClearChat" @stop-audio="stopAudio"
+      @upload-audio="handleAudioUpload" @recording-start="handleRecordingStart" />
   </div>
 </template>

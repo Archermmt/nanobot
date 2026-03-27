@@ -199,15 +199,14 @@ const handleChatStatusChange = (chatStatus: string) => {
 const handleToggleSpeak = () => {
   enableSpeak.value = !enableSpeak.value
 
-  // Call Chat component's toggleSpeak method
-  if (chatComponentRef.value && chatComponentRef.value.toggleSpeak) {
-    chatComponentRef.value.toggleSpeak(enableSpeak.value)
+  // Send /update_features to toggle TTS via Chat component's sendMessage
+  if (chatComponentRef.value && chatComponentRef.value.sendMessage) {
+    chatComponentRef.value.sendMessage('/update_features', true, {
+      features: {
+        need_tts: enableSpeak.value
+      }
+    })
   }
-}
-
-// Check if chat component is in processing state (Thinking/Speaking)
-const isChatProcessing = () => {
-  return !!chatComponentRef.value?.chatStatus
 }
 
 // Check if button should be disabled
@@ -218,7 +217,7 @@ const isButtonDisabled = (isConnected: boolean, requiredHandlers?: string[]) => 
   if (!isConnected) return true
 
   // Disable if chat is processing
-  if (isChatProcessing()) return true
+  //if (!!chatComponentRef.value?.chatStatus) return true
 
   // Check if all required handlers are available
   if (requiredHandlers && requiredHandlers.length > 0) {
@@ -264,9 +263,9 @@ const handleOpenLLMSettings = () => {
 // Handle status refresh from StatusBar
 const handleSendStatus = () => {
   console.log('🔄 Status refresh requested from StatusBar')
-  // Trigger the Chat component to send /status command
-  if (chatComponentRef.value && chatComponentRef.value.handleSendStatus) {
-    chatComponentRef.value.handleSendStatus()
+  // Send /status command via Chat component's sendMessage
+  if (chatComponentRef.value && chatComponentRef.value.sendMessage) {
+    chatComponentRef.value.sendMessage('/status', true)
   }
 }
 
@@ -345,6 +344,16 @@ const startOnlineChat = async () => {
       audioRecorder = getAudioRecorder()
       if (audioRecorder && ws) {
         audioRecorder.setWebSocket(ws)
+
+        // Send /update_features to enable ASR and VAD via Chat component
+        if (chatComponentRef.value && chatComponentRef.value.sendMessage) {
+          chatComponentRef.value.sendMessage('/update_features', true, {
+            features: {
+              need_asr: true,
+              need_vad: true
+            }
+          })
+        }
 
         // Set callback to check if audio should be sent
         audioRecorder.setShouldSendAudioCallback(() => {

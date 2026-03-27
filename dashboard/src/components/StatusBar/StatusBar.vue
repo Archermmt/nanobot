@@ -23,7 +23,7 @@ const status = ref<Status>({
   enable_tts: false
 })
 
-const emit = defineEmits(['send-status'])
+const emit = defineEmits(['send'])
 
 // Receive WebSocket status from parent via prop
 const props = defineProps<{
@@ -70,7 +70,7 @@ const handleStatusUpdate = (data: any) => {
 
 const fetchStatus = async () => {
   console.log('🔄 Fetching status via /status command...')
-  emit('send-status')
+  emit('send', '/status', true)
 }
 
 // Expose handleStatusUpdate and receiveWsStatusChange to parent component
