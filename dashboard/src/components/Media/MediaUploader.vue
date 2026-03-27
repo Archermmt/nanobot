@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { mdiImage, mdiFileUploadOutline, mdiMicrophone, mdiStop } from '@mdi/js'
+import { mdiImage, mdiFileUploadOutline, mdiChat, mdiStop } from '@mdi/js'
 
 interface Props {
   disabled?: boolean
@@ -202,7 +202,7 @@ const hasASRHandler = () => props.msgHandlers?.includes('asr') || false
       class="nes-btn p-2 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
       :class="isRecording ? 'is-danger' : 'is-primary'" :title="isRecording ? '停止录音' : '开始录音'">
       <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
-        <path :d="isRecording ? mdiStop : mdiMicrophone" />
+        <path :d="isRecording ? mdiStop : mdiChat" />
       </svg>
     </button>
 
