@@ -519,6 +519,20 @@ const handleRecordingStop = () => {
   }
 }
 
+const handleAudioUpload = async (audioData: { data: string; type: string; isRecording?: boolean }) => {
+  sendMessage({
+    text: '',
+    audios: [{
+      data: audioData.data,
+      type: audioData.type,
+      name: `audio_${Date.now()}.${audioData.type.split('/').pop()}`
+    }]
+  }, false, {
+    msg_type: 'audio',
+    file_type: audioData.type
+  })
+}
+
 const playAudio = (audioUrl: string) => {
   if (currentAudio.value) {
     if (currentAudio.value.src === audioUrl && !currentAudio.value.paused) {
@@ -632,92 +646,6 @@ const handleOpusAudioFrame = async (data: Blob | ArrayBuffer) => {
   } catch (error) {
     console.error('❌ Failed to process opus frame:', error)
   }
-}
-
-/*
-const handleAudioUpload = async (audioData: { data: string; type: string; isRecording?: boolean }) => {
-  // Add audio to messages
-  messages.value.push({
-    role: 'user',
-    content: audioData.isRecording ? 'Recorded voice message' : 'Uploaded audio',
-    timestamp: Date.now(),
-    audioUrl: audioData.data
-  })
-
-  // Send audio using unified sendMessage function
-  sendMessage({
-    text: '',
-    audios: [{
-      data: audioData.data,
-      type: audioData.type,
-      name: `audio_${Date.now()}.${audioData.type.split('/').pop()}`
-    }]
-  }, false, {
-    msg_type: 'audio',
-    file_type: audioData.type
-  })
-}
-*/
-
-const handleAudioUploadCorrect = async (audioData: { data: string; type: string; isRecording?: boolean }) => {
-  // Send audio using unified sendCommand helper
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    const messageData = {
-      type: 'message',
-      message_id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      sender_id: senderId.value,
-      chat_id: chatId.value,
-      content: '',
-      media: [{
-        data: audioData.data,
-        file_name: `audio_${Date.now()}.${audioData.type.split('/').pop()}`
-      }],
-      metadata: {
-        source: 'web_dashboard',
-        timestamp: Date.now(),
-        session_id: sessionId.value,
-        msg_type: 'audio',
-        file_type: audioData.type,
-      }
-    }
-
-    console.log('📤 Sending audio message:', messageData)
-    chatStatus.value = "Thinking"
-    ws.send(JSON.stringify(messageData))
-
-    // Set timeout: if no response within 30 seconds, stop loading
-    const timeoutId = setTimeout(() => {
-      if (chatStatus.value === "Thinking") {
-        chatStatus.value = ""
-        console.warn('No response received within 30 seconds')
-      }
-    }, 30000)
-
-    // Store timeout ID in a ref so we can clear it on message receive
-    currentTimeoutId.value = timeoutId
-  } else {
-    messages.value.push({
-      role: 'system',
-      content: 'WebSocket not connected. Please connect first.',
-      timestamp: Date.now()
-    })
-  }
-}
-
-// New implementation using sendMessage
-const handleAudioUpload = async (audioData: { data: string; type: string; isRecording?: boolean }) => {
-  // Use the unified sendMessage function to send audio
-  sendMessage({
-    text: '',
-    audios: [{
-      data: audioData.data,
-      type: audioData.type,
-      name: `audio_${Date.now()}.${audioData.type.split('/').pop()}`
-    }]
-  }, false, {
-    msg_type: 'audio',
-    file_type: audioData.type
-  })
 }
 
 // No longer automatically connect on mounted
