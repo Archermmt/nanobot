@@ -15,7 +15,7 @@ const props = withDefaults(defineProps<Props>(), {
   messages: () => []
 })
 
-const emit = defineEmits(['send', 'new-chat', 'clear-chat', 'upload-image', 'upload-audio', 'upload-file', 'recording-start'])
+const emit = defineEmits(['send', 'upload-image', 'upload-audio', 'upload-file', 'recording-start'])
 
 interface PendingMedia {
   data: string
@@ -35,6 +35,11 @@ const userHistoryMessages = ref<string[]>([])
 const userHistory = computed(() => {
   return userHistoryMessages.value.slice().reverse()
 })
+
+// Check if input is disabled based on chat status and props
+const isInputDisabled = () => {
+  return props.disabled || props.chatStatus === 'Thinking' || props.chatStatus === 'Loading'
+}
 
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 
@@ -123,7 +128,13 @@ const sendMessage = () => {
 }
 
 const handleNewChat = () => {
-  emit('new-chat')
+  // Send /new command to start new chat
+  emit('send', {
+    text: '/new',
+    images: [],
+    files: []
+  }, true)
+
   input.value = ''
   pendingImages.value = []
   pendingFiles.value = []
@@ -133,7 +144,13 @@ const handleNewChat = () => {
 }
 
 const handleClearChat = () => {
-  emit('clear-chat')
+  // Send /clear command to clear chat history
+  emit('send', {
+    text: '/clear',
+    images: [],
+    files: []
+  }, true)
+
   input.value = ''
   pendingImages.value = []
   pendingFiles.value = []
@@ -160,7 +177,17 @@ const handleImageUpload = (imageData: { data: string; type: string; name: string
 }
 
 const handleAudioUpload = (audioData: { data: string; type: string; isRecording?: boolean }) => {
-  emit('upload-audio', audioData)
+  emit('send', {
+    text: '',
+    audios: [{
+      data: audioData.data,
+      type: audioData.type,
+      name: `audio_${Date.now()}.${audioData.type.split('/').pop()}`
+    }]
+  }, false, {
+    msg_type: 'audio',
+    file_type: audioData.type
+  })
 }
 
 const handleFileUpload = (fileData: { data: string; type: string; name: string }) => {
@@ -226,29 +253,28 @@ defineExpose({
         <textarea ref="textareaRef" v-model="input"
           :placeholder="props.disabled ? 'Please connect WebSocket first' : 'Type a message... (or attach images/files above)'"
           class="flex-1 border-2 border-gray-600 rounded shadow-[inset_2px_2px_4px_rgba(0,0,0,0.3)] px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-700 disabled:text-gray-500 resize-none min-h-[48px] max-h-[200px] overflow-y-auto nes-input text-xs chat-input-textarea zh"
-          :disabled="chatStatus === 'Thinking' || props.disabled" rows="1" @input="autoResize"
-          @keydown="handleKeydown" />
+          :disabled="isInputDisabled()" rows="1" @input="autoResize" @keydown="handleKeydown" />
       </form>
 
       <!-- Action Buttons -->
       <div class="flex items-center space-x-2">
         <button type="submit" form="message-form"
           class="nes-btn is-primary p-2 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          :disabled="chatStatus === 'Thinking' || (!input.trim() && pendingImages.length === 0 && pendingFiles.length === 0) || props.disabled">
+          :disabled="isInputDisabled() || (!input.trim() && pendingImages.length === 0 && pendingFiles.length === 0)">
           <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
             <path :d="mdiSend" />
           </svg>
         </button>
         <button @click="handleNewChat"
           class="nes-btn is-success p-2 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          :disabled="props.disabled || chatStatus === 'Thinking'" title="Start New Chat">
+          :disabled="isInputDisabled()" title="Start New Chat">
           <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
             <path :d="mdiMessagePlus" />
           </svg>
         </button>
         <button @click="handleClearChat"
           class="nes-btn is-warning p-2 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          :disabled="props.disabled || chatStatus === 'Thinking'" title="Clear Chat History">
+          :disabled="isInputDisabled()" title="Clear Chat History">
           <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
             <path :d="mdiDeleteSweep" />
           </svg>

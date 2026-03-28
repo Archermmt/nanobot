@@ -322,6 +322,14 @@ const sendMessage = async (
     messages.value.push(userMessage)
   }
 
+  // Clear messages when sending /new or /clear commands
+  if (isCommand && (text === '/new' || text === '/clear')) {
+    messages.value = []
+    if (chatInputRef.value) {
+      chatInputRef.value.handleUpdateUserHistory([])
+    }
+  }
+
   // Update input history with this message (if it's not a command)
   if (text.trim() && !text.trim().startsWith('/')) {
     if (chatInputRef.value) {
@@ -421,25 +429,7 @@ const sendMessage = async (
   }
 }
 
-// Wrapper for new chat command
-const handleNewChat = () => {
-  sendMessage('/new', true)
-  // Clear messages and input history
-  messages.value = []
-  if (chatInputRef.value) {
-    chatInputRef.value.handleUpdateUserHistory([])
-  }
-}
-
-// Wrapper for clear chat command
-const handleClearChat = () => {
-  sendMessage('/clear', true)
-  // Clear messages and input history
-  messages.value = []
-  if (chatInputRef.value) {
-    chatInputRef.value.handleUpdateUserHistory([])
-  }
-}
+// Removed handleNewChat and handleClearChat - now directly using sendMessage in template
 
 const handleConnected = () => {
   if (!ws || ws.readyState !== WebSocket.OPEN) {
@@ -484,20 +474,6 @@ const handleConnected = () => {
 
 const handleRecordingStart = () => {
   chatStatus.value = "Recording"
-}
-
-const handleAudioUpload = async (audioData: { data: string; type: string; isRecording?: boolean }) => {
-  sendMessage({
-    text: '',
-    audios: [{
-      data: audioData.data,
-      type: audioData.type,
-      name: `audio_${Date.now()}.${audioData.type.split('/').pop()}`
-    }]
-  }, false, {
-    msg_type: 'audio',
-    file_type: audioData.type
-  })
 }
 
 const playAudio = (audioUrl: string) => {
@@ -633,7 +609,6 @@ onUnmounted(() => {
 // Expose reactive state and methods to parent component
 defineExpose({
   chatStatus,
-  playingAudioUrl,
   setWebSocket,
   handleWebSocketMessage,
   handleConnected,
@@ -651,7 +626,6 @@ defineExpose({
     <!-- Input -->
     <ChatInput ref="chatInputRef" :chat-status="chatStatus" :disabled="!isConnected"
       :is-online-chat-on="props.isOnlineChatOn" :msg-handlers="props.msgHandlers" :messages="messages"
-      @send="sendMessage" @new-chat="handleNewChat" @clear-chat="handleClearChat" @stop-audio="stopAudio"
-      @upload-audio="handleAudioUpload" @recording-start="handleRecordingStart" />
+      @send="sendMessage" @stop-audio="stopAudio" @recording-start="handleRecordingStart" />
   </div>
 </template>

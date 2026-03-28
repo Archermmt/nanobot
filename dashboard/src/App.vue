@@ -216,8 +216,9 @@ const isButtonDisabled = (isConnected: boolean, requiredHandlers?: string[]) => 
   // Always disable if not connected
   if (!isConnected) return true
 
-  // Disable if chat is processing
-  //if (!!chatComponentRef.value?.chatStatus) return true
+  // Disable if chat is processing (Thinking or Listening)
+  const chatStatus = chatComponentRef.value?.chatStatus
+  if (chatStatus === 'Thinking' || chatStatus === 'Listening') return true
 
   // Check if all required handlers are available
   if (requiredHandlers && requiredHandlers.length > 0) {
@@ -359,7 +360,7 @@ const startOnlineChat = async () => {
         audioRecorder.setShouldSendAudioCallback(() => {
           // Only check chatStatus, allow recording if status is not Thinking, Speaking, or Listening
           const chatStatus = chatComponentRef.value?.chatStatus || ""
-          const canRecord = !["Thinking", "Speaking"].includes(chatStatus)
+          const canRecord = !["Thinking", "Speaking", "Loading"].includes(chatStatus)
 
           if (!canRecord) {
             console.debug('⏸️ 暂停发送音频，当前状态:', chatStatus)
