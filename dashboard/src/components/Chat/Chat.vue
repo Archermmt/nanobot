@@ -60,7 +60,22 @@ const setWebSocket = (websocket: WebSocket | null) => {
   isConnected.value = websocket !== null
 }
 
-// Method to handle WebSocket messages from App.vue
+// Unified function to handle task_ref completion logic
+const handleTaskRefCompletion = (taskRef: string) => {
+  if (!taskRef) return
+
+  if (pendingCommandsCount.value > 0) {
+    pendingCommandsCount.value--
+    console.log('⏳ Pending commands:', pendingCommandsCount.value)
+    // Clear status when all commands are completed
+    if (pendingCommandsCount.value === 0) {
+      chatStatus.value = ""
+      console.log('✅ All initialization commands completed')
+    }
+  }
+}
+
+// Handle WebSocket message parsing and routing
 const handleWebSocketMessage = (event: MessageEvent) => {
   try {
     // Check if this is binary data (opus audio frame)
@@ -91,6 +106,9 @@ const handleWebSocketMessage = (event: MessageEvent) => {
     }
 
     if (data.type === 'message') {
+      // Handle task completion
+      handleTaskRefCompletion(data.metadata?._task_ref)
+
       // Check if this is a status response
       if (data.content && data.metadata?._task_ref === 'status') {
         // This is a status update, emit it for StatusBar and App.vue
@@ -99,16 +117,6 @@ const handleWebSocketMessage = (event: MessageEvent) => {
           console.log('🔊 Status update:', statusData)
           // Emit to parent component (App.vue) to update global state
           emit('status-update', statusData)
-          // Decrement pending commands count
-          if (pendingCommandsCount.value > 0) {
-            pendingCommandsCount.value--
-            console.log('⏳ Pending commands:', pendingCommandsCount.value)
-            // Clear status when all commands are completed
-            if (pendingCommandsCount.value === 0) {
-              chatStatus.value = ""
-              console.log('✅ All initialization commands completed')
-            }
-          }
         } catch (e) {
           console.log('Status message content:', data.content)
         }
@@ -178,17 +186,6 @@ const handleWebSocketMessage = (event: MessageEvent) => {
               content: `📊 History loaded: ${userMsgCount} user messages, ${assistantMsgCount} assistant messages${systemMsgCount > 0 ? `, ${systemMsgCount} system messages` : ''}`,
               timestamp: Date.now()
             })
-
-            // Decrement pending commands count for history
-            if (pendingCommandsCount.value > 0) {
-              pendingCommandsCount.value--
-              console.log('⏳ Pending commands:', pendingCommandsCount.value)
-              // Clear status when all commands are completed
-              if (pendingCommandsCount.value === 0) {
-                chatStatus.value = ""
-                console.log('✅ All initialization commands completed')
-              }
-            }
           }
         } catch (e) {
           console.error('Failed to parse history:', e)
@@ -397,7 +394,7 @@ const sendMessage = async (
       chatStatus.value = "Thinking"
     }
 
-    // Set timeout: if no response within 30 seconds, stop loading
+    // Set timeout: if no response within 60 seconds, stop loading
     const timeoutId = setTimeout(() => {
       if (chatStatus.value === "Thinking") {
         chatStatus.value = ""
@@ -405,15 +402,11 @@ const sendMessage = async (
       }
       // Also handle command timeout
       if (isCommand && pendingCommandsCount.value > 0) {
-        pendingCommandsCount.value--
+        pendingCommandsCount.value = 0
         console.warn('⏰ Command timed out, remaining:', pendingCommandsCount.value)
-        // Clear status when all commands are completed or timed out
-        if (pendingCommandsCount.value === 0) {
-          chatStatus.value = ""
-          console.log('✅ All initialization commands completed or timed out')
-        }
+        chatStatus.value = ""
       }
-    }, 30000)
+    }, 60000)
 
     // Store timeout ID in a ref so we can clear it on message receive
     currentTimeoutId.value = timeoutId
