@@ -562,10 +562,10 @@ class AgentLoop:
                 self._features = {}
             else:
                 self._features.update(msg.metadata.get("features", {}))
-            content = "Update features: " + ",".join(
-                [f"{k}={v}" for k, v in self._features.items()]
-            )
-            logger.info(content)
+                content = "Update features: " + ",".join(
+                    [f"{k}={v}" for k, v in self._features.items()]
+                )
+                logger.info(content)
             return OutboundMessage(
                 channel=msg.channel,
                 chat_id=msg.chat_id,
@@ -641,6 +641,7 @@ class AgentLoop:
             media=msg.media if msg.media else None,
             channel=msg.channel,
             chat_id=msg.chat_id,
+            features=self._features,
         )
 
         async def _bus_progress(content: str, *, tool_hint: bool = False) -> None:

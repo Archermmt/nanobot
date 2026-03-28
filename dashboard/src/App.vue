@@ -218,7 +218,7 @@ const isButtonDisabled = (isConnected: boolean, requiredHandlers?: string[]) => 
 
   // Disable if chat is processing (Thinking or Listening)
   const chatStatus = chatComponentRef.value?.chatStatus
-  if (chatStatus === 'Thinking' || chatStatus === 'Listening') return true
+  if (chatStatus === 'Thinking' || chatStatus === 'Loading') return true
 
   // Check if all required handlers are available
   if (requiredHandlers && requiredHandlers.length > 0) {

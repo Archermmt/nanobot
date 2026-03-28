@@ -1,5 +1,3 @@
-import json
-
 TAG = __name__
 EMOJI_MAP = {
     "😂": "funny",
