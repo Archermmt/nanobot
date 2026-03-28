@@ -118,6 +118,7 @@ Reply directly with text for conversations. Only use the 'message' tool to send 
                 "- Avoid abbreviations that don't pronounce well\n"
                 "- Use plain text only - no code blocks, lists, or headers\n"
                 "- Keep responses conversational and brief\n"
+                "- Do not use emoji or emoticons\n"
             )
 
         return "\n\n".join(parts) if parts else ""
