@@ -213,11 +213,20 @@ class TTSHandlerConfig(Base):
     enabled: bool = False
     handler_type: str = "edge_tts"  # edge_tts or custom
     depends_folder: str = "~/.nanobot/depends/tts"  # Depends folder for voice configuration
-    output_dir: str = "~/.nanobot/media"
     model: str | None = None  # Model name for TTS service (e.g., cosyvoice-v3.5-plus for Qwen TTS)
     voice: str = "zh-CN-XiaoxiaoNeural"
     audio_format: str = "opus"  # Edge TTS returns mp3 format
     sample_rate: int = 16000
+
+
+class SpeakHandlerConfig(Base):
+    """Configuration for Speaker Verification handler."""
+
+    enabled: bool = False
+    handler_type: str = "wespeaker"  # wespeaker or custom
+    depends_folder: str = "~/.nanobot/samples"  # Folder for speaker reference audio files
+    speaker: str = ""  # Reference speaker audio file name (relative to depends_folder)
+    threshold: float = 0.9  # Similarity threshold for speaker verification
 
 
 class HandlersConfig(Base):
@@ -226,6 +235,7 @@ class HandlersConfig(Base):
     asr: ASRHandlerConfig | None = None
     vad: VADHandlerConfig | None = None
     tts: TTSHandlerConfig | None = None
+    speak: SpeakHandlerConfig | None = None
 
     def model_post_init(self, __context):
         if self.asr is None:
@@ -234,6 +244,8 @@ class HandlersConfig(Base):
             self.vad = VADHandlerConfig()
         if self.tts is None:
             self.tts = TTSHandlerConfig()
+        if self.speak is None:
+            self.speak = SpeakHandlerConfig()
 
 
 class BusConfig(Base):

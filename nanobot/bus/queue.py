@@ -1,7 +1,7 @@
 """Async message queue for decoupled channel-agent communication."""
 
 import asyncio
-from typing import Dict, List
+from ast import Dict, List
 
 from loguru import logger
 
@@ -22,25 +22,27 @@ class MessageBus:
         self.config = config or BusConfig()
         self.inbound: asyncio.Queue[InboundMessage] = asyncio.Queue()
         self.outbound: asyncio.Queue[OutboundMessage] = asyncio.Queue()
-        self.handlers: Dict[str, BaseHandler] = self._init_handlers(config)
+        self._init_handlers(config)
 
     def _init_handlers(self, config: BusConfig):
         """Initialize input handlers from config."""
-        handlers = {}
+        self.handlers: Dict[str, BaseHandler] = {}
+        self._handler_types: List[str] = []
 
         def _add_handler(name, handler_cfg):
             if handler_cfg and handler_cfg.enabled:
                 handler_cls = BaseHandler.get_registered_type(handler_cfg.handler_type)
                 if handler_cls:
-                    handlers[name] = handler_cls(handler_cfg)
+                    self.handlers[name] = handler_cls(handler_cfg)
+                    self._handler_types.append(name)
 
         handlers_config: HandlersConfig = config.handlers
-        _add_handler("asr", handlers_config.asr)
         _add_handler("vad", handlers_config.vad)
+        _add_handler("speak", handlers_config.speak)
+        _add_handler("asr", handlers_config.asr)
         _add_handler("tts", handlers_config.tts)
-        info = {k: v.handler_type() for k, v in handlers.items()}
+        info = {k: v.handler_type() for k, v in self.handlers.items()}
         logger.info(f"Handlers: {info}")
-        return handlers
 
     async def publish_inbound(self, msg: InboundMessage) -> None:
         """
@@ -49,15 +51,7 @@ class MessageBus:
         If the message contains media, it will be automatically
         transcribed to text before being published.
         """
-        processed = set()
-        while True:
-            proc_cnt = len(processed)
-            for name, handler in self.handlers.items():
-                if handler.can_handle_input(msg) and name not in processed:
-                    msg = await handler.handle_input(msg)
-                    processed.add(name)
-            if proc_cnt == len(processed):
-                break
+        msg = await self._process_msg(msg, is_input=True)
         await self.inbound.put(msg)
 
     async def consume_inbound(self) -> InboundMessage:
@@ -66,20 +60,40 @@ class MessageBus:
 
     async def publish_outbound(self, msg: OutboundMessage) -> None:
         """Publish a response from the agent to channels."""
-        processed = set()
-        while True:
-            proc_cnt = len(processed)
-            for name, handler in self.handlers.items():
-                if handler.can_handle_output(msg) and name not in processed:
-                    msg = await handler.handle_output(msg)
-                    processed.add(name)
-            if proc_cnt == len(processed):
-                break
+        msg = await self._process_msg(msg, is_input=False)
         await self.outbound.put(msg)
 
     async def consume_outbound(self) -> OutboundMessage:
         """Consume the next outbound message (blocks until available)."""
         return await self.outbound.get()
+
+    async def _process_msg(self, msg, is_input: bool):
+        """
+        Process a message through all applicable handlers.
+
+        Args:
+            msg: Message to process (InboundMessage or OutboundMessage)
+            is_input: True for inbound messages, False for outbound messages
+
+        Returns:
+            Processed message
+        """
+        processed = set()
+        while True:
+            proc_cnt = len(processed)
+            for name in self._handler_types:
+                handler = self.handlers[name]
+                if is_input:
+                    if handler.can_handle_input(msg) and name not in processed:
+                        msg = await handler.handle_input(msg)
+                        processed.add(name)
+                else:
+                    if handler.can_handle_output(msg) and name not in processed:
+                        msg = await handler.handle_output(msg)
+                        processed.add(name)
+            if proc_cnt == len(processed):
+                break
+        return msg
 
     @property
     def inbound_size(self) -> int:

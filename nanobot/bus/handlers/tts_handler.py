@@ -48,7 +48,6 @@ class BaseTTSHandler(BaseHandler):
         assert voice_path.exists(), f"Voice configuration not found: {voice_path}"
         with open(voice_path, "r", encoding="utf-8") as f:
             self.voice_config = json.load(f).get(self.voice, {})
-        self.output_dir = Path(config.output_dir).expanduser().resolve()
         if self.encoder_type == "opus":
             self.encoder = opuslib_next.Encoder(self.sample_rate, 1, opuslib_next.APPLICATION_AUDIO)
 

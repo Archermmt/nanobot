@@ -34,7 +34,7 @@ class BaseASRHandler(BaseHandler):
         """
 
         msg_type = msg.metadata.get("msg_type", "text")
-        return msg_type == "audio" and not msg.content
+        return msg_type == "audio" and not msg.content and msg.media
 
     async def _process_audio(self, media_data: str, audio_format: str = "wav") -> str:
         """
@@ -73,10 +73,11 @@ class BaseASRHandler(BaseHandler):
                 media_data = base64.b64decode(media_data.split(",", 1)[1])
 
             # Recognize speech from audio
-            audio_format = msg.metadata.get("audio_format", "wav")
             msg.media = []
             msg.metadata.update({"msg_type": "text"})
-            transcribed_text = await self._process_audio(media_data, audio_format)
+            transcribed_text = await self._process_audio(
+                media_data, msg.metadata.get("audio_format", "wav")
+            )
             if transcribed_text:
                 logger.debug(f"Recognized speech: '{transcribed_text}'")
                 msg.content = transcribed_text
@@ -161,12 +162,12 @@ class BaseASRHandler(BaseHandler):
 
 
 @BaseASRHandler.register()
-class FunasrHandler(BaseASRHandler):
+class FunASRHandler(BaseASRHandler):
     """FunASR-based speech recognition handler."""
 
     @classmethod
     def handler_type(cls) -> str:
-        return "funasr"
+        return "fun_asr"
 
     def __init__(self, config: ASRHandlerConfig):
         try:
@@ -176,7 +177,7 @@ class FunasrHandler(BaseASRHandler):
             from funasr import AutoModel
         except ImportError:
             logger.error(
-                "Init FunasrHandler failed. Install with: pip install funasr psutil torch torchaudio"
+                "Init FunASRHandler failed. Install with: pip install funasr psutil torch torchaudio"
             )
             return
 
@@ -267,12 +268,12 @@ class FunasrHandler(BaseASRHandler):
 
 
 @BaseASRHandler.register()
-class VoskHandler(BaseASRHandler):
+class VoskASRHandler(BaseASRHandler):
     """Vosk-based speech recognition handler."""
 
     @classmethod
     def handler_type(cls) -> str:
-        return "vosk"
+        return "vosk_asr"
 
     def __init__(self, config: ASRHandlerConfig):
         from vosk import Model

@@ -170,7 +170,7 @@ class SileroVADHandler(BaseVADHandler):
 
     @classmethod
     def handler_type(cls) -> str:
-        return "silero"
+        return "silero_vad"
 
     def __init__(self, config: VADHandlerConfig):
         super().__init__(config)
