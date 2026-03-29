@@ -17,6 +17,7 @@ from nanobot.bus.events import InboundMessage, OutboundMessage
 from nanobot.config.paths import get_legacy_sessions_dir
 from nanobot.config.schema import SessionConfig
 from nanobot.utils.helpers import ensure_dir, safe_filename
+from nanobot.utils.message import RetType
 
 
 class ChatStatus(Enum):
@@ -49,7 +50,7 @@ class Session:
     _timeout_task: Any = None  # Background timeout check task
     _stop_timeout_check: bool = False  # Flag to stop timeout checking
 
-    def setup(self, config: SessionConfig):
+    def setup(self, config: SessionConfig, send_callback=None) -> None:
         self.wakeup_words = config.wakeup_words
         self.wakeup_response = config.wakeup_response
         if self.wakeup_words:
@@ -61,7 +62,7 @@ class Session:
         self._default_channel = None
         self._default_chat_id = None
         self._default_message_id = None
-        self._send_callback = None
+        self._send_callback = send_callback
         self._last_meta = None
         # Start background timeout checking task
         if self.wakeup_words:
@@ -161,32 +162,72 @@ class Session:
         self.last_consolidated = max(0, self.last_consolidated - dropped)
         self.updated_at = datetime.now()
 
-    def set_send_callback(self, send_callback) -> None:
-        """Set the callback for sending messages."""
-        self._send_callback = send_callback
-
-    def set_context(self, channel: str, chat_id: str, message_id: str | None = None) -> None:
-        """Set the current message context."""
-        self._default_channel = channel
-        self._default_chat_id = chat_id
-        self._default_message_id = message_id
-
-    def check_status(self, msg: InboundMessage) -> dict[str, Any]:
+    def _check_status(self, msg: InboundMessage) -> dict[str, Any]:
         """Check the chat status based on the message content."""
-        response = ""
+        response, metadata = "", msg.metadata
         if self._status == ChatStatus.LISTEN and msg.content in self.goodbye_words:
             self._status = ChatStatus.MUTE
             response = random.choice(self.goodbye_response)
+            if "need_tts" in metadata:
+                metadata.pop("need_tts")
         elif self._status == ChatStatus.MUTE and msg.content in self.wakeup_words:
             self._status = ChatStatus.LISTEN
             response = random.choice(self.wakeup_response)
+            if "_as_input" in metadata:
+                metadata.pop("_as_input")
 
         # Update last activity time when in LISTEN state and received a message
         if self._status == ChatStatus.LISTEN:
             self._last_meta = msg.metadata
             self._last_activity_time = time.time() * 1000
 
-        return {"status": self._status, "response": response}
+        return {"status": self._status, "response": response, "metadata": metadata}
+
+    async def check_reply(self, msg: InboundMessage) -> OutboundMessage | None:
+        """
+        Check message and return reply if needed.
+
+        Args:
+            msg: The inbound message to check.
+
+        Returns:
+            OutboundMessage if a reply is needed, None otherwise.
+        """
+
+        self._default_channel = msg.channel
+        self._default_chat_id = msg.chat_id
+
+        # Handle non-normal return types
+        if msg.metadata.get("ret_type", RetType.NORMAL) != RetType.NORMAL:
+            if msg.metadata.get("ret_type", RetType.NORMAL) == RetType.PASSBY:
+                msg.metadata.setdefault("_hide_message", True)
+            return OutboundMessage(
+                channel=msg.channel,
+                chat_id=msg.chat_id,
+                content=msg.content,
+                metadata=msg.metadata,
+            )
+
+        # Check session status
+        s_info = self._check_status(msg)
+        if s_info.get("response"):
+            return OutboundMessage(
+                channel=msg.channel,
+                chat_id=msg.chat_id,
+                content=s_info["response"],
+                metadata=s_info["metadata"],
+            )
+
+        # Handle muted session
+        if s_info["status"] == ChatStatus.MUTE:
+            return OutboundMessage(
+                channel=msg.channel,
+                chat_id=msg.chat_id,
+                content="Session muted, please wake up the assistant.",
+                metadata=s_info["metadata"],
+            )
+
+        return None
 
     async def _check_timeout_loop(
         self, timeout_seconds: int = 300, check_interval: float = 10.0
@@ -248,12 +289,13 @@ class SessionManager:
     Sessions are stored as JSONL files in the sessions directory.
     """
 
-    def __init__(self, workspace: Path, config: SessionConfig):
+    def __init__(self, workspace: Path, config: SessionConfig, send_callback=None):
         self.workspace = workspace
         self.sessions_dir = ensure_dir(self.workspace / "sessions")
         self.legacy_sessions_dir = get_legacy_sessions_dir()
         self._cache: dict[str, Session] = {}
         self._config = config
+        self._send_callback = send_callback
 
     def _get_session_path(self, key: str) -> Path:
         """Get the file path for a session."""
@@ -281,7 +323,7 @@ class SessionManager:
         session = self._load(key)
         if session is None:
             session = Session(key=key)
-            session.setup(self._config)
+            session.setup(self._config, send_callback=self._send_callback)
 
         self._cache[key] = session
         return session
@@ -333,7 +375,7 @@ class SessionManager:
                 metadata=metadata,
                 last_consolidated=last_consolidated,
             )
-            session.setup(self._config)
+            session.setup(self._config, send_callback=self._send_callback)
             return session
         except Exception as e:
             logger.warning("Failed to load session {}: {}", key, e)

@@ -98,7 +98,9 @@ class AgentLoop:
         self._last_usage: dict[str, int] = {}
 
         self.context = ContextBuilder(workspace, timezone=timezone)
-        self.sessions = session_manager or SessionManager(workspace, self._config.session)
+        self.sessions = session_manager or SessionManager(
+            workspace, self._config.session, send_callback=self.bus.publish_outbound
+        )
         self.tools = ToolRegistry()
         self.runner = AgentRunner(provider)
         self.subagents = SubagentManager(
@@ -499,14 +501,10 @@ class AgentLoop:
         if result := await self.commands.dispatch(ctx):
             return result
 
-        session.set_send_callback(send_callback=self.bus.publish_outbound)
-        session.set_context(msg.channel, msg.chat_id)
-        if msg.metadata.get("ret_type", RetType.NORMAL) != RetType.NORMAL:
-            if msg.metadata.get("ret_type", RetType.NORMAL) == RetType.PASSBY:
-                msg.metadata.setdefault("_hide_message", True)
-            return OutboundMessage(
-                channel=msg.channel, chat_id=msg.chat_id, content=msg.content, metadata=msg.metadata
-            )
+        if result := await session.check_reply(msg):
+            return result
+
+        # Handle _as_input flag
         if msg.metadata.get("_as_input", False):
             msg.metadata.pop("_as_input")
             meta = dict(msg.metadata)
@@ -517,23 +515,6 @@ class AgentLoop:
                     content=msg.content,
                     metadata={**meta, "_as_input": True, "_progress": True},
                 )
-            )
-        s_info = session.check_status(msg)
-        if s_info.get("response"):
-            return OutboundMessage(
-                channel=msg.channel,
-                chat_id=msg.chat_id,
-                content=s_info["response"],
-                metadata=msg.metadata,
-            )
-        if s_info["status"] == ChatStatus.MUTE:
-            if "need_tts" in msg.metadata:
-                msg.metadata.pop("need_tts")
-            return OutboundMessage(
-                channel=msg.channel,
-                chat_id=msg.chat_id,
-                content="Session muted, please wake up the assistant.",
-                metadata=msg.metadata,
             )
 
         await self.memory_consolidator.maybe_consolidate_by_tokens(session)

@@ -560,7 +560,9 @@ def gateway(
     sync_workspace_templates(config.workspace_path)
     bus = MessageBus(config.bus)
     provider = _make_provider(config)
-    session_manager = SessionManager(config.workspace_path, config.session)
+    session_manager = SessionManager(
+        config.workspace_path, config.session, send_callback=bus.publish_outbound
+    )
 
     # Preserve existing single-workspace installs, but keep custom workspaces clean.
     if is_default_workspace(config.workspace_path):
