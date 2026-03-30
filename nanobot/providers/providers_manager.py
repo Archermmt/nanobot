@@ -30,7 +30,7 @@ class ProvidersManager:
             default_mode: Default mode to use when none is specified ("auto" by default)
         """
         self._modes = modes
-        self._default_mode = default_mode
+        self._default_mode, self._current_mode = default_mode, "main"
         self._config = config
         self._provider_creator = provider_creator
         self._send_callback = None
@@ -59,26 +59,23 @@ class ProvidersManager:
             extra_headers=p.extra_headers if p else None,
         )
 
-    async def choose_provider(self, messages: list[dict[str, Any]], mode: str = "") -> LLMProvider:
+    async def choose_mode(self, content: str, mode: str = "") -> LLMProvider:
         """Choose provider from messages"""
 
         mode = mode or self._default_mode
-        decide_mode, user_content = mode, messages[-1]["content"]
-        if isinstance(user_content, str) and user_content.startswith(
-            ContextBuilder._RUNTIME_CONTEXT_TAG
-        ):
-            user_content = user_content.split("\n\n")[1]
-        if not user_content:
-            mode, user_content = "main", "foo task"
-        if isinstance(user_content, list):
+        if isinstance(content, str) and content.startswith(ContextBuilder._RUNTIME_CONTEXT_TAG):
+            content = content.split("\n\n")[1]
+        if not content:
+            mode, content = "main", "foo task"
+        if isinstance(content, list):
             mode = "multimodal"
-        preview = str(user_content)[:20]
+        preview = str(content)[:20]
         if mode == "auto":
             assert "main" in self._modes, "No main mode configured for auto mode"
             # For auto mode, use decider to choose the best mode
             decider = self.get_provider("main")
             system_prompt = f"You are mode decider. You can choose the best mode for process the user's task. The modes are:\n{self.summary_modes()}"
-            user_prompt = f"Which mode is best to process the task `{user_content}`? The answer should only has one word!"
+            user_prompt = f"Which mode is best to process the task `{content}`? The answer should only has one word!"
             decider_messages = [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
@@ -89,27 +86,20 @@ class ProvidersManager:
             # Use the selected mode's provider
             if selected_mode in self._modes:
                 logger.info(f"Choose {selected_mode} for task: {preview}")
-                decide_mode = selected_mode
+                self._current_mode = selected_mode
             else:
                 # Fallback to main if selected mode not found
                 logger.info(f"Fallback to main for task: {preview}")
-                decide_mode = "main"
+                self._current_mode = "main"
         elif mode in self._modes:
             logger.info(f"Use specified {mode} for task: {preview}")
-            decide_mode = mode
+            self._current_mode = mode
         elif "main" in self._modes:
             logger.info(f"Fallback to main for task: {preview}")
-            decide_mode = "main"
+            self._current_mode = "main"
         else:
             raise ValueError(f"Unknown mode: {mode} and no fallback available")
-        msg = OutboundMessage(
-            channel=self._default_channel,
-            chat_id=self._default_chat_id,
-            content=f"Choose mode -> {decide_mode}",
-            metadata={"_progress": True, "_mode_hint": decide_mode},
-        )
-        await self._send_callback(msg)
-        return self.get_provider(decide_mode)
+        return self._current_mode
 
     async def chat_stream_with_retry(
         self,
@@ -121,11 +111,10 @@ class ProvidersManager:
         reasoning_effort: object = LLMProvider._SENTINEL,
         tool_choice: str | dict[str, Any] | None = None,
         on_content_delta: Callable[[str], Awaitable[None]] | None = None,
-        mode: str = "",
     ) -> LLMResponse:
         """Wrapper of chat_stream_with_retry of provider"""
 
-        provider = await self.choose_provider(messages, mode)
+        provider = self.get_provider(self._current_mode)
         return await provider.chat_stream_with_retry(
             messages=messages,
             tools=tools,
@@ -146,11 +135,10 @@ class ProvidersManager:
         temperature: object = LLMProvider._SENTINEL,
         reasoning_effort: object = LLMProvider._SENTINEL,
         tool_choice: str | dict[str, Any] | None = None,
-        mode: str = "",
     ) -> LLMResponse:
         """Wrapper of chat_with_retry of provider"""
 
-        provider = await self.choose_provider(messages, mode)
+        provider = self.get_provider(self._current_mode)
         return await provider.chat_with_retry(
             messages=messages,
             tools=tools,
@@ -179,7 +167,7 @@ class ProvidersManager:
             channel=self._default_channel,
             chat_id=self._default_chat_id,
             content=f"Add mode -> {mode}",
-            metadata={"_mode_hint": mode},
+            metadata={"_trigger_cmd": "/inspect"},
         )
         await self._send_callback(msg)
 
@@ -204,7 +192,7 @@ class ProvidersManager:
             channel=self._default_channel,
             chat_id=self._default_chat_id,
             content=f"Update mode -> {mode}",
-            metadata={"_mode_hint": mode},
+            metadata={"_trigger_cmd": "/inspect"},
         )
         await self._send_callback(msg)
 
@@ -221,7 +209,7 @@ class ProvidersManager:
             channel=self._default_channel,
             chat_id=self._default_chat_id,
             content=f"Remove mode -> {mode}",
-            metadata={"_mode_hint": mode},
+            metadata={"_trigger_cmd": "/inspect"},
         )
         await self._send_callback(msg)
 
@@ -233,7 +221,7 @@ class ProvidersManager:
             channel=self._default_channel,
             chat_id=self._default_chat_id,
             content=f"Change mode -> {mode}",
-            metadata={"_mode_hint": mode},
+            metadata={"_trigger_cmd": "/inspect"},
         )
         await self._send_callback(msg)
 

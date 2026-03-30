@@ -249,8 +249,8 @@ const handleWebSocketMessage = (event: MessageEvent) => {
       }
 
       // Check if message contains _mode_hint and is not a progress message
-      if (data.metadata?._mode_hint && !data.metadata?._progress) {
-        sendMessage('/inspect', true)
+      if (data.metadata?._trigger_cmd) {
+        sendMessage(data.metadata._trigger_cmd, true)
       }
 
       // Only set chatStatus based on _progress and _as_input

@@ -251,11 +251,14 @@ class ImageTool(Tool):
         Returns:
             Analysis result (vision mode), status message (display mode), or generation result (generate mode).
         """
+        media_dir = Path.home() / ".nanobot" / "media"
         if mode == "vision":
             return await self._execute_vision(text=text, image_path=image_path, **kwargs)
         elif mode == "display":
             return await self._execute_display(text=text, image_path=image_path, **kwargs)
         elif mode == "generate":
+            if not image_path:
+                image_path = str(media_dir / "generated.png")
             return await self._execute_generate(
                 text=text,
                 image_path=image_path,
@@ -269,6 +272,8 @@ class ImageTool(Tool):
         elif mode == "edit":
             if not ref_image or not os.path.exists(ref_image):
                 return f"Error: Ref image {ref_image} path is invalid."
+            if not image_path:
+                image_path = str(media_dir / "generated.png")
             return await self._execute_generate(
                 text=text,
                 image_path=image_path,
@@ -437,7 +442,7 @@ class ImageTool(Tool):
             raise ValueError(f"Invalid IMAGE_GEN_PROVIDER: {provider}")
         if error:
             return "Failed generate image: " + str(error)
-        return f"Generated {len(image_paths)} images by {provider} successfully."
+        return f"Generated image by {provider} successfully, saved to {image_paths[0]}"
 
     def _convert_svg_to_png(self, svg_path: str) -> str:
         """

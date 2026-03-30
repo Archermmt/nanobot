@@ -404,7 +404,9 @@ class WebSocketChannel(BaseChannel):
                     media_data, filename = media_item["data"], media_item.get("file_name", "")
                     if isinstance(media_data, str) and media_data.startswith("data:"):
                         try:
-                            file_path, filename = save_media(media_data, filename)
+                            file_path, filename = save_media(
+                                media_data, filename, target_type="audio/wav"
+                            )
                             logger.info("Saved audio file to: {}", file_path)
                         except Exception as e:
                             logger.error("Failed to save audio media: {}", e)

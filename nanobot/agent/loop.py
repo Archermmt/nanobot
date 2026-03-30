@@ -526,6 +526,8 @@ class AgentLoop:
         if isinstance(self.provider, ProvidersManager):
             self.provider.set_context(msg.channel, msg.chat_id)
 
+        if isinstance(self.provider, ProvidersManager):
+            msg.metadata["_mode_hint"] = await self.provider.choose_mode(msg.content)
         history = session.get_history(max_messages=0)
         initial_messages = self.context.build_messages(
             history=history,

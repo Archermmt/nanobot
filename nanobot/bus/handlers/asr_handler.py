@@ -16,6 +16,7 @@ from nanobot.bus.events import InboundMessage
 from nanobot.bus.handlers.base_handler import BaseHandler
 from nanobot.config.schema import ASRHandlerConfig
 from nanobot.utils.log import CaptureOutput
+from nanobot.utils.media import webm_to_wav
 from nanobot.utils.message import RetType
 
 
@@ -36,13 +37,13 @@ class BaseASRHandler(BaseHandler):
         msg_type = msg.metadata.get("msg_type", "text")
         return msg_type == "audio" and not msg.content and msg.media
 
-    async def _process_audio(self, media_data: str, audio_format: str = "wav") -> str:
+    async def _process_audio(self, audio_bytes: bytes, audio_format: str = "audio/wav") -> str:
         """
         Recognize speech from audio data. To be implemented by subclasses.
 
         Args:
-            media_data: Base64 encoded audio data or file path
-            audio_format: Audio format of the input media data (default: "wav")
+            audio_bytes: Base64 encoded audio data
+            audio_format: Audio format of the input media data (default: "audio/wav")
 
         Returns:
             Recognized text string
@@ -64,20 +65,28 @@ class BaseASRHandler(BaseHandler):
 
         try:
             # Process first media item (assuming single audio file)
-            media_data = msg.media[0]
-
+            media_data, audio_format = msg.media[0], msg.metadata.get("audio_format", "audio/wav")
             # If media is a dict with 'data' key, extract it
             if isinstance(media_data, dict):
                 media_data = media_data.get("data", "")
-            elif isinstance(media_data, str) and media_data.startswith("data:"):
-                media_data = base64.b64decode(media_data.split(",", 1)[1])
+            if isinstance(media_data, str) and media_data.startswith("data:"):
+                header, media_data = media_data.split(",", 1)
+                audio_format = header.split(";")[0].replace("data:", "")
+            # Read base64 audio data
+            if isinstance(media_data, bytes):
+                audio_bytes = media_data
+            elif os.path.isfile(media_data):
+                with open(media_data, "rb") as f:
+                    audio_bytes = f.read()
+            else:
+                audio_bytes = base64.b64decode(
+                    media_data.split(",", 1)[1] if "," in media_data else media_data
+                )
 
             # Recognize speech from audio
             msg.media = []
             msg.metadata.update({"msg_type": "text"})
-            transcribed_text = await self._process_audio(
-                media_data, msg.metadata.get("audio_format", "wav")
-            )
+            transcribed_text = await self._process_audio(audio_bytes, audio_format)
             if transcribed_text:
                 logger.debug(f"Recognized speech: '{transcribed_text}'")
                 msg.content = transcribed_text
@@ -94,71 +103,6 @@ class BaseASRHandler(BaseHandler):
             logger.error(f"Audio processing error: {e}")
             msg.content = f"Error processing audio: {e}"
         return msg
-
-    def _convert_to_wav(self, audio_bytes: bytes) -> io.BytesIO | None:
-        """
-        Convert non-WAV audio to WAV format using ffmpeg.
-
-        Args:
-            audio_bytes: Raw audio data bytes
-
-        Returns:
-            BytesIO object with WAV data, or None if conversion fails
-        """
-        try:
-            # Create temporary input file
-            with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as tmp_in:
-                tmp_in.write(audio_bytes)
-                tmp_in_path = tmp_in.name
-
-            # Create temporary output file for WAV
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_out:
-                tmp_out_path = tmp_out.name
-
-            try:
-                # Use ffmpeg to convert to WAV
-                subprocess.run(
-                    [
-                        "ffmpeg",
-                        "-i",
-                        tmp_in_path,
-                        "-ar",
-                        "16000",
-                        "-ac",
-                        "1",
-                        "-f",
-                        "wav",
-                        "-y",
-                        tmp_out_path,
-                    ],
-                    capture_output=True,
-                    check=True,
-                )
-
-                # Read converted WAV file
-                with open(tmp_out_path, "rb") as f:
-                    converted_bytes = f.read()
-                    wav_io = io.BytesIO(converted_bytes)
-
-                logger.info("Successfully converted audio to WAV format")
-                return wav_io
-
-            finally:
-                # Cleanup temporary files
-                if os.path.exists(tmp_in_path):
-                    os.unlink(tmp_in_path)
-                if os.path.exists(tmp_out_path):
-                    os.unlink(tmp_out_path)
-
-        except subprocess.CalledProcessError as e:
-            logger.error(f"FFmpeg conversion failed: {e.stderr.decode() if e.stderr else e}")
-            return None
-        except FileNotFoundError:
-            logger.error("FFmpeg not found. Please install ffmpeg to convert non-WAV audio.")
-            return None
-        except Exception as e:
-            logger.error(f"Audio conversion error: {e}")
-            return None
 
 
 @BaseASRHandler.register()
@@ -207,57 +151,29 @@ class FunASRHandler(BaseASRHandler):
                 disable_update=True,
             )
 
-    async def _process_audio(self, media_data: str, audio_format: str = "wav") -> str:
+    async def _process_audio(self, audio_bytes: bytes, audio_format: str = "audio/wav") -> str:
         """
         Recognize speech from audio data using FunASR.
 
         Args:
-            media_data: Base64 encoded audio data (WAV or WebM format)
+            audio_bytes: Base64 encoded audio data
             audio_format: Audio format of the input media data (default: "wav")
 
         Returns:
             Recognized text string
         """
-        # Read base64 audio data
-        if isinstance(media_data, bytes):
-            audio_bytes = media_data
-        elif os.path.isfile(media_data):
-            with open(media_data, "rb") as f:
-                audio_bytes = f.read()
-        else:
-            audio_bytes = base64.b64decode(
-                media_data.split(",", 1)[1] if "," in media_data else media_data
-            )
 
         try:
-            if audio_format == "wav":
-                # Detect audio format and convert to WAV if needed
-                wav_io = io.BytesIO(audio_bytes)
-                wav_io.seek(0)
-                header = wav_io.read(4)
-                wav_io.seek(0)
-                if header != b"RIFF":
-                    # Not a WAV file, use parent class method to convert
-                    logger.info("Detected non-WAV format, converting to WAV...")
-                    converted_wav = self._convert_to_wav(audio_bytes)
-                    if converted_wav is None:
-                        return ""
-                    wav_io = converted_wav
-                # Read WAV file and extract PCM data
-                with wave.open(wav_io, "rb") as wf:
-                    audio_data = wf.readframes(wf.getnframes())
-            else:
-                audio_data = audio_bytes
-            # Use thread pool to avoid blocking event loop
+            if audio_format == "audio/webm":
+                audio_bytes = webm_to_wav(audio_bytes)
             result = await asyncio.to_thread(
                 self._model.generate,
-                input=audio_data,
+                input=audio_bytes,
                 cache={},
                 language="auto",
                 use_itn=True,
                 batch_size_s=60,
             )
-            # Extract text from result
             return result[0]["text"] if result else ""
         except ImportError:
             logger.error("FunASR not installed. Install with: pip install funasr")
@@ -288,12 +204,12 @@ class VoskASRHandler(BaseASRHandler):
         logger.info(f"Loading Vosk model from {model}")
         self._model = Model(model_path=str(model_dir_expanded))
 
-    async def _process_audio(self, media_data: str, audio_format: str = "wav") -> str:
+    async def _process_audio(self, audio_bytes: bytes, audio_format: str = "wav") -> str:
         """
         Recognize speech from audio data using Vosk (offline CPU-based ASR).
 
         Args:
-            media_data: Base64 encoded audio data (WAV or WebM format)
+            audio_bytes: Base64 encoded audio data
             audio_format: Audio format of the input media data (default: "wav")
 
         Returns:
@@ -302,43 +218,17 @@ class VoskASRHandler(BaseASRHandler):
 
         from vosk import KaldiRecognizer
 
-        # Read base64 audio data
-        if os.path.isfile(media_data):
-            with open(media_data, "rb") as f:
-                audio_bytes = f.read()
-        else:
-            audio_bytes = base64.b64decode(
-                media_data.split(",", 1)[1] if "," in media_data else media_data
-            )
-
         try:
+            if audio_format == "audio/webm":
+                audio_bytes = webm_to_wav(audio_bytes)
             # Detect audio format and convert to WAV if needed
             wav_io = io.BytesIO(audio_bytes)
-
-            # Check if it's a WAV file by reading the first 4 bytes
-            wav_io.seek(0)
-            header = wav_io.read(4)
-            wav_io.seek(0)
-
-            if header != b"RIFF":
-                # Not a WAV file, use parent class method to convert
-                logger.info("Detected non-WAV format, converting to WAV...")
-                converted_wav = self._convert_to_wav(audio_bytes)
-                if converted_wav is None:
-                    return ""
-                wav_io = converted_wav
-
-            # Read WAV file and extract PCM data
             with wave.open(wav_io, "rb") as wf:
                 sample_rate = wf.getframerate()
-
-                # Read all frames
                 audio_data = wf.readframes(wf.getnframes())
-
             # Create recognizer
             recognizer = KaldiRecognizer(self._model, sample_rate)
             recognizer.SetWords(False)  # Don't include word timestamps
-
             # Feed audio data
             if recognizer.AcceptWaveform(audio_data):
                 result = json.loads(recognizer.Result())

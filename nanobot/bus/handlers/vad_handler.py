@@ -115,7 +115,7 @@ class BaseVADHandler(BaseHandler, ABC):
             msg.media = [{"data": b"".join(pcm_data)}]
             self._waiting_id = str(uuid.uuid4())[:8]
             msg.metadata.update(
-                {"msg_type": "audio", "audio_format": "pcm", "vad_id": self._waiting_id}
+                {"msg_type": "audio", "audio_format": "audio/wav", "vad_id": self._waiting_id}
             )
         else:
             msg.metadata["ret_type"] = RetType.IGNORE
