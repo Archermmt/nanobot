@@ -4,10 +4,8 @@ import base64
 import json
 import os
 import tempfile
-import wave
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import List
 
 from loguru import logger
 
@@ -159,25 +157,22 @@ class WeSpeakHandler(BaseSpeakHandler):
         """
         if self.ref_emb is None:
             logger.warning("Cannot verify speaker - no reference embedding available")
-            return False, 0.0
+            return 0.0
 
-        tmp_path = None
+        media_dir = Path.home() / ".nanobot" / "media"
+        media_dir.mkdir(parents=True, exist_ok=True)
+        speaker_file = media_dir / "speaker.wav"
         try:
-            # Create temporary WAV file for speaker verification
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_file:
-                tmp_path = tmp_file.name
-                if audio_format == "audio/webm":
-                    tmp_path = webm_to_wav(audio_bytes, output_file=tmp_path)
-                else:
-                    tmp_file.write(audio_bytes)
-            # Extract embedding from input audio file
-            emb = self.speaker.extract_embedding(tmp_path)
+            if audio_format == "audio/webm":
+                speaker_file = webm_to_wav(audio_bytes, output_file=speaker_file)
+            else:
+                speaker_file.write(audio_bytes)
+            emb = self.speaker.extract_embedding(speaker_file)
             return self.speaker.compute_cosine_score(self.ref_emb.flatten(), emb.flatten())
-
         except Exception as e:
             logger.error(f"WeSpeaker verification error: {e}")
-            return False, 0.0
+            return 0.0
         finally:
             # Clean up temporary file
-            if tmp_path and Path(tmp_path).exists():
-                Path(tmp_path).unlink()
+            if speaker_file.exists():
+                speaker_file.unlink()

@@ -2,7 +2,6 @@
 
 import asyncio
 import json
-import threading
 from collections import OrderedDict
 from pathlib import Path
 

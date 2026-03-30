@@ -10,13 +10,12 @@ from urllib.parse import parse_qs, urlparse
 import websockets
 from botpy import Any
 from loguru import logger
-from pydantic import Field
 
 from nanobot.bus.events import OutboundMessage
 from nanobot.bus.queue import MessageBus
 from nanobot.channels.base import BaseChannel
 from nanobot.channels.xiaozhi_server.core.http_server import SimpleHttpServer
-from nanobot.config.schema import Base
+from nanobot.channels.xiaozhi_server.core.schema import XiaoZhiConfig
 from nanobot.utils.text_utils import check_emoji, get_string_no_punctuation_or_emoji
 
 
@@ -36,29 +35,6 @@ class AuthenticationError(Exception):
     """Exception raised when authentication fails."""
 
     pass
-
-
-class XiaoZhiConfig(Base):
-    """XiaoZhi ESP32 WebSocket channel configuration."""
-
-    enabled: bool = False
-    host: str = "0.0.0.0"  # WebSocket server bind host
-    port: int = 8000  # WebSocket server bind port
-    http_port: int = 8003  # Http server bind port
-    auth_enabled: bool = False  # Enable device authentication
-    auth_key: str = ""  # Authentication key/token for device verification
-    allowed_devices: list[str] = Field(
-        default_factory=list
-    )  # Device whitelist (empty = all devices need auth)
-    allow_from: list[str] = Field(default_factory=list)  # Allowed sender identifiers
-    expire_seconds: int | None = None  # Token expiration time in seconds
-    firmware_cache_ttl: int = 30  # Firmware cache TTL in seconds
-    timezone_offset: int = 8  # Timezone offset in hours
-    mqtt_gateway: str | None = None  # MQTT gateway endpoint
-    mqtt_signature_key: str = ""  # MQTT signature key for password generation
-    read_config_from_api: bool = False
-    depends_folder: str = "~/.nanobot/depends/xiaozhi"
-    frame_duration: int = 60  # Frame duration in milliseconds
 
 
 class XiaoZhiChannel(BaseChannel):

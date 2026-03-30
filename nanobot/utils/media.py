@@ -13,7 +13,7 @@ import numpy as np
 from loguru import logger
 
 
-def webm_to_wav(audio_bytes: bytes, ouput_file: str = None) -> io.BytesIO | None:
+def webm_to_wav(audio_bytes: bytes, output_file: Path = None) -> io.BytesIO | None:
     """
     Convert non-WAV audio to WAV format using ffmpeg.
 
@@ -23,53 +23,45 @@ def webm_to_wav(audio_bytes: bytes, ouput_file: str = None) -> io.BytesIO | None
     Returns:
         BytesIO object with WAV data, or None if conversion fails
     """
+
+    in_path, out_path = None, None
     try:
         # Create temporary input file
         with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as tmp_in:
             tmp_in.write(audio_bytes)
-            tmp_in_path = tmp_in.name
+            in_path = tmp_in.name
 
         # Create temporary output file for WAV
-        if ouput_file:
-            out_path = ouput_file
+        if output_file:
+            out_path = str(output_file)
         else:
             with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_out:
                 out_path = tmp_out.name
-
-        try:
-            # Use ffmpeg to convert to WAV
-            subprocess.run(
-                [
-                    "ffmpeg",
-                    "-i",
-                    tmp_in_path,
-                    "-ar",
-                    "16000",
-                    "-ac",
-                    "1",
-                    "-f",
-                    "wav",
-                    "-y",
-                    out_path,
-                ],
-                capture_output=True,
-                check=True,
-            )
-            logger.info("Successfully converted webm to wav format")
-            if ouput_file:
-                return ouput_file
-            # Read converted WAV file
-            with open(out_path, "rb") as f:
-                wav_io = io.BytesIO(f.read())
-            return wav_io
-
-        finally:
-            # Cleanup temporary files
-            if os.path.exists(tmp_in_path):
-                os.unlink(tmp_in_path)
-            if os.path.exists(out_path):
-                os.unlink(out_path)
-
+        # Use ffmpeg to convert to WAV
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-i",
+                in_path,
+                "-ar",
+                "16000",
+                "-ac",
+                "1",
+                "-f",
+                "wav",
+                "-y",
+                out_path,
+            ],
+            capture_output=True,
+            check=True,
+        )
+        logger.info("Successfully converted webm to wav format")
+        if output_file:
+            return output_file
+        # Read converted WAV file
+        with open(out_path, "rb") as f:
+            wav_io = io.BytesIO(f.read())
+        return wav_io
     except subprocess.CalledProcessError as e:
         logger.error(f"FFmpeg conversion failed: {e.stderr.decode() if e.stderr else e}")
         return None
@@ -79,6 +71,12 @@ def webm_to_wav(audio_bytes: bytes, ouput_file: str = None) -> io.BytesIO | None
     except Exception as e:
         logger.error(f"Audio conversion error: {e}")
         return None
+    finally:
+        # Cleanup temporary files
+        if in_path and os.path.exists(in_path):
+            os.unlink(in_path)
+        if not output_file and out_path and os.path.exists(out_path):
+            os.unlink(out_path)
 
 
 def save_media(
@@ -133,7 +131,7 @@ def save_media(
 
     file_path = media_dir / filename
     if mime_type == "audio/webm" and target_type == "audio/wav":
-        file_data = webm_to_wav(file_data, file_path)
+        file_path = webm_to_wav(file_data, file_path)
     else:
         file_path.write_bytes(file_data)
     logger.debug("Saved base64 media to {}", file_path)
