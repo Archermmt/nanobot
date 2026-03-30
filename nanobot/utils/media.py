@@ -55,7 +55,6 @@ def webm_to_wav(audio_bytes: bytes, output_file: Path = None) -> io.BytesIO | No
             capture_output=True,
             check=True,
         )
-        logger.info("Successfully converted webm to wav format")
         if output_file:
             return output_file
         # Read converted WAV file

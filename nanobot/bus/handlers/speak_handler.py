@@ -100,7 +100,12 @@ class BaseSpeakHandler(BaseHandler, ABC):
                     msg.content = f"Speaker not allowed ({score:.4f}<{self.threshold})"
                     msg.media = []
                     msg.metadata.update(
-                        {"msg_type": "text", "ret_type": RetType.PASSBY, "_hide_message": False}
+                        {
+                            "msg_type": "text",
+                            "ret_type": RetType.PASSBY,
+                            "_hide_message": False,
+                            "need_tts": False,
+                        }
                     )
             finally:
                 # Clean up temporary file if exists
@@ -109,7 +114,12 @@ class BaseSpeakHandler(BaseHandler, ABC):
         except Exception as e:
             msg.content, msg.media = "Failed to verify speaker: " + str(e), []
             msg.metadata.update(
-                {"msg_type": "text", "ret_type": RetType.PASSBY, "_hide_message": False}
+                {
+                    "msg_type": "text",
+                    "ret_type": RetType.PASSBY,
+                    "_hide_message": False,
+                    "need_tts": False,
+                }
             )
             logger.debug(msg.content)
         return msg
@@ -169,11 +179,26 @@ class WeSpeakHandler(BaseSpeakHandler):
         media_dir = Path.home() / ".nanobot" / "media"
         media_dir.mkdir(parents=True, exist_ok=True)
         speaker_file = media_dir / "speaker.wav"
+
+        if audio_format == "audio/webm":
+            speaker_file = webm_to_wav(audio_bytes, output_file=speaker_file)
+        else:
+            speaker_file.write_bytes(audio_bytes)
+        print(f"[TMINFO] save {audio_format} file to {speaker_file}")
+        print(f"[TMINFO] audio_bytes {audio_bytes}")
+        emb = self.speaker.extract_embedding(speaker_file)
+        max_score = 0.0
+        for ref_emb in self.ref_embs:
+            score = self.speaker.compute_cosine_score(ref_emb.flatten(), emb.flatten())
+            max_score = max(max_score, score)
+        return max_score
+
+        """
         try:
             if audio_format == "audio/webm":
                 speaker_file = webm_to_wav(audio_bytes, output_file=speaker_file)
             else:
-                speaker_file.write(audio_bytes)
+                speaker_file.write_bytes(audio_bytes)
             emb = self.speaker.extract_embedding(speaker_file)
             # Compute max score across all reference embeddings
             max_score = 0.0
@@ -188,3 +213,4 @@ class WeSpeakHandler(BaseSpeakHandler):
             # Clean up temporary file
             if speaker_file.exists():
                 speaker_file.unlink()
+        """

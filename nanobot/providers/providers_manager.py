@@ -85,17 +85,17 @@ class ProvidersManager:
             selected_mode = decider_response.content.strip() if decider_response.content else "main"
             # Use the selected mode's provider
             if selected_mode in self._modes:
-                logger.info(f"Choose {selected_mode} for task: {preview}")
+                logger.debug(f"Choose {selected_mode} for task: {preview}")
                 self._current_mode = selected_mode
             else:
                 # Fallback to main if selected mode not found
-                logger.info(f"Fallback to main for task: {preview}")
+                logger.debug(f"Fallback to main for task: {preview}")
                 self._current_mode = "main"
         elif mode in self._modes:
-            logger.info(f"Use specified {mode} for task: {preview}")
+            logger.debug(f"Use specified {mode} for task: {preview}")
             self._current_mode = mode
         elif "main" in self._modes:
-            logger.info(f"Fallback to main for task: {preview}")
+            logger.debug(f"Fallback to main for task: {preview}")
             self._current_mode = "main"
         else:
             raise ValueError(f"Unknown mode: {mode} and no fallback available")

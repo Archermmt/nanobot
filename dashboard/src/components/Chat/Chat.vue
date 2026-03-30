@@ -253,10 +253,8 @@ const handleWebSocketMessage = (event: MessageEvent) => {
         sendMessage(data.metadata._trigger_cmd, true)
       }
 
-      // Only set chatStatus based on _progress and _as_input
-      if (data.metadata?._progress) {
-        chatStatus.value = "Thinking"
-      } else if (!data.audioUrl) {
+      // Only set chatStatus based on _is_final
+      if (data.metadata?._is_final) {
         chatStatus.value = ""
       }
     } else if (data.type === 'heartbeat') {
@@ -274,7 +272,6 @@ const handleWebSocketMessage = (event: MessageEvent) => {
         content: `Error: ${data.message || data.data}`,
         timestamp: Date.now()
       })
-      chatStatus.value = ""
     }
   } catch (e) {
     console.error('Failed to parse message:', e)
