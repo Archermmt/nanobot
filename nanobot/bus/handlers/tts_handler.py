@@ -207,11 +207,17 @@ class F5TTSHandler(BaseTTSHandler):
 
         super().__init__(config)
         # Build reference audio path relative to depends folder
-        assert "audio" in self.voice_config and "text" in self.voice_config, (
-            "Voice configuration missing 'audio' or 'text' key"
+        assert (
+            "voices" in self.voice_config
+            and isinstance(self.voice_config["voices"], list)
+            and len(self.voice_config["voices"]) > 0
+        ), "Voice configuration missing 'voices' array or it's empty"
+        first_voice = self.voice_config["voices"][0]
+        assert "audio" in first_voice and "text" in first_voice, (
+            "First voice entry missing 'audio' or 'text' key"
         )
-        ref_audio = self.depends_folder / self.voice_config["audio"]
-        ref_text = self.voice_config["text"]
+        ref_audio = self.depends_folder / first_voice["audio"]
+        ref_text = first_voice["text"]
         assert ref_audio.exists(), f"Reference audio not found: {ref_audio}"
         with CaptureOutput():
             self.tts = F5TTS(model=config.model)
@@ -311,8 +317,14 @@ class QwenTTSHandler(BaseTTSHandler):
         if self._check_voice(self.voice_id):
             logger.info(f"Use registered voice id {self.voice_id}")
         else:
-            assert "audio" in self.voice_config, "Voice configuration missing 'audio' key"
-            ref_audio = self.depends_folder / self.voice_config["audio"]
+            assert (
+                "voices" in self.voice_config
+                and isinstance(self.voice_config["voices"], list)
+                and len(self.voice_config["voices"]) > 0
+            ), "Voice configuration missing 'voices' array or it's empty"
+            first_voice = self.voice_config["voices"][0]
+            assert "audio" in first_voice, "First voice entry missing 'audio' key"
+            ref_audio = self.depends_folder / first_voice["audio"]
             self._clone_voice(str(ref_audio))
 
     async def _text_to_speak(self, text, output_file):

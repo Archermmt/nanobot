@@ -21,7 +21,7 @@ class BaseSpeakHandler(BaseHandler, ABC):
 
     def __init__(self, config: SpeakHandlerConfig):
         # Load reference speaker embedding in subclass
-        self.ref_emb = None
+        self.ref_embs = []
         self.threshold = config.threshold
         self.depends_folder = Path(config.depends_folder).expanduser()
         voice_path = self.depends_folder / "voice.json"
@@ -68,7 +68,7 @@ class BaseSpeakHandler(BaseHandler, ABC):
         Returns:
             Modified InboundMessage with speaker verification result
         """
-        if self.ref_emb is None or not msg.media:
+        if not self.ref_embs or not msg.media:
             logger.debug("Speaker verification disabled - no reference embedding")
             return msg
 
@@ -132,15 +132,22 @@ class WeSpeakHandler(BaseSpeakHandler):
 
         super().__init__(config)
         self.speaker = wespeaker.Speaker(lang="chs")
-        assert "audio" in self.voice_config, "Voice configuration missing 'audio' key"
-        ref_audio = self.depends_folder / self.voice_config["audio"]
-        # Load reference speaker embedding
-        if config.speaker and ref_audio.exists():
-            try:
-                self.ref_emb = self.speaker.extract_embedding(str(ref_audio))
-                logger.info(f"Loaded reference speaker embedding from {ref_audio}")
-            except Exception as e:
-                logger.error(f"Failed to extract reference speaker embedding: {e}")
+        assert (
+            "voices" in self.voice_config
+            and isinstance(self.voice_config["voices"], list)
+            and len(self.voice_config["voices"]) > 0
+        ), "Voice configuration missing 'voices' array or it's empty"
+        # Load reference speaker embeddings from all voices
+        self.ref_embs = []
+        for voice_entry in self.voice_config["voices"]:
+            assert "audio" in voice_entry, f"Voice entry missing 'audio' key: {voice_entry}"
+            ref_audio = self.depends_folder / voice_entry["audio"]
+            if config.speaker and ref_audio.exists():
+                try:
+                    self.ref_embs.append(self.speaker.extract_embedding(str(ref_audio)))
+                    logger.info(f"Loaded reference speaker embedding from {ref_audio}")
+                except Exception as e:
+                    logger.error(f"Failed to extract reference speaker embedding: {e}")
 
     def _verify_speaker(
         self, audio_bytes: bytes, audio_format: str = "audio/wav"
@@ -155,7 +162,7 @@ class WeSpeakHandler(BaseSpeakHandler):
         Returns:
             Tuple of (is_verified, similarity_score)
         """
-        if self.ref_emb is None:
+        if not self.ref_embs:
             logger.warning("Cannot verify speaker - no reference embedding available")
             return 0.0
 
@@ -168,7 +175,12 @@ class WeSpeakHandler(BaseSpeakHandler):
             else:
                 speaker_file.write(audio_bytes)
             emb = self.speaker.extract_embedding(speaker_file)
-            return self.speaker.compute_cosine_score(self.ref_emb.flatten(), emb.flatten())
+            # Compute max score across all reference embeddings
+            max_score = 0.0
+            for ref_emb in self.ref_embs:
+                score = self.speaker.compute_cosine_score(ref_emb.flatten(), emb.flatten())
+                max_score = max(max_score, score)
+            return max_score
         except Exception as e:
             logger.error(f"WeSpeaker verification error: {e}")
             return 0.0
