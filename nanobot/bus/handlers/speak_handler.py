@@ -12,7 +12,7 @@ from loguru import logger
 from nanobot.bus.events import InboundMessage
 from nanobot.bus.handlers.base_handler import BaseHandler
 from nanobot.config.schema import SpeakHandlerConfig
-from nanobot.utils.media import webm_to_wav
+from nanobot.utils.media import pcm_to_wav, webm_to_wav
 from nanobot.utils.message import RetType
 
 
@@ -179,24 +179,11 @@ class WeSpeakHandler(BaseSpeakHandler):
         media_dir = Path.home() / ".nanobot" / "media"
         media_dir.mkdir(parents=True, exist_ok=True)
         speaker_file = media_dir / "speaker.wav"
-
-        if audio_format == "audio/webm":
-            speaker_file = webm_to_wav(audio_bytes, output_file=speaker_file)
-        else:
-            speaker_file.write_bytes(audio_bytes)
-        print(f"[TMINFO] save {audio_format} file to {speaker_file}")
-        print(f"[TMINFO] audio_bytes {audio_bytes}")
-        emb = self.speaker.extract_embedding(speaker_file)
-        max_score = 0.0
-        for ref_emb in self.ref_embs:
-            score = self.speaker.compute_cosine_score(ref_emb.flatten(), emb.flatten())
-            max_score = max(max_score, score)
-        return max_score
-
-        """
         try:
             if audio_format == "audio/webm":
                 speaker_file = webm_to_wav(audio_bytes, output_file=speaker_file)
+            elif audio_format == "audio/pcm":
+                speaker_file = pcm_to_wav(audio_bytes, output_file=speaker_file)
             else:
                 speaker_file.write_bytes(audio_bytes)
             emb = self.speaker.extract_embedding(speaker_file)
@@ -213,4 +200,3 @@ class WeSpeakHandler(BaseSpeakHandler):
             # Clean up temporary file
             if speaker_file.exists():
                 speaker_file.unlink()
-        """

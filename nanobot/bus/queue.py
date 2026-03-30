@@ -78,21 +78,12 @@ class MessageBus:
         Returns:
             Processed message
         """
-        processed = set()
-        while True:
-            proc_cnt = len(processed)
-            for name in self._handler_types:
-                handler = self.handlers[name]
-                if is_input:
-                    if handler.can_handle_input(msg) and name not in processed:
-                        msg = await handler.handle_input(msg)
-                        processed.add(name)
-                else:
-                    if handler.can_handle_output(msg) and name not in processed:
-                        msg = await handler.handle_output(msg)
-                        processed.add(name)
-            if proc_cnt == len(processed):
-                break
+        for name in self._handler_types:
+            handler = self.handlers[name]
+            if is_input and handler.can_handle_input(msg):
+                msg = await handler.handle_input(msg)
+            elif handler.can_handle_output(msg):
+                msg = await handler.handle_output(msg)
         return msg
 
     @property
