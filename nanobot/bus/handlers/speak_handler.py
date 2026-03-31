@@ -103,7 +103,9 @@ class BaseSpeakHandler(BaseHandler, ABC):
                             "msg_type": "text",
                             "ret_type": RetType.PASSBY,
                             "_hide_message": False,
+                            "clean_vad": True,
                             "need_tts": False,
+                            "_as_warning": True,
                         }
                     )
                     logger.debug(msg.content)
@@ -118,7 +120,9 @@ class BaseSpeakHandler(BaseHandler, ABC):
                     "msg_type": "text",
                     "ret_type": RetType.PASSBY,
                     "_hide_message": False,
+                    "clean_vad": True,
                     "need_tts": False,
+                    "_as_warning": True,
                 }
             )
             logger.debug(msg.content)
