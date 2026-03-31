@@ -95,9 +95,8 @@ class BaseSpeakHandler(BaseHandler, ABC):
                 # Verify speaker using temporary file
                 score = self._verify_speaker(audio_bytes, audio_format)
                 is_verified = score > self.threshold
-                logger.debug(f"Speaker verified({is_verified}) with score: {score:.4f}")
                 if not is_verified:
-                    msg.content = f"Speaker not allowed ({score:.4f}<{self.threshold})"
+                    msg.content = f"Speaker not verified ({score:.2f}<{self.threshold})"
                     msg.media = []
                     msg.metadata.update(
                         {
@@ -107,6 +106,7 @@ class BaseSpeakHandler(BaseHandler, ABC):
                             "need_tts": False,
                         }
                     )
+                    logger.debug(msg.content)
             finally:
                 # Clean up temporary file if exists
                 pass

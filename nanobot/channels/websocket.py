@@ -310,7 +310,7 @@ class WebSocketChannel(BaseChannel):
         msg_type = msg_data.get("type", "message")
         # Extract message fields
         message_id = msg_data.get("message_id") or str(hash(str(msg_data)))
-        sender_id = msg_data.get("sender_id", "unknown")
+        sender_id = msg_data.get("sender_id", "web_user")
         chat_id = msg_data.get("chat_id", "default")
         content = msg_data.get("content", "")
         media = msg_data.get("media", [])

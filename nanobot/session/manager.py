@@ -201,6 +201,7 @@ class Session:
         if msg.metadata.get("ret_type", RetType.NORMAL) != RetType.NORMAL:
             if msg.metadata.get("ret_type", RetType.NORMAL) == RetType.PASSBY:
                 msg.metadata.setdefault("_hide_message", True)
+                msg.metadata.setdefault("_is_final", True)
             return OutboundMessage(
                 channel=msg.channel,
                 chat_id=msg.chat_id,

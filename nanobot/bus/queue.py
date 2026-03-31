@@ -82,7 +82,7 @@ class MessageBus:
             handler = self.handlers[name]
             if is_input and handler.can_handle_input(msg):
                 msg = await handler.handle_input(msg)
-            elif handler.can_handle_output(msg):
+            elif not is_input and handler.can_handle_output(msg):
                 msg = await handler.handle_output(msg)
         return msg
 
