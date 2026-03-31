@@ -39,7 +39,6 @@ const sessionId = ref(`session_${Date.now()}`)
 const senderId = ref('web_user')  // Global sender ID
 const chatId = ref('default')  // Global chat ID
 const currentAudio = ref<HTMLAudioElement | null>(null)
-const currentTimeoutId = ref<number | null>(null)
 const chatInputRef = ref<InstanceType<typeof ChatInput> | null>(null)
 const pendingCommandsCount = ref(0)  // Track pending commands during connection
 
@@ -97,12 +96,6 @@ const handleWebSocketMessage = (event: MessageEvent) => {
     if (data.type === 'tool_call') {
       handleToolCallMessage(data, ws)
       return
-    }
-
-    // Clear timeout when receiving any message
-    if (currentTimeoutId.value) {
-      clearTimeout(currentTimeoutId.value)
-      currentTimeoutId.value = null
     }
 
     if (data.type === 'message') {
@@ -390,24 +383,6 @@ const sendMessage = async (
     if (!isCommand) {
       chatStatus.value = "Thinking"
     }
-
-    // Set timeout: if no response within 60 seconds, stop loading
-    const timeoutId = setTimeout(() => {
-      if (chatStatus.value === "Thinking") {
-        chatStatus.value = ""
-        console.warn('No response received within 30 seconds')
-      }
-      // Also handle command timeout
-      if (isCommand && pendingCommandsCount.value > 0) {
-        pendingCommandsCount.value = 0
-        console.warn('⏰ Command timed out, remaining:', pendingCommandsCount.value)
-        chatStatus.value = ""
-      }
-    }, 60000)
-
-    // Store timeout ID in a ref so we can clear it on message receive
-    currentTimeoutId.value = timeoutId
-
   } else {
     // Error prompt when WebSocket is not connected
     messages.value.push({
@@ -584,10 +559,6 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  // Clear any pending timeout
-  if (currentTimeoutId.value) {
-    clearTimeout(currentTimeoutId.value)
-  }
   stopAudio()
 
   // Clear all audio when component unmounts
