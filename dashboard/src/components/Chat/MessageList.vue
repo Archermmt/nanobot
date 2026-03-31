@@ -29,7 +29,7 @@ interface Message {
     _mode_hint?: string
     isPlayingOpus?: boolean
     _as_input?: boolean
-    _as_warning?: boolean
+    _warning_msg?: string
   }
 }
 
@@ -252,25 +252,33 @@ const renderMarkdown = (content: string) => {
 
 // Filter messages based on showProgressMessages prop
 const visibleMessages = computed(() => {
-  // Filter messages based on showProgressMessages prop
-  if (props.showProgressMessages !== false) {
-    // Show all messages including_progress messages
-    props.messages.forEach(msg => {
-      // Cache _mode_hint from messages
-      if (msg.metadata?._mode_hint) {
-        currentModeHint.value = msg.metadata._mode_hint
+  const filterMessages = (messages: Message[]) => {
+    return messages.filter((msg, index) => {
+      // Skip duplicate warning messages with same _warning_msg
+      if (msg.metadata?._warning_msg && index > 0) {
+        const prevMsg = messages[index - 1]
+        if (prevMsg?.metadata?._warning_msg === msg.metadata._warning_msg) {
+          return false
+        }
       }
+      return true
     })
-    return props.messages
+  }
+
+  // Cache _mode_hint from messages
+  props.messages.forEach(msg => {
+    if (msg.metadata?._mode_hint) {
+      currentModeHint.value = msg.metadata._mode_hint
+    }
+  })
+
+  if (props.showProgressMessages !== false) {
+    // Show all messages including progress messages
+    return filterMessages(props.messages)
   } else {
     // Hide messages with _progress: true in metadata
-    props.messages.forEach(msg => {
-      // Cache _mode_hint from messages (even progress messages)
-      if (msg.metadata?._mode_hint) {
-        currentModeHint.value = msg.metadata._mode_hint
-      }
-    })
-    return props.messages.filter(msg => !msg.metadata?._progress)
+    const filteredMessages = props.messages.filter(msg => !msg.metadata?._progress)
+    return filterMessages(filteredMessages)
   }
 })
 
@@ -311,10 +319,10 @@ watch(() => props.showProgressMessages, scrollToBottom)
     <div v-for="(msg, index) in visibleMessages" :key="index" class="flex" :class="getMessageClass(msg)">
       <div class="border-2 rounded shadow-[4px_4px_0_rgba(0,0,0,0.5)] px-4 py-3 flex flex-col" :class="{
         'bg-gradient-to-br from-blue-500 to-blue-600 border-blue-700 text-white max-w-[80%]': isUserMessage(msg),
-        'bg-gradient-to-br from-gray-100 to-gray-200 border-gray-300 text-gray-800 max-w-[80%]': !isUserMessage(msg) && msg.role === 'assistant' && !msg.metadata?._progress && msg.metadata?._task_ref !== 'status' && msg.metadata?._as_warning !== true,
+        'bg-gradient-to-br from-gray-100 to-gray-200 border-gray-300 text-gray-800 max-w-[80%]': !isUserMessage(msg) && msg.role === 'assistant' && !msg.metadata?._progress && msg.metadata?._task_ref !== 'status' && !msg.metadata?._warning_msg,
         'bg-gradient-to-br from-green-100 to-green-200 border-green-300 text-gray-700 max-w-[80%]': !isUserMessage(msg) && msg.role === 'assistant' && msg.metadata?._progress,
         'bg-gradient-to-br from-red-100 to-red-200 border-red-300 text-red-800 max-w-[80%]': msg.role === 'system',
-        'bg-gradient-to-br from-yellow-100 to-yellow-200 border-yellow-300 text-gray-700 max-w-[80%]': msg.metadata?._task_ref === 'status' || msg.metadata?._as_warning === true
+        'bg-gradient-to-br from-pink-100 to-pink-200 border-pink-300 text-gray-700 max-w-[80%]': msg.metadata?._warning_msg
       }">
         <!-- Image Display -->
         <div v-if="getImageUrlFromMessage(msg)" class="mb-3 w-full">
@@ -409,7 +417,7 @@ watch(() => props.showProgressMessages, scrollToBottom)
         <div class="flex items-center space-x-2">
           <div class="text-xs text-yellow-800">
             {{ props.chatStatus }}<span v-if="props.chatStatus === 'Thinking' && currentModeHint">({{ currentModeHint
-              }})</span>
+            }})</span>
           </div>
           <div class="flex space-x-1">
             <div class="w-2 h-2 bg-blue-500 rounded animate-bounce" style="animation-delay: 0ms"></div>

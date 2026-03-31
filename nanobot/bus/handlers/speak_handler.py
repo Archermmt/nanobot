@@ -105,7 +105,7 @@ class BaseSpeakHandler(BaseHandler, ABC):
                             "_hide_message": False,
                             "clean_vad": True,
                             "need_tts": False,
-                            "_as_warning": True,
+                            "_warning_msg": "speaker not verified",
                         }
                     )
                     logger.debug(msg.content)
@@ -122,7 +122,7 @@ class BaseSpeakHandler(BaseHandler, ABC):
                     "_hide_message": False,
                     "clean_vad": True,
                     "need_tts": False,
-                    "_as_warning": True,
+                    "_warning_msg": "speaker not verified",
                 }
             )
             logger.debug(msg.content)
