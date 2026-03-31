@@ -249,6 +249,8 @@ const handleWebSocketMessage = (event: MessageEvent) => {
       // Only set chatStatus based on _is_final
       if (data.metadata?._is_final) {
         chatStatus.value = ""
+      } else if (data.metadata?._as_input) {
+        chatStatus.value = "Thinking"
       }
     } else if (data.type === 'heartbeat') {
       // Reply to heartbeat

@@ -366,10 +366,8 @@ const startOnlineChat = async () => {
             console.debug('⏸️ 暂停发送音频，当前状态:', chatStatus)
           } else {
             // If can record and currently not in Listening state, set it to Listening
-            if (chatStatus !== "Listening") {
-              if (chatComponentRef.value) {
-                chatComponentRef.value.chatStatus = "Listening"
-              }
+            if (chatComponentRef.value && chatStatus === "") {
+              chatComponentRef.value.chatStatus = "Listening"
             }
           }
 
