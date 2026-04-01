@@ -19,7 +19,7 @@ interface Message {
   metadata?: {
     msg_type?: string
     file_type?: string
-    _task_ref?: string
+    _cmd_ref?: string
     _hide_message?: boolean
     _progress?: boolean
     isPlayingOpus?: boolean
@@ -100,7 +100,7 @@ const handleWebSocketMessage = (event: MessageEvent) => {
 
     if (data.type === 'message') {
       // Handle task completion
-      handleTaskRefCompletion(data.metadata?._task_ref)
+      handleTaskRefCompletion(data.metadata?._cmd_ref)
 
       // Update session state if present in metadata
       if (data.metadata?._session_state) {
@@ -109,7 +109,7 @@ const handleWebSocketMessage = (event: MessageEvent) => {
       }
 
       // Check if this is a status response
-      if (data.content && data.metadata?._task_ref === 'status') {
+      if (data.content && data.metadata?._cmd_ref === 'status') {
         // This is a status update, emit it for StatusBar and App.vue
         try {
           const statusData = JSON.parse(data.content)
@@ -122,7 +122,7 @@ const handleWebSocketMessage = (event: MessageEvent) => {
       }
 
       // Check if this is a history response (JSON array)
-      if (data.content && data.metadata?._task_ref === 'history') {
+      if (data.content && data.metadata?._cmd_ref === 'history') {
         try {
           const historyData = JSON.parse(data.content)
           if (Array.isArray(historyData)) {

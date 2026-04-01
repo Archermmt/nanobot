@@ -547,7 +547,7 @@ class XiaoZhiChannel(BaseChannel):
             return
 
         # Ignore some cases
-        if msg.metadata.get("_task_ref", "") == "register_extern_tools":
+        if msg.metadata.get("_cmd_ref", "") == "register_extern_tools":
             return
         if msg.metadata.get("_progress", False) or msg.metadata.get("_hide_message", False):
             return

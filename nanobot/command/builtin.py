@@ -30,7 +30,10 @@ async def cmd_stop(ctx: CommandContext) -> OutboundMessage:
     total = cancelled + sub_cancelled
     content = f"Stopped {total} task(s)." if total else "No active task to stop."
     return OutboundMessage(
-        channel=msg.channel, chat_id=msg.chat_id, content=content, metadata={"_is_final": True}
+        channel=msg.channel,
+        chat_id=msg.chat_id,
+        content=content,
+        metadata={"_is_final": True, "_cmd_ref": "stop"},
     )
 
 
@@ -135,7 +138,7 @@ async def cmd_history(ctx: CommandContext) -> OutboundMessage:
 
     for message in session.messages:
         _add_msg(message)
-    metadata = {"_task_ref": "history", "_hide_message": True}
+    metadata = {"_cmd_ref": "history", "_hide_message": True}
     return OutboundMessage(
         channel=ctx.msg.channel,
         chat_id=ctx.msg.chat_id,
@@ -164,7 +167,7 @@ async def cmd_inspect(ctx: CommandContext) -> OutboundMessage:
         "msg_handlers": list(loop.bus.handlers.keys()),
         "_session_state": session.status,
     }
-    metadata = {"_task_ref": "status", "_hide_message": True}
+    metadata = {"_cmd_ref": "status", "_hide_message": True}
     return OutboundMessage(
         channel=ctx.msg.channel,
         chat_id=ctx.msg.chat_id,
@@ -203,7 +206,7 @@ async def cmd_register_extern_tools(ctx: CommandContext) -> OutboundMessage:
         channel=ctx.msg.channel,
         chat_id=ctx.msg.chat_id,
         content="Registered extern tools: " + ",".join(tools),
-        metadata={"_task_ref": "register_extern_tools"},
+        metadata={"_cmd_ref": "register_extern_tools"},
     )
 
 
@@ -220,7 +223,7 @@ async def cmd_update_features(ctx: CommandContext) -> OutboundMessage:
         channel=ctx.msg.channel,
         chat_id=ctx.msg.chat_id,
         content="",
-        metadata={"_task_ref": "update_features", "_hide_message": True},
+        metadata={"_cmd_ref": "update_features", "_hide_message": True},
     )
 
 

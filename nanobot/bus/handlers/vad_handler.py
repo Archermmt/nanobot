@@ -71,6 +71,8 @@ class BaseVADHandler(BaseHandler, ABC):
             return True
         if msg.metadata.get("clean_vad", False):
             return True
+        if msg.metadata.get("_cmd_ref", "") == "stop":
+            return True
         return False
 
     @abstractmethod
