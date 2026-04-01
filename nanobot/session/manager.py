@@ -168,13 +168,13 @@ class Session:
         if self._status == SessionState.READY and msg.content in self.goodbye_words:
             self._status = SessionState.STANDBY
             response = random.choice(self.goodbye_response)
-            metadata["_connect_state"] = "ready"
+            metadata["_session_state"] = "ready"
             if "need_tts" in metadata:
                 metadata.pop("need_tts")
         elif self._status == SessionState.STANDBY and msg.content in self.wakeup_words:
             self._status = SessionState.READY
             response = random.choice(self.wakeup_response)
-            metadata["_connect_state"] = "standby"
+            metadata["_session_state"] = "standby"
             if "_as_input" in metadata:
                 metadata.pop("_as_input")
 

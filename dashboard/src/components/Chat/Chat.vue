@@ -34,7 +34,7 @@ const props = defineProps<{
 
 const emit = defineEmits(['status-update', 'chat-state-change'])
 const messages = ref<Message[]>([])
-const chatState = ref<string>("")
+const chatState = ref<string>("Waiting")
 const sessionId = ref(`session_${Date.now()}`)
 const senderId = ref('web_user')  // Global sender ID
 const chatId = ref('default')  // Global chat ID
@@ -66,9 +66,9 @@ const handleTaskRefCompletion = (taskRef: string) => {
   if (pendingCommandsCount.value > 0) {
     pendingCommandsCount.value--
     console.log('⏳ Pending commands:', pendingCommandsCount.value)
-    // Clear status when all commands are completed
+    // Set to Waiting when all commands are completed
     if (pendingCommandsCount.value === 0) {
-      chatState.value = ""
+      chatState.value = "Waiting"
       console.log('✅ All initialization commands completed')
     }
   }
@@ -248,7 +248,7 @@ const handleWebSocketMessage = (event: MessageEvent) => {
 
       // Only set chatState based on _is_final
       if (data.metadata?._is_final) {
-        chatState.value = ""
+        chatState.value = "Waiting"
       } else if (data.metadata?._as_input) {
         chatState.value = "Thinking"
       }
@@ -392,7 +392,7 @@ const sendMessage = async (
       content: 'WebSocket not connected. Please connect first.',
       timestamp: Date.now()
     })
-    chatState.value = ""
+    chatState.value = "Waiting"
   }
 }
 
@@ -486,7 +486,7 @@ const stopAudio = () => {
       }
     }
   }
-  chatState.value = ""
+  chatState.value = "Waiting"
 }
 
 // Watch for chatState changes and emit to parent
@@ -499,7 +499,7 @@ watch(playingAudioUrl, (newUrl) => {
   if (newUrl) {
     chatState.value = "Speaking"
   } else {
-    chatState.value = ""
+    chatState.value = "Waiting"
   }
 })
 

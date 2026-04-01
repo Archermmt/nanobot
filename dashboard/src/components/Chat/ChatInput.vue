@@ -38,7 +38,7 @@ const userHistory = computed(() => {
 
 // Check if input is disabled based on chat status and props
 const isInputDisabled = () => {
-  return props.disabled || props.chatState === 'Thinking' || props.chatState === 'Loading'
+  return props.disabled || props.chatState === 'Thinking' || props.chatState === 'Loading' || props.chatState === 'Speaking'
 }
 
 const textareaRef = ref<HTMLTextAreaElement | null>(null)

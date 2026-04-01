@@ -183,7 +183,7 @@ const handlechatStateChange = (chatState: string) => {
     clearInterval(thinkingInterval)
     thinkingInterval = null
   }
-  if (!chatState) {
+  if (!chatState || chatState === 'Waiting') {
     document.title = 'NanoBoard'
   } else {
     // Start blinking effect with suffix
@@ -359,14 +359,14 @@ const startOnlineChat = async () => {
         // Set callback to check if audio should be sent
         audioRecorder.setShouldSendAudioCallback(() => {
           // Only check chatState, allow recording if status is not Thinking, Speaking, or Listening
-          const chatState = chatComponentRef.value?.chatState || ""
+          const chatState = chatComponentRef.value?.chatState || "Waiting"
           const canRecord = !["Thinking", "Speaking", "Loading"].includes(chatState)
 
           if (!canRecord) {
             console.debug('⏸️ 暂停发送音频，当前状态:', chatState)
           } else {
-            // If can record and currently not in Listening state, set it to Listening
-            if (chatComponentRef.value && chatState === "") {
+            // If can record and currently in Waiting state, set it to Listening
+            if (chatComponentRef.value && chatState === "Waiting") {
               chatComponentRef.value.chatState = "Listening"
             }
           }
@@ -377,7 +377,7 @@ const startOnlineChat = async () => {
         // Set callback for recording stop to clear chatState
         audioRecorder.onRecordingStop = () => {
           if (chatComponentRef.value) {
-            chatComponentRef.value.chatState = ""
+            chatComponentRef.value.chatState = "Waiting"
           }
         }
 
