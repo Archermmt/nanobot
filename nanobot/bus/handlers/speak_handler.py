@@ -202,3 +202,88 @@ class WeSpeakHandler(BaseSpeakHandler):
             # Clean up temporary file
             if speaker_file.exists():
                 speaker_file.unlink()
+
+
+@BaseSpeakHandler.register()
+class SbrainSpeakHandler(BaseSpeakHandler):
+    """SpeechBrain-based speaker verification handler."""
+
+    @classmethod
+    def handler_type(cls) -> str:
+        return "sbrain_speak"
+
+    def __init__(self, config: SpeakHandlerConfig):
+        try:
+            from speechbrain.inference.speaker import SpeakerRecognition
+        except ImportError:
+            logger.error("Init SbrainSpeakHandler failed. Install with: pip install speechbrain")
+            return
+
+        super().__init__(config)
+        # Initialize SpeechBrain speaker recognition with ECAPA-TDNN model
+        pretrained_dir = self.depends_folder / "pretrained_models" / "spkrec-ecapa-voxceleb"
+        self.verification = SpeakerRecognition.from_hparams(
+            source="speechbrain/spkrec-ecapa-voxceleb",
+            savedir=str(pretrained_dir),
+        )
+        assert (
+            "voices" in self.voice_config
+            and isinstance(self.voice_config["voices"], list)
+            and len(self.voice_config["voices"]) > 0
+        ), "Voice configuration missing 'voices' array or it's empty"
+        # Load reference speaker audios from all voices
+        self.ref_audios = []
+        for voice_entry in self.voice_config["voices"]:
+            assert "audio" in voice_entry, f"Voice entry missing 'audio' key: {voice_entry}"
+            ref_audio = self.depends_folder / voice_entry["audio"]
+            if config.speaker and ref_audio.exists():
+                self.ref_audios.append(str(ref_audio))
+                logger.info(f"Loaded reference speaker audio from {ref_audio}")
+
+    def _verify_speaker(
+        self, audio_bytes: bytes, audio_format: str = "audio/wav"
+    ) -> tuple[bool, float]:
+        """
+        Verify speaker using SpeechBrain from raw audio data.
+
+        Args:
+            audio_bytes: Base64 encoded audio data
+            audio_format: Audio format of the input audio data (default: "audio/wav")
+
+        Returns:
+            Tuple of (is_verified, similarity_score)
+        """
+        if not self.ref_audios:
+            logger.warning("Cannot verify speaker - no reference audio available")
+            return 0.0
+
+        media_dir = Path.home() / ".nanobot" / "media"
+        media_dir.mkdir(parents=True, exist_ok=True)
+        test_file = media_dir / "test_speech.wav"
+        try:
+            # Convert audio to wav format
+            if audio_format == "audio/webm":
+                test_file = webm_to_wav(audio_bytes, output_file=test_file)
+            elif audio_format == "audio/pcm":
+                test_file = pcm_to_wav(audio_bytes, output_file=test_file)
+            else:
+                test_file.write_bytes(audio_bytes)
+
+            # Compute max score across all reference audios
+            max_score = 0.0
+            for ref_audio_path in self.ref_audios:
+                # verify_files returns (score, prediction)
+                # score is cosine similarity in range [-1, 1]
+                score, _ = self.verification.verify_files(ref_audio_path, str(test_file))
+                # Convert score from [-1, 1] to [0, 1]
+                score = (score + 1) / 2
+                max_score = max(max_score, score)
+
+            return max_score
+        except Exception as e:
+            logger.error(f"SpeechBrain verification error: {e}")
+            return 0.0
+        finally:
+            # Clean up temporary file
+            if test_file.exists():
+                test_file.unlink()

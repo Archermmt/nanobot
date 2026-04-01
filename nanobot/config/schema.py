@@ -224,7 +224,7 @@ class SpeakHandlerConfig(Base):
 
     enabled: bool = False
     handler_type: str = "wespeaker"  # wespeaker or custom
-    depends_folder: str = "~/.nanobot/samples"  # Folder for speaker reference audio files
+    depends_folder: str = "~/.nanobot/depends/speak"  # Folder for speaker reference audio files
     speaker: str = ""  # Reference speaker audio file name (relative to depends_folder)
     threshold: float = 0.9  # Similarity threshold for speaker verification
 
