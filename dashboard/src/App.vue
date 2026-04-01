@@ -490,7 +490,7 @@ document.addEventListener('mouseup', stopDragCamera)
       <!-- Content Area -->
       <main class="flex-1 overflow-hidden bg-gray-900">
         <Chat ref="chatComponentRef" v-show="currentSection === 'chat'" @status-update="handleStatusUpdate"
-          @ws-status-change="handleWsStatusChange" @chat-status-change="handlechatStateChange"
+          @ws-status-change="handleWsStatusChange" @chat-state-change="handlechatStateChange"
           :show-progress-messages="!hideProgress" :is-online-chat-on="isOnlineChatOn" :msg-handlers="msgHandlers" />
         <div v-show="currentSection !== 'chat'" class="p-6 text-gray-500 text-center">
           <p class="text-lg">Section under construction</p>

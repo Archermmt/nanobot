@@ -32,7 +32,7 @@ const props = defineProps<{
   msgHandlers?: string[]
 }>()
 
-const emit = defineEmits(['status-update', 'chat-status-change'])
+const emit = defineEmits(['status-update', 'chat-state-change'])
 const messages = ref<Message[]>([])
 const chatState = ref<string>("")
 const sessionId = ref(`session_${Date.now()}`)
@@ -491,7 +491,7 @@ const stopAudio = () => {
 
 // Watch for chatState changes and emit to parent
 watch(chatState, (newStatus) => {
-  emit('chat-status-change', newStatus)
+  emit('chat-state-change', newStatus)
 })
 
 // Watch for playingAudioUrl changes and update chatState
@@ -583,11 +583,11 @@ defineExpose({
 <template>
   <div class="flex flex-col h-full chat-container">
     <!-- Messages -->
-    <MessageList :messages="messages" :chat-status="chatState" @play-audio="playAudio" @stop-audio="stopAudio"
+    <MessageList :messages="messages" :chat-state="chatState" @play-audio="playAudio" @stop-audio="stopAudio"
       :show-progress-messages="props.showProgressMessages" :playing-audio-url="playingAudioUrl" />
 
     <!-- Input -->
-    <ChatInput ref="chatInputRef" :chat-status="chatState" :disabled="!isConnected"
+    <ChatInput ref="chatInputRef" :chat-state="chatState" :disabled="!isConnected"
       :is-online-chat-on="props.isOnlineChatOn" :msg-handlers="props.msgHandlers" :messages="messages"
       @send="sendMessage" @stop-audio="stopAudio" @recording-start="handleRecordingStart" />
   </div>
