@@ -46,7 +46,7 @@ class Session:
     metadata: dict[str, Any] = field(default_factory=dict)
     last_consolidated: int = 0  # Number of messages already consolidated to files
     _last_activity_time: float = 0.0  # Last activity timestamp in milliseconds
-    _status: SessionState = field(default=SessionState.STANDBY)  # Current chat status
+    _state: SessionState = field(default=SessionState.STANDBY)  # Current chat status
     _timeout_task: Any = None  # Background timeout check task
     _stop_timeout_check: bool = False  # Flag to stop timeout checking
 
@@ -58,7 +58,7 @@ class Session:
             self.goodbye_response = config.goodbye_response
         else:
             self.goodbye_words, self.goodbye_response = [], []
-        self._status = SessionState.STANDBY if self.wakeup_words else SessionState.READY
+        self._state = SessionState.STANDBY if self.wakeup_words else SessionState.READY
         self._default_channel = None
         self._default_chat_id = None
         self._default_message_id = None
@@ -162,7 +162,7 @@ class Session:
         self.last_consolidated = max(0, self.last_consolidated - dropped)
         self.updated_at = datetime.now()
 
-    def _check_status(self, msg: InboundMessage) -> dict[str, Any]:
+    def _check_state(self, msg: InboundMessage) -> dict[str, Any]:
         """Check the chat status based on the message content."""
         response, metadata = "", msg.metadata
 
@@ -171,25 +171,28 @@ class Session:
                 return True
             return False
 
-        final_msg = False
+        final_msg, last_state = False, self._state
         if _match_word(msg.content, self.wakeup_words):
-            self._status, final_msg = SessionState.READY, True
+            self._state, final_msg = SessionState.READY, True
             response = random.choice(self.wakeup_response)
         elif _match_word(msg.content, self.goodbye_words):
-            self._status, final_msg = SessionState.STANDBY, True
-            response = random.choice(self.goodbye_response)
-        if self._status == SessionState.STANDBY:
-            response = "Session standby, please wake up."
-            metadata.update({"_as_input": False, "_warning_msg": "session_standby"})
+            self._state, final_msg = SessionState.STANDBY, True
+            if last_state != self._state:
+                response = random.choice(self.goodbye_response)
+        if self._state == SessionState.STANDBY:
+            metadata.update({"_as_input": False})
+            if not response:
+                response = "Session standby, please wake up."
+                metadata.update({"_warning_msg": "session_standby"})
         if final_msg:
-            metadata.update({"_is_final": True, "_session_state": self._status, "_as_input": False})
+            metadata.update({"_is_final": True, "_session_state": self._state, "_as_input": False})
 
         # Update last activity time when in LISTEN state and received a message
-        if self._status == SessionState.READY:
+        if self._state == SessionState.READY:
             self._last_meta = msg.metadata
             self._last_activity_time = time.time() * 1000
 
-        return {"status": self._status, "response": response, "metadata": metadata}
+        return {"status": self._state, "response": response, "metadata": metadata}
 
     async def check_reply(self, msg: InboundMessage) -> OutboundMessage | None:
         """
@@ -218,7 +221,7 @@ class Session:
             )
 
         # Check session status
-        s_info = self._check_status(msg)
+        s_info = self._check_state(msg)
         if s_info.get("response"):
             return OutboundMessage(
                 channel=msg.channel,
@@ -250,7 +253,7 @@ class Session:
                         logger.info(f"Session {self.key} timed out, setting status to MUTE")
                         # Reset _last_activity_time to avoid repeated triggers
                         self._last_activity_time = 0.0
-                        if self._status != SessionState.STANDBY:
+                        if self._state != SessionState.STANDBY:
                             if self.goodbye_response:
                                 content = random.choice(self.goodbye_response)
                             else:
@@ -264,7 +267,7 @@ class Session:
                                     "_session_state": SessionState.STANDBY,
                                 },
                             )
-                            self._status = SessionState.STANDBY
+                            self._state = SessionState.STANDBY
                             await self._send_callback(msg)
         except asyncio.CancelledError:
             logger.debug(f"Timeout check loop cancelled for session {self.key}")
@@ -286,9 +289,9 @@ class Session:
                 self._timeout_task = None
 
     @property
-    def status(self) -> str:
+    def state(self) -> str:
         """Return the current session status."""
-        return self._status
+        return self._state
 
 
 class SessionManager:
