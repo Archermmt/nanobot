@@ -218,7 +218,7 @@ defineExpose({
   <div class="border-t-4 border-gray-700 bg-gray-800 p-4">
     <div class="flex items-center space-x-3">
       <!-- Media Upload Buttons on the left of input -->
-      <MediaUploader :disabled="props.disabled || chatState === 'Thinking'" :is-online-chat-on="props.isOnlineChatOn"
+      <MediaUploader :disabled="isInputDisabled()" :is-online-chat-on="props.isOnlineChatOn"
         :msg-handlers="props.msgHandlers" @upload-image="handleImageUpload" @upload-audio="handleAudioUpload"
         @upload-file="handleFileUpload" @recording-start="handleRecordingStart" />
 

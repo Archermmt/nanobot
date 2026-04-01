@@ -264,6 +264,7 @@ class Session:
                                 content=content,
                                 metadata={
                                     **self._last_meta,
+                                    "_is_final": True,
                                     "_session_state": SessionState.STANDBY,
                                 },
                             )
