@@ -5,9 +5,9 @@ import json
 import random
 import shutil
 import time
+from curses import meta
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
 from pathlib import Path
 from typing import Any
 
@@ -20,11 +20,11 @@ from nanobot.utils.helpers import ensure_dir, safe_filename
 from nanobot.utils.message import RetType
 
 
-class SessionState(Enum):
+class SessionState:
     """Chat status enum."""
 
-    READY = "ready"
-    STANDBY = "standby"
+    READY = "Ready"
+    STANDBY = "Standby"
 
 
 @dataclass
@@ -165,18 +165,28 @@ class Session:
     def _check_status(self, msg: InboundMessage) -> dict[str, Any]:
         """Check the chat status based on the message content."""
         response, metadata = "", msg.metadata
-        if self._status == SessionState.READY and msg.content in self.goodbye_words:
+
+        def _match_word(word, col):
+            if word in col or word.lower() in col or word.upper() in col:
+                return True
+            return False
+
+        print("[TMINFO] chekcing msg.content " + str(msg.content))
+        if self._status == SessionState.READY and _match_word(msg.content, self.goodbye_words):
             self._status = SessionState.STANDBY
             response = random.choice(self.goodbye_response)
-            metadata["_session_state"] = "ready"
-            if "need_tts" in metadata:
-                metadata.pop("need_tts")
-        elif self._status == SessionState.STANDBY and msg.content in self.wakeup_words:
+        elif self._status == SessionState.STANDBY and _match_word(msg.content, self.wakeup_words):
             self._status = SessionState.READY
             response = random.choice(self.wakeup_response)
-            metadata["_session_state"] = "standby"
+        metadata["_session_state"] = self._status
+        if response or self._status == SessionState.STANDBY:
+            metadata.update({"_is_final": True})
             if "_as_input" in metadata:
                 metadata.pop("_as_input")
+        if self._status == SessionState.STANDBY:
+            if "need_tts" in metadata:
+                metadata.pop("need_tts")
+            metadata["_warning_msg"] = "session standby"
 
         # Update last activity time when in LISTEN state and received a message
         if self._status == SessionState.READY:
@@ -283,6 +293,11 @@ class Session:
                 logger.error(f"Error stopping timeout check: {e}")
             finally:
                 self._timeout_task = None
+
+    @property
+    def status(self) -> str:
+        """Return the current session status."""
+        return self._status
 
 
 class SessionManager:

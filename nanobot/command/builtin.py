@@ -162,6 +162,7 @@ async def cmd_inspect(ctx: CommandContext) -> OutboundMessage:
         "skills": len(loop.context.skills.list_skills()),
         "tools": len(loop.tools),
         "msg_handlers": list(loop.bus.handlers.keys()),
+        "_session_state": session.status,
     }
     metadata = {"_task_ref": "status", "_hide_message": True}
     return OutboundMessage(

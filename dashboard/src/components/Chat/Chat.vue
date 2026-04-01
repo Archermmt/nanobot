@@ -102,6 +102,12 @@ const handleWebSocketMessage = (event: MessageEvent) => {
       // Handle task completion
       handleTaskRefCompletion(data.metadata?._task_ref)
 
+      // Update session state if present in metadata
+      if (data.metadata?._session_state) {
+        console.log('🔄 Session state updated:', data.metadata._session_state)
+        emit('status-update', { _session_state: data.metadata._session_state })
+      }
+
       // Check if this is a status response
       if (data.content && data.metadata?._task_ref === 'status') {
         // This is a status update, emit it for StatusBar and App.vue
@@ -408,6 +414,9 @@ const handleConnected = () => {
     })
     return
   }
+
+  // Set initial session state to Connected
+  emit('status-update', { _session_state: 'Connected' })
 
   // Set status to Loading at the beginning
   chatState.value = "Loading"
