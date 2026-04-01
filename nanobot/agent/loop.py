@@ -35,7 +35,7 @@ from nanobot.command import CommandContext, CommandRouter, register_builtin_comm
 from nanobot.config.loader import load_config
 from nanobot.providers.base import LLMProvider
 from nanobot.providers.providers_manager import ProvidersManager
-from nanobot.session.manager import ChatStatus, Session, SessionManager
+from nanobot.session.manager import Session, SessionManager
 from nanobot.utils.message import RetType
 
 if TYPE_CHECKING:

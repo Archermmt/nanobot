@@ -20,11 +20,11 @@ from nanobot.utils.helpers import ensure_dir, safe_filename
 from nanobot.utils.message import RetType
 
 
-class ChatStatus(Enum):
+class SessionState(Enum):
     """Chat status enum."""
 
-    LISTEN = "listen"
-    MUTE = "mute"
+    READY = "ready"
+    STANDBY = "standby"
 
 
 @dataclass
@@ -46,7 +46,7 @@ class Session:
     metadata: dict[str, Any] = field(default_factory=dict)
     last_consolidated: int = 0  # Number of messages already consolidated to files
     _last_activity_time: float = 0.0  # Last activity timestamp in milliseconds
-    _status: ChatStatus = field(default=ChatStatus.MUTE)  # Current chat status
+    _status: SessionState = field(default=SessionState.STANDBY)  # Current chat status
     _timeout_task: Any = None  # Background timeout check task
     _stop_timeout_check: bool = False  # Flag to stop timeout checking
 
@@ -58,7 +58,7 @@ class Session:
             self.goodbye_response = config.goodbye_response
         else:
             self.goodbye_words, self.goodbye_response = [], []
-        self._status = ChatStatus.MUTE if self.wakeup_words else ChatStatus.LISTEN
+        self._status = SessionState.STANDBY if self.wakeup_words else SessionState.READY
         self._default_channel = None
         self._default_chat_id = None
         self._default_message_id = None
@@ -165,19 +165,21 @@ class Session:
     def _check_status(self, msg: InboundMessage) -> dict[str, Any]:
         """Check the chat status based on the message content."""
         response, metadata = "", msg.metadata
-        if self._status == ChatStatus.LISTEN and msg.content in self.goodbye_words:
-            self._status = ChatStatus.MUTE
+        if self._status == SessionState.READY and msg.content in self.goodbye_words:
+            self._status = SessionState.STANDBY
             response = random.choice(self.goodbye_response)
+            metadata["_connect_state"] = "ready"
             if "need_tts" in metadata:
                 metadata.pop("need_tts")
-        elif self._status == ChatStatus.MUTE and msg.content in self.wakeup_words:
-            self._status = ChatStatus.LISTEN
+        elif self._status == SessionState.STANDBY and msg.content in self.wakeup_words:
+            self._status = SessionState.READY
             response = random.choice(self.wakeup_response)
+            metadata["_connect_state"] = "standby"
             if "_as_input" in metadata:
                 metadata.pop("_as_input")
 
         # Update last activity time when in LISTEN state and received a message
-        if self._status == ChatStatus.LISTEN:
+        if self._status == SessionState.READY:
             self._last_meta = msg.metadata
             self._last_activity_time = time.time() * 1000
 
@@ -220,11 +222,11 @@ class Session:
             )
 
         # Handle muted session
-        if s_info["status"] == ChatStatus.MUTE:
+        if s_info["status"] == SessionState.STANDBY:
             return OutboundMessage(
                 channel=msg.channel,
                 chat_id=msg.chat_id,
-                content="Session muted, please wake up the assistant.",
+                content="Session standby, please wake up.",
                 metadata=s_info["metadata"],
             )
 
@@ -249,7 +251,7 @@ class Session:
                     current_time = time.time() * 1000
                     if current_time - self._last_activity_time > timeout_seconds * 1000:
                         logger.info(f"Session {self.key} timed out, setting status to MUTE")
-                        self._status = ChatStatus.MUTE
+                        self._status = SessionState.STANDBY
                         # Reset _last_activity_time to avoid repeated triggers
                         self._last_activity_time = 0.0
                         if self.goodbye_response:
@@ -260,7 +262,7 @@ class Session:
                             channel=self._default_channel,
                             chat_id=self._default_chat_id,
                             content=content,
-                            metadata=self._last_meta,
+                            metadata={**self._last_meta, "_connect_state": "standby"},
                         )
                         await self._send_callback(msg)
         except asyncio.CancelledError:

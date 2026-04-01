@@ -178,19 +178,19 @@ onMounted(() => {
   initApp()
 })
 
-const handleChatStatusChange = (chatStatus: string) => {
+const handlechatStateChange = (chatState: string) => {
   if (thinkingInterval) {
     clearInterval(thinkingInterval)
     thinkingInterval = null
   }
-  if (!chatStatus) {
+  if (!chatState) {
     document.title = 'NanoBoard'
   } else {
     // Start blinking effect with suffix
     let dots = 0
     thinkingInterval = window.setInterval(() => {
       dots = (dots + 1) % 4
-      document.title = chatStatus + ' ' + '.'.repeat(dots)
+      document.title = chatState + ' ' + '.'.repeat(dots)
     }, 500)
   }
 }
@@ -217,8 +217,8 @@ const isButtonDisabled = (isConnected: boolean, requiredHandlers?: string[]) => 
   if (!isConnected) return true
 
   // Disable if chat is processing (Thinking or Listening)
-  const chatStatus = chatComponentRef.value?.chatStatus
-  if (chatStatus === 'Thinking' || chatStatus === 'Loading') return true
+  const chatState = chatComponentRef.value?.chatState
+  if (chatState === 'Thinking' || chatState === 'Loading') return true
 
   // Check if all required handlers are available
   if (requiredHandlers && requiredHandlers.length > 0) {
@@ -358,26 +358,26 @@ const startOnlineChat = async () => {
 
         // Set callback to check if audio should be sent
         audioRecorder.setShouldSendAudioCallback(() => {
-          // Only check chatStatus, allow recording if status is not Thinking, Speaking, or Listening
-          const chatStatus = chatComponentRef.value?.chatStatus || ""
-          const canRecord = !["Thinking", "Speaking", "Loading"].includes(chatStatus)
+          // Only check chatState, allow recording if status is not Thinking, Speaking, or Listening
+          const chatState = chatComponentRef.value?.chatState || ""
+          const canRecord = !["Thinking", "Speaking", "Loading"].includes(chatState)
 
           if (!canRecord) {
-            console.debug('⏸️ 暂停发送音频，当前状态:', chatStatus)
+            console.debug('⏸️ 暂停发送音频，当前状态:', chatState)
           } else {
             // If can record and currently not in Listening state, set it to Listening
-            if (chatComponentRef.value && chatStatus === "") {
-              chatComponentRef.value.chatStatus = "Listening"
+            if (chatComponentRef.value && chatState === "") {
+              chatComponentRef.value.chatState = "Listening"
             }
           }
 
           return canRecord
         })
 
-        // Set callback for recording stop to clear chatStatus
+        // Set callback for recording stop to clear chatState
         audioRecorder.onRecordingStop = () => {
           if (chatComponentRef.value) {
-            chatComponentRef.value.chatStatus = ""
+            chatComponentRef.value.chatState = ""
           }
         }
 
@@ -490,7 +490,7 @@ document.addEventListener('mouseup', stopDragCamera)
       <!-- Content Area -->
       <main class="flex-1 overflow-hidden bg-gray-900">
         <Chat ref="chatComponentRef" v-show="currentSection === 'chat'" @status-update="handleStatusUpdate"
-          @ws-status-change="handleWsStatusChange" @chat-status-change="handleChatStatusChange"
+          @ws-status-change="handleWsStatusChange" @chat-status-change="handlechatStateChange"
           :show-progress-messages="!hideProgress" :is-online-chat-on="isOnlineChatOn" :msg-handlers="msgHandlers" />
         <div v-show="currentSection !== 'chat'" class="p-6 text-gray-500 text-center">
           <p class="text-lg">Section under construction</p>

@@ -35,7 +35,7 @@ interface Message {
 
 interface Props {
   messages: Message[]
-  chatStatus: string
+  chatState: string
   showProgressMessages?: boolean
   playingAudioUrl?: string | null
 }
@@ -310,7 +310,7 @@ const scrollToBottom = () => {
 
 // Watch for messages changes and scroll to bottom
 watch(() => props.messages, scrollToBottom, { deep: true })
-watch(() => props.chatStatus, scrollToBottom)
+watch(() => props.chatState, scrollToBottom)
 watch(() => props.showProgressMessages, scrollToBottom)
 </script>
 
@@ -411,13 +411,13 @@ watch(() => props.showProgressMessages, scrollToBottom)
     </div>
 
     <!-- Loading Indicator -->
-    <div v-if="props.chatStatus" class="flex justify-start">
+    <div v-if="props.chatState" class="flex justify-start">
       <div
         class="bg-gradient-to-br from-yellow-100 to-yellow-200 border border-yellow-300 rounded shadow-[4px_4px_0_rgba(0,0,0,0.5)] px-4 py-3">
         <div class="flex items-center space-x-2">
           <div class="text-xs text-yellow-800">
-            {{ props.chatStatus }}<span v-if="props.chatStatus === 'Thinking' && currentModeHint">({{ currentModeHint
-            }})</span>
+            {{ props.chatState }}<span v-if="props.chatState === 'Thinking' && currentModeHint">({{ currentModeHint
+              }})</span>
           </div>
           <div class="flex space-x-1">
             <div class="w-2 h-2 bg-blue-500 rounded animate-bounce" style="animation-delay: 0ms"></div>

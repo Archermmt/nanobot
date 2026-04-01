@@ -34,7 +34,7 @@ const props = defineProps<{
 
 const emit = defineEmits(['status-update', 'chat-status-change'])
 const messages = ref<Message[]>([])
-const chatStatus = ref<string>("")
+const chatState = ref<string>("")
 const sessionId = ref(`session_${Date.now()}`)
 const senderId = ref('web_user')  // Global sender ID
 const chatId = ref('default')  // Global chat ID
@@ -68,7 +68,7 @@ const handleTaskRefCompletion = (taskRef: string) => {
     console.log('⏳ Pending commands:', pendingCommandsCount.value)
     // Clear status when all commands are completed
     if (pendingCommandsCount.value === 0) {
-      chatStatus.value = ""
+      chatState.value = ""
       console.log('✅ All initialization commands completed')
     }
   }
@@ -246,11 +246,11 @@ const handleWebSocketMessage = (event: MessageEvent) => {
         sendMessage(data.metadata._trigger_cmd, true)
       }
 
-      // Only set chatStatus based on _is_final
+      // Only set chatState based on _is_final
       if (data.metadata?._is_final) {
-        chatStatus.value = ""
+        chatState.value = ""
       } else if (data.metadata?._as_input) {
-        chatStatus.value = "Thinking"
+        chatState.value = "Thinking"
       }
     } else if (data.type === 'heartbeat') {
       // Reply to heartbeat
@@ -383,7 +383,7 @@ const sendMessage = async (
     console.log('📤 Sending message:', messageData)
     ws.send(JSON.stringify(messageData))
     if (!isCommand) {
-      chatStatus.value = "Thinking"
+      chatState.value = "Thinking"
     }
   } else {
     // Error prompt when WebSocket is not connected
@@ -392,7 +392,7 @@ const sendMessage = async (
       content: 'WebSocket not connected. Please connect first.',
       timestamp: Date.now()
     })
-    chatStatus.value = ""
+    chatState.value = ""
   }
 }
 
@@ -410,7 +410,7 @@ const handleConnected = () => {
   }
 
   // Set status to Loading at the beginning
-  chatStatus.value = "Loading"
+  chatState.value = "Loading"
 
   // Clear messages on successful connection
   messages.value = []
@@ -440,7 +440,7 @@ const handleConnected = () => {
 }
 
 const handleRecordingStart = () => {
-  chatStatus.value = "Recording"
+  chatState.value = "Recording"
 }
 
 const playAudio = (audioUrl: string) => {
@@ -472,7 +472,7 @@ const stopAudio = () => {
   }
 
   // Stop remote speaking (opus playback)
-  if (chatStatus.value === "Speaking") {
+  if (chatState.value === "Speaking") {
     console.log('Stopping remote speaking (opus playback)')
     // Clear all audio buffers and stop playback
     audioPlayer.clearAllAudio()
@@ -486,20 +486,20 @@ const stopAudio = () => {
       }
     }
   }
-  chatStatus.value = ""
+  chatState.value = ""
 }
 
-// Watch for chatStatus changes and emit to parent
-watch(chatStatus, (newStatus) => {
+// Watch for chatState changes and emit to parent
+watch(chatState, (newStatus) => {
   emit('chat-status-change', newStatus)
 })
 
-// Watch for playingAudioUrl changes and update chatStatus
+// Watch for playingAudioUrl changes and update chatState
 watch(playingAudioUrl, (newUrl) => {
   if (newUrl) {
-    chatStatus.value = "Speaking"
+    chatState.value = "Speaking"
   } else {
-    chatStatus.value = ""
+    chatState.value = ""
   }
 })
 
@@ -509,7 +509,7 @@ const handleTTSMessage = async (data: any) => {
   if (state === 'start') {
     console.log('语音段开始')
     ttsSentenceCount.value = 0
-    chatStatus.value = "Speaking"
+    chatState.value = "Speaking"
   } else if (state === 'sentence_start') {
     console.debug(`服务器发送语音段：${data.text}`)
     ttsSentenceCount.value++
@@ -533,7 +533,7 @@ const handleTTSMessage = async (data: any) => {
 
 // Handle opus audio frame - enqueue to player
 const handleOpusAudioFrame = async (data: Blob | ArrayBuffer) => {
-  if (chatStatus.value !== "Speaking") {
+  if (chatState.value !== "Speaking") {
     console.warn('⚠️ Received opus frame but not speaking')
     return
   }
@@ -571,7 +571,7 @@ onUnmounted(() => {
 
 // Expose reactive state and methods to parent component
 defineExpose({
-  chatStatus,
+  chatState,
   setWebSocket,
   handleWebSocketMessage,
   handleConnected,
@@ -583,11 +583,11 @@ defineExpose({
 <template>
   <div class="flex flex-col h-full chat-container">
     <!-- Messages -->
-    <MessageList :messages="messages" :chat-status="chatStatus" @play-audio="playAudio" @stop-audio="stopAudio"
+    <MessageList :messages="messages" :chat-status="chatState" @play-audio="playAudio" @stop-audio="stopAudio"
       :show-progress-messages="props.showProgressMessages" :playing-audio-url="playingAudioUrl" />
 
     <!-- Input -->
-    <ChatInput ref="chatInputRef" :chat-status="chatStatus" :disabled="!isConnected"
+    <ChatInput ref="chatInputRef" :chat-status="chatState" :disabled="!isConnected"
       :is-online-chat-on="props.isOnlineChatOn" :msg-handlers="props.msgHandlers" :messages="messages"
       @send="sendMessage" @stop-audio="stopAudio" @recording-start="handleRecordingStart" />
   </div>
