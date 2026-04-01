@@ -102,18 +102,14 @@ class BaseASRHandler(BaseHandler):
                         {
                             "ret_type": RetType.PASSBY,
                             "_hide_message": False,
-                            "_warning_msg": "no speech detected",
+                            "_warning_msg": "no_speech",
                         }
                     )
         except Exception as e:
             logger.error(f"Audio processing error: {e}")
             msg.content = f"Error processing audio: {e}"
             msg.metadata.update(
-                {
-                    "ret_type": RetType.PASSBY,
-                    "_hide_message": False,
-                    "_warning_msg": "no speech detected",
-                }
+                {"ret_type": RetType.PASSBY, "_hide_message": False, "_warning_msg": "no_speech"}
             )
         return msg
 

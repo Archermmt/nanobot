@@ -171,22 +171,18 @@ class Session:
                 return True
             return False
 
-        print("[TMINFO] chekcing msg.content " + str(msg.content))
-        if self._status == SessionState.READY and _match_word(msg.content, self.goodbye_words):
-            self._status = SessionState.STANDBY
-            response = random.choice(self.goodbye_response)
-        elif self._status == SessionState.STANDBY and _match_word(msg.content, self.wakeup_words):
-            self._status = SessionState.READY
+        final_msg = False
+        if _match_word(msg.content, self.wakeup_words):
+            self._status, final_msg = SessionState.READY, True
             response = random.choice(self.wakeup_response)
-        metadata["_session_state"] = self._status
-        if response or self._status == SessionState.STANDBY:
-            metadata.update({"_is_final": True})
-            if "_as_input" in metadata:
-                metadata.pop("_as_input")
+        elif _match_word(msg.content, self.goodbye_words):
+            self._status, final_msg = SessionState.STANDBY, True
+            response = random.choice(self.goodbye_response)
         if self._status == SessionState.STANDBY:
-            if "need_tts" in metadata:
-                metadata.pop("need_tts")
-            metadata["_warning_msg"] = "session standby"
+            response = "Session standby, please wake up."
+            metadata.update({"_as_input": False, "_warning_msg": "session_standby"})
+        if final_msg:
+            metadata.update({"_is_final": True, "_session_state": self._status, "_as_input": False})
 
         # Update last activity time when in LISTEN state and received a message
         if self._status == SessionState.READY:
@@ -231,15 +227,6 @@ class Session:
                 metadata=s_info["metadata"],
             )
 
-        # Handle muted session
-        if s_info["status"] == SessionState.STANDBY:
-            return OutboundMessage(
-                channel=msg.channel,
-                chat_id=msg.chat_id,
-                content="Session standby, please wake up.",
-                metadata=s_info["metadata"],
-            )
-
         return None
 
     async def _check_timeout_loop(
@@ -261,20 +248,24 @@ class Session:
                     current_time = time.time() * 1000
                     if current_time - self._last_activity_time > timeout_seconds * 1000:
                         logger.info(f"Session {self.key} timed out, setting status to MUTE")
-                        self._status = SessionState.STANDBY
                         # Reset _last_activity_time to avoid repeated triggers
                         self._last_activity_time = 0.0
-                        if self.goodbye_response:
-                            content = random.choice(self.goodbye_response)
-                        else:
-                            content = "GoodBye"
-                        msg = OutboundMessage(
-                            channel=self._default_channel,
-                            chat_id=self._default_chat_id,
-                            content=content,
-                            metadata={**self._last_meta, "_connect_state": "standby"},
-                        )
-                        await self._send_callback(msg)
+                        if self._status != SessionState.STANDBY:
+                            if self.goodbye_response:
+                                content = random.choice(self.goodbye_response)
+                            else:
+                                content = "GoodBye"
+                            msg = OutboundMessage(
+                                channel=self._default_channel,
+                                chat_id=self._default_chat_id,
+                                content=content,
+                                metadata={
+                                    **self._last_meta,
+                                    "_session_state": SessionState.STANDBY,
+                                },
+                            )
+                            self._status = SessionState.STANDBY
+                            await self._send_callback(msg)
         except asyncio.CancelledError:
             logger.debug(f"Timeout check loop cancelled for session {self.key}")
         except Exception as e:

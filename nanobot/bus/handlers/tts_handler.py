@@ -67,6 +67,7 @@ class BaseTTSHandler(BaseHandler):
             msg_type == "text"
             and msg.metadata.get("need_tts", False)
             and not msg.metadata.get("_progress", False)
+            and "_warning_msg" not in msg.metadata
         )
 
     async def handle_output(self, msg: OutboundMessage) -> OutboundMessage:
