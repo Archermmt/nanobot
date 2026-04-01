@@ -103,7 +103,6 @@ class BaseSpeakHandler(BaseHandler, ABC):
                             "msg_type": "text",
                             "ret_type": RetType.PASSBY,
                             "_hide_message": False,
-                            "clean_vad": True,
                             "need_tts": False,
                             "_warning_msg": "speaker_not_verify",
                         }
@@ -120,7 +119,6 @@ class BaseSpeakHandler(BaseHandler, ABC):
                     "msg_type": "text",
                     "ret_type": RetType.PASSBY,
                     "_hide_message": False,
-                    "clean_vad": True,
                     "need_tts": False,
                     "_warning_msg": "speaker_not_verify",
                 }

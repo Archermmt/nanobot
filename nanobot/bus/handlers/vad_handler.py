@@ -65,15 +65,12 @@ class BaseVADHandler(BaseHandler, ABC):
         Returns:
             True if the message can be handled, False otherwise
         """
+
         if msg.metadata.get("_progress", False):
             return False
-        if self._waiting_id and msg.metadata.get("vad_id", "") == self._waiting_id:
-            return True
-        if msg.metadata.get("clean_vad", False):
-            return True
-        if msg.metadata.get("_cmd_ref", "") == "stop":
-            return True
-        return False
+        if msg.metadata.get("msg_type", "text") == "audio_clip":
+            return False
+        return True
 
     @abstractmethod
     def is_vad(self, opus_packet: bytes) -> bool:
@@ -141,9 +138,7 @@ class BaseVADHandler(BaseHandler, ABC):
             The processed outbound message (may be modified or the same instance)
         """
 
-        if msg.metadata.get("clean_vad", False):
-            self._asr_audio = []
-        self._waiting_id = ""
+        self._asr_audio, self._waiting_id = [], ""
         return msg
 
     def decode_opus(self, opus_data: List[bytes]) -> List[bytes]:

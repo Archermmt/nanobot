@@ -117,6 +117,11 @@ const connectWebSocket = () => {
       isConnecting: false,
       url: wsUrl.value
     }
+
+    // Update session state to Disconnected
+    if (statusBarComponentRef.value && statusBarComponentRef.value.handleStatusUpdate) {
+      statusBarComponentRef.value.handleStatusUpdate({ _session_state: 'Disconnected' })
+    }
   }
 
   ws.onerror = (error) => {
@@ -129,6 +134,11 @@ const connectWebSocket = () => {
       isConnected: false,
       isConnecting: false,
       url: wsUrl.value
+    }
+
+    // Update session state to Disconnected on error
+    if (statusBarComponentRef.value && statusBarComponentRef.value.handleStatusUpdate) {
+      statusBarComponentRef.value.handleStatusUpdate({ _session_state: 'Disconnected' })
     }
   }
 }
