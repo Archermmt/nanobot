@@ -337,8 +337,8 @@ watch(() => props.showProgressMessages, scrollToBottom)
     <div v-for="(msg, index) in visibleMessages" :key="index" class="flex" :class="getMessageClass(msg)">
       <div class="border-2 rounded shadow-[4px_4px_0_rgba(0,0,0,0.5)] px-4 py-3 flex flex-col" :class="{
         'bg-gradient-to-br from-blue-500 to-blue-600 border-blue-700 text-white max-w-[80%]': isUserMessage(msg),
-        'bg-gradient-to-br from-gray-100 to-gray-200 border-gray-300 text-gray-800 max-w-[80%]': !isUserMessage(msg) && msg.role === 'assistant' && !msg.metadata?._progress && msg.metadata?._cmd_ref !== 'status' && !msg.metadata?._warning_msg && !msg.metadata?._tool_hint,
-        'bg-gradient-to-br from-gray-50 to-gray-100 border-gray-200 text-gray-400 max-w-[80%]': !isUserMessage(msg) && msg.role === 'assistant' && msg.metadata?._tool_hint,
+        'bg-gradient-to-br from-gray-100 to-gray-200 border-gray-300 text-gray-800 max-w-[80%]': !isUserMessage(msg) && msg.role === 'assistant' && !msg.metadata?._progress && msg.metadata?._cmd_ref !== 'status' && !msg.metadata?._warning_msg,
+        'text-gray-400': !isUserMessage(msg) && msg.role === 'assistant' && msg.metadata?._tool_hint,
         'bg-gradient-to-br from-green-100 to-green-200 border-green-300 text-gray-700 max-w-[80%]': !isUserMessage(msg) && msg.role === 'assistant' && msg.metadata?._progress,
         'bg-gradient-to-br from-red-100 to-red-200 border-red-300 text-red-800 max-w-[80%]': msg.role === 'system',
         'bg-gradient-to-br from-pink-100 to-pink-200 border-pink-300 text-gray-700 max-w-[80%]': msg.metadata?._warning_msg
@@ -436,7 +436,7 @@ watch(() => props.showProgressMessages, scrollToBottom)
         <div class="flex items-center space-x-2">
           <div class="text-xs text-yellow-800">
             {{ props.chatState }}<span v-if="props.chatState === 'Thinking' && currentModeHint">({{ currentModeHint
-            }})</span>
+              }})</span>
           </div>
           <div class="flex space-x-1">
             <div class="w-2 h-2 bg-blue-500 rounded animate-bounce" style="animation-delay: 0ms"></div>
