@@ -5,7 +5,6 @@ import json
 import random
 import shutil
 import time
-from curses import meta
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -171,20 +170,20 @@ class Session:
                 return True
             return False
 
-        final_msg, last_state = False, self._state
+        last_state = self._state
         if _match_word(msg.content, self.wakeup_words):
-            self._state, final_msg = SessionState.READY, True
+            self._state = SessionState.READY
             response = random.choice(self.wakeup_response)
         elif _match_word(msg.content, self.goodbye_words):
-            self._state, final_msg = SessionState.STANDBY, True
+            self._state = SessionState.STANDBY
             if last_state != self._state:
                 response = random.choice(self.goodbye_response)
         if self._state == SessionState.STANDBY:
             metadata.update({"_as_input": False})
             if not response:
                 response = "Session standby, please wake up."
-                metadata.update({"_warning_msg": "session_standby"})
-        if final_msg:
+                metadata.update({"_warning_msg": "session_standby", "_is_final": True})
+        if response:
             metadata.update({"_is_final": True, "_session_state": self._state, "_as_input": False})
 
         # Update last activity time when in LISTEN state and received a message

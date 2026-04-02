@@ -208,27 +208,29 @@ def save_media(
 
     # Decode base64
     file_data = base64.b64decode(b64_data)
+    ext_map = {
+        "image/jpeg": ".jpg",
+        "image/png": ".png",
+        "image/gif": ".gif",
+        "image/webp": ".webp",
+        "audio/webm": ".webm",
+        "audio/mp3": ".mp3",
+        "audio/aac": ".aac",
+        "audio/ogg": ".ogg",
+        "audio/wav": ".wav",
+        "video/mp4": ".mp4",
+    }
+    if target_type:
+        ext = ext_map.get(target_type, ".bin")
+    else:
+        ext = ext_map.get(mime_type, ".bin")
 
     if not filename:
-        # Determine file extension from mime type
-        ext_map = {
-            "image/jpeg": ".jpg",
-            "image/png": ".png",
-            "image/gif": ".gif",
-            "image/webp": ".webp",
-            "audio/webm": ".webm",
-            "audio/mp3": ".mp3",
-            "audio/aac": ".aac",
-            "audio/ogg": ".ogg",
-            "audio/wav": ".wav",
-            "video/mp4": ".mp4",
-        }
-        if target_type:
-            ext = ext_map.get(target_type, ".bin")
-        else:
-            ext = ext_map.get(mime_type, ".bin")
-        # Save to temporary file
-        filename = f"media_{ext}"
+        filename = f"media.{ext}"
+    if not filename.endswith(ext):
+        # Split from the right to get the last dot
+        parts = filename.rsplit(".", 1)
+        filename = parts[0] + ext if len(parts) > 1 else filename + ext
 
     file_path = media_dir / filename
     if mime_type == "audio/webm" and target_type == "audio/wav":

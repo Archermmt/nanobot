@@ -3,7 +3,6 @@
 import base64
 import json
 import os
-import tempfile
 from abc import ABC, abstractmethod
 from pathlib import Path
 
@@ -12,6 +11,7 @@ from loguru import logger
 from nanobot.bus.events import InboundMessage
 from nanobot.bus.handlers.base_handler import BaseHandler
 from nanobot.config.schema import SpeakHandlerConfig
+from nanobot.utils.log import CaptureOutput
 from nanobot.utils.media import pcm_to_wav, webm_to_wav
 from nanobot.utils.message import RetType
 
@@ -21,7 +21,6 @@ class BaseSpeakHandler(BaseHandler, ABC):
 
     def __init__(self, config: SpeakHandlerConfig):
         # Load reference speaker embedding in subclass
-        self.ref_embs = []
         self.threshold = config.threshold
         self.depends_folder = Path(config.depends_folder).expanduser()
         voice_path = self.depends_folder / "voice.json"
@@ -68,9 +67,6 @@ class BaseSpeakHandler(BaseHandler, ABC):
         Returns:
             Modified InboundMessage with speaker verification result
         """
-        if not self.ref_embs or not msg.media:
-            logger.debug("Speaker verification disabled - no reference embedding")
-            return msg
 
         try:
             media_data, audio_format = msg.media[0], msg.metadata.get("audio_format", "audio/wav")
@@ -143,7 +139,8 @@ class WeSpeakHandler(BaseSpeakHandler):
             return
 
         super().__init__(config)
-        self.speaker = wespeaker.Speaker(lang="chs")
+        with CaptureOutput():
+            self.speaker = wespeaker.Speaker(lang="chs")
         assert (
             "voices" in self.voice_config
             and isinstance(self.voice_config["voices"], list)
@@ -222,10 +219,10 @@ class SbrainSpeakHandler(BaseSpeakHandler):
         super().__init__(config)
         # Initialize SpeechBrain speaker recognition with ECAPA-TDNN model
         pretrained_dir = self.depends_folder / "pretrained_models" / "spkrec-ecapa-voxceleb"
-        self.verification = SpeakerRecognition.from_hparams(
-            source="speechbrain/spkrec-ecapa-voxceleb",
-            savedir=str(pretrained_dir),
-        )
+        with CaptureOutput():
+            self.verification = SpeakerRecognition.from_hparams(
+                source="speechbrain/spkrec-ecapa-voxceleb", savedir=str(pretrained_dir)
+            )
         assert (
             "voices" in self.voice_config
             and isinstance(self.voice_config["voices"], list)
@@ -272,11 +269,8 @@ class SbrainSpeakHandler(BaseSpeakHandler):
             # Compute max score across all reference audios
             max_score = 0.0
             for ref_audio_path in self.ref_audios:
-                # verify_files returns (score, prediction)
-                # score is cosine similarity in range [-1, 1]
                 score, _ = self.verification.verify_files(ref_audio_path, str(test_file))
-                # Convert score from [-1, 1] to [0, 1]
-                score = (score + 1) / 2
+                score = (float(score) + 1) / 2
                 max_score = max(max_score, score)
 
             return max_score
