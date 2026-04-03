@@ -190,12 +190,14 @@ async def cmd_register_extern_tools(ctx: CommandContext) -> OutboundMessage:
     tool_class, tools = ExternTool.get_registered_type(tool_type), []
     if tool_class:
         # Register each tool spec as an instance of the ExternTool subclass
-        for spec in metadata["tools"]:
+        for idx, spec in enumerate(metadata["tools"]):
             try:
                 spec.update(kwargs)
                 tool_instance = tool_class(**spec)
                 ctx.loop.tools.register(tool_instance)
-                logger.info(f"Registered extern tool({tool_type}): {tool_instance.name}")
+                logger.info(
+                    f"Registered extern tool[{idx}/{len(metadata['tools'])}]({tool_type}): {tool_instance.name}"
+                )
                 tools.append(tool_instance.name)
             except Exception as e:
                 logger.warning(f"Failed to register extern tool {spec.get('name', 'unknown')}: {e}")

@@ -326,7 +326,6 @@ class WebSocketChannel(BaseChannel):
             return
         if content == "/register_extern_tools":
             mcp_tools, tools_data = [], metadata["tools"]
-            logger.info(f"Number of tools supported by client device: {len(tools_data)}")
             for i, tool in enumerate(tools_data):
                 if not isinstance(tool, dict):
                     continue
@@ -340,13 +339,8 @@ class WebSocketChannel(BaseChannel):
                     input_schema["required"] = [
                         s for s in schema.get("required", []) if isinstance(s, str)
                     ]
-                new_tool = {
-                    "name": name,
-                    "description": description,
-                    "inputSchema": input_schema,
-                }
+                new_tool = {"name": name, "description": description, "inputSchema": input_schema}
                 mcp_tools.append(new_tool)
-                logger.debug(f"Client tool #{i + 1}: {name}")
             await self._handle_message(
                 sender_id=sender_id,
                 chat_id=chat_id,

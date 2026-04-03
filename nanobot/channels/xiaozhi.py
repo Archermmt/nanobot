@@ -353,11 +353,11 @@ class XiaoZhiChannel(BaseChannel):
             await self._handle_mcp_message(msg_data, client_info)
             return
         if msg_type != TextMessageType.LISTEN.value:
-            logger.warning("Received unknown message type: {}", msg_type)
+            logger.warning(f"Received unknown message({msg_type}): {msg_data}")
             return
 
         if msg_data["state"] != "detect":
-            logger.warning("Received unknown state type: {}", msg_data["state"])
+            logger.warning(f"Received unknown state type({msg_data['state']}): {msg_data}")
             return
 
         if "text" not in msg_data:
@@ -429,7 +429,6 @@ class XiaoZhiChannel(BaseChannel):
                 if not isinstance(tools_data, list):
                     logger.error("Tool list format error")
                     return
-                logger.info(f"Number of tools supported by client device: {len(tools_data)}")
                 for i, tool in enumerate(tools_data):
                     if not isinstance(tool, dict):
                         continue
@@ -450,7 +449,6 @@ class XiaoZhiChannel(BaseChannel):
                         "tool_id": i + 3,
                     }
                     mcp_tools.append(new_tool)
-                    logger.debug(f"Client tool #{i + 1}: {name}")
             await self._handle_message(
                 sender_id=self.session_id,
                 chat_id=msg_data.get("chat_id", client_info["client_id"]),

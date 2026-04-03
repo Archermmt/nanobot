@@ -96,19 +96,11 @@ class BaseASRHandler(BaseHandler):
                 if "vad_id" in msg.metadata:
                     msg.metadata.update({"ret_type": RetType.IGNORE})
                 else:
-                    msg.metadata.update(
-                        {
-                            "ret_type": RetType.PASSBY,
-                            "_hide_message": False,
-                            "_warning_msg": "no_speech",
-                        }
-                    )
+                    msg.metadata.update({"_warning_msg": "no_speech"})
         except Exception as e:
             logger.error(f"Audio processing error: {e}")
             msg.content = f"Error processing audio: {e}"
-            msg.metadata.update(
-                {"ret_type": RetType.PASSBY, "_hide_message": False, "_warning_msg": "no_speech"}
-            )
+            msg.metadata.update({"_warning_msg": "no_speech"})
         return msg
 
 

@@ -227,6 +227,7 @@ class SpeakHandlerConfig(Base):
     depends_folder: str = "~/.nanobot/depends/speak"  # Folder for speaker reference audio files
     speaker: str = ""  # Reference speaker audio file name (relative to depends_folder)
     threshold: float = 0.9  # Similarity threshold for speaker verification
+    separate_speaker: bool = False  # Enable speech separation for multi-speaker scenarios
 
 
 class HandlersConfig(Base):
@@ -261,6 +262,7 @@ class BusConfig(Base):
 class SessionConfig(BaseSettings):
     """Configuration for a single session with wake word detection."""
 
+    enable_wakeup: bool = False  # Enable wake word detection
     wakeup_words: list[str] = Field(default_factory=list)  # Wake words to trigger response
     wakeup_response: list[str] = Field(default_factory=list)  # Responses when wake word detected
     goodbye_words: list[str] = Field(default_factory=list)  # Goodbye words to trigger response

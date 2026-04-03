@@ -50,8 +50,11 @@ class Session:
     _stop_timeout_check: bool = False  # Flag to stop timeout checking
 
     def setup(self, config: SessionConfig, send_callback=None) -> None:
-        self.wakeup_words = config.wakeup_words
-        self.wakeup_response = config.wakeup_response
+        if config.enable_wakeup:
+            self.wakeup_words, self.wakeup_response = [], []
+        else:
+            self.wakeup_words = config.wakeup_words
+            self.wakeup_response = config.wakeup_response
         if self.wakeup_words:
             self.goodbye_words = config.goodbye_words
             self.goodbye_response = config.goodbye_response
@@ -206,6 +209,11 @@ class Session:
 
         self._default_channel = msg.channel
         self._default_chat_id = msg.chat_id
+
+        if "_warning_msg" in msg.metadata:
+            msg.metadata.update(
+                {"ret_type": RetType.PASSBY, "_hide_message": False, "_is_final": True}
+            )
 
         # Handle non-normal return types
         if msg.metadata.get("ret_type", RetType.NORMAL) != RetType.NORMAL:
