@@ -13,7 +13,7 @@ from nanobot.bus.events import OutboundMessage
 from nanobot.bus.queue import MessageBus
 from nanobot.channels.base import BaseChannel
 from nanobot.config.schema import Base
-from nanobot.utils.media import save_media
+from nanobot.utils.media import get_media_dir, save_media
 
 
 class WebSocketConfig(Base):
@@ -27,7 +27,6 @@ class WebSocketConfig(Base):
     heartbeat_interval: int = 30  # Heartbeat interval in seconds
     as_server: bool = True  # If True, act as WebSocket server; if False, connect as client
     frame_duration: int = 60  # Frame duration in milliseconds
-    cache_media: bool = False  # If True, save media files locally
 
 
 class WebSocketChannel(BaseChannel):
@@ -392,21 +391,7 @@ class WebSocketChannel(BaseChannel):
         if not content and not media and not metadata:
             return
 
-        media_dir = Path.home() / ".nanobot" / "media"
-        media_dir.mkdir(parents=True, exist_ok=True)
         if not content and meta_type == "audio":
-            # Save media if cache_media is enabled
-            if self.config.cache_media and media:
-                for media_item in media:
-                    media_data, filename = media_item["data"], media_item.get("file_name", "")
-                    if isinstance(media_data, str) and media_data.startswith("data:"):
-                        try:
-                            file_path, filename = save_media(
-                                media_data, filename, target_type="audio/wav"
-                            )
-                            logger.info("Saved audio file to: {}", file_path)
-                        except Exception as e:
-                            logger.error("Failed to save audio media: {}", e)
             # Handle the message
             await self._handle_message(
                 sender_id=sender_id,
@@ -496,12 +481,12 @@ class WebSocketChannel(BaseChannel):
                         "state": "sentence_start",
                         "session_id": msg.chat_id,
                         "text": msg.content,
+                        "metadata": msg.metadata,
                     }
                 )
             )
             for media in msg.media:
                 if self._stop_audio:
-                    print("[TMINF] break sending msg", flush=True)
                     break
                 await self._ws.send(media)
                 await asyncio.sleep(self.config.frame_duration / 1000.0)

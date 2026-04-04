@@ -180,6 +180,16 @@ def webm_to_wav(audio_bytes: bytes, output_file: Path = None) -> io.BytesIO | Pa
             os.unlink(out_path)
 
 
+def get_media_dir() -> Path:
+    """
+    Returns:
+        Path: The path to the media directory
+    """
+    media_dir = Path.home() / ".nanobot" / "media"
+    media_dir.mkdir(parents=True, exist_ok=True)
+    return media_dir
+
+
 def save_media(
     media_data: str,
     filename: str | None = None,
@@ -203,8 +213,7 @@ def save_media(
     mime_type = header.split(";")[0].replace("data:", "")
 
     if not media_dir:
-        media_dir = Path.home() / ".nanobot" / "media"
-        media_dir.mkdir(parents=True, exist_ok=True)
+        media_dir = get_media_dir()
 
     # Decode base64
     file_data = base64.b64decode(b64_data)
@@ -226,7 +235,7 @@ def save_media(
         ext = ext_map.get(mime_type, ".bin")
 
     if not filename:
-        filename = f"media.{ext}"
+        filename = f"media{ext}"
     if not filename.endswith(ext):
         # Split from the right to get the last dot
         parts = filename.rsplit(".", 1)

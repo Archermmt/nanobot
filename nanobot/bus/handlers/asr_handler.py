@@ -1,6 +1,5 @@
 """ASR (Automatic Speech Recognition) handlers for speech recognition."""
 
-import asyncio
 import base64
 import io
 import json
@@ -14,12 +13,20 @@ from nanobot.bus.events import InboundMessage
 from nanobot.bus.handlers.base_handler import BaseHandler
 from nanobot.config.schema import ASRHandlerConfig
 from nanobot.utils.log import CaptureOutput
-from nanobot.utils.media import webm_to_wav
-from nanobot.utils.message import RetType
+from nanobot.utils.media import get_media_dir, webm_to_wav
 
 
 class BaseASRHandler(BaseHandler):
     """Base class for automatic speech recognition handlers."""
+
+    def __init__(self, config: ASRHandlerConfig):
+        """Initialize the ASR handler with configuration.
+
+        Args:
+            config: ASR handler configuration
+        """
+        self._config = config
+        self._save_speech = config.save_speech
 
     def can_handle_input(self, msg: InboundMessage) -> bool:
         """
@@ -35,7 +42,7 @@ class BaseASRHandler(BaseHandler):
         msg_type = msg.metadata.get("msg_type", "text")
         return msg_type == "audio" and not msg.content and msg.media
 
-    async def _process_audio(self, audio_bytes: bytes, audio_format: str = "audio/wav") -> str:
+    def _process_audio(self, audio_bytes: bytes, audio_format: str = "audio/wav") -> str:
         """
         Recognize speech from audio data. To be implemented by subclasses.
 
@@ -44,9 +51,38 @@ class BaseASRHandler(BaseHandler):
             audio_format: Audio format of the input media data (default: "audio/wav")
 
         Returns:
-            Recognized text string
+            Recognized text
         """
         raise NotImplementedError("Subclasses must implement _process_audio method")
+
+    def _get_speech_files(self, audio_format: str) -> tuple[Path, Path]:
+        """
+        Get file paths for saving speech text and audio files.
+
+        Args:
+            audio_format: Audio format (e.g., "audio/wav", "audio/webm")
+
+        Returns:
+            Tuple of (audio_file_path, text_file_path)
+        """
+        import time
+
+        ext_map = {
+            "audio/wav": ".wav",
+            "audio/webm": ".webm",
+            "audio/mp3": ".mp3",
+            "audio/ogg": ".ogg",
+            "audio/aac": ".aac",
+        }
+        ext = ext_map.get(audio_format, ".bin")
+
+        # Generate file paths with same timestamp prefix
+        media_dir = get_media_dir()
+        timestamp = int(time.time() * 1000)  # milliseconds for uniqueness
+        audio_file = media_dir / f"asr_{timestamp}{ext}"
+        text_file = media_dir / f"asr_{timestamp}.txt"
+
+        return audio_file, text_file
 
     async def handle_input(self, msg: InboundMessage) -> InboundMessage:
         """
@@ -84,19 +120,16 @@ class BaseASRHandler(BaseHandler):
             # Recognize speech from audio
             msg.media = []
             msg.metadata.update({"msg_type": "text"})
-            transcribed_text = await self._process_audio(audio_bytes, audio_format)
-            if transcribed_text:
-                logger.debug(f"Recognized speech: '{transcribed_text}'")
-                msg.content = transcribed_text
+            text = self._process_audio(audio_bytes, audio_format)
+            if text:
+                logger.debug(f"Recognized speech: '{text}'")
+                msg.content = text
                 msg.metadata.update({"_as_input": True})
             else:
                 msg.content = "No speech recognized"
                 logger.debug(msg.content)
                 msg.metadata.update({"need_tts": False})
-                if "vad_id" in msg.metadata:
-                    msg.metadata.update({"ret_type": RetType.IGNORE})
-                else:
-                    msg.metadata.update({"_warning_msg": "no_speech"})
+                msg.metadata.update({"_warning_msg": "no_speech"})
         except Exception as e:
             logger.error(f"Audio processing error: {e}")
             msg.content = f"Error processing audio: {e}"
@@ -113,6 +146,9 @@ class FunASRHandler(BaseASRHandler):
         return "fun_asr"
 
     def __init__(self, config: ASRHandlerConfig):
+        # Call parent __init__ to initialize config and save_speech
+        super().__init__(config)
+
         try:
             import psutil
             import torch
@@ -150,7 +186,7 @@ class FunASRHandler(BaseASRHandler):
                 disable_update=True,
             )
 
-    async def _process_audio(self, audio_bytes: bytes, audio_format: str = "audio/wav") -> str:
+    def _process_audio(self, audio_bytes: bytes, audio_format: str = "audio/wav") -> str:
         """
         Recognize speech from audio data using FunASR.
 
@@ -159,27 +195,31 @@ class FunASRHandler(BaseASRHandler):
             audio_format: Audio format of the input media data (default: "wav")
 
         Returns:
-            Recognized text string
+            Recognized text
         """
 
+        if self._save_speech:
+            audio_file, text_file = self._get_speech_files("audio/wav")
         try:
             if audio_format == "audio/webm":
-                audio_bytes = webm_to_wav(audio_bytes)
-            result = await asyncio.to_thread(
-                self._model.generate,
-                input=audio_bytes,
-                cache={},
-                language="auto",
-                use_itn=True,
-                batch_size_s=60,
+                if self._save_speech:
+                    audio_file = webm_to_wav(audio_bytes, audio_file)
+                    with open(audio_file, "rb") as f:
+                        audio_bytes = io.BytesIO(f.read())
+                else:
+                    audio_bytes = webm_to_wav(audio_bytes)
+            text = self._model.generate(
+                input=audio_bytes, cache={}, language="auto", use_itn=True, batch_size_s=60
             )
-            return result[0]["text"] if result else ""
+            if text and self._save_speech:
+                text_file.write_text(text[0]["text"])
+            return text[0]["text"] if text else ""
         except ImportError:
             logger.error("FunASR not installed. Install with: pip install funasr")
-            return ""
+            return {}
         except Exception as e:
             logger.error(f"Speech recognition error: {e}")
-            return ""
+            return {}
 
 
 @BaseASRHandler.register()
@@ -191,6 +231,9 @@ class VoskASRHandler(BaseASRHandler):
         return "vosk_asr"
 
     def __init__(self, config: ASRHandlerConfig):
+        # Call parent __init__ to initialize config and save_speech
+        super().__init__(config)
+
         from vosk import Model
 
         model = config.model
@@ -203,7 +246,7 @@ class VoskASRHandler(BaseASRHandler):
         logger.info(f"Loading Vosk model from {model}")
         self._model = Model(model_path=str(model_dir_expanded))
 
-    async def _process_audio(self, audio_bytes: bytes, audio_format: str = "wav") -> str:
+    def _process_audio(self, audio_bytes: bytes, audio_format: str = "wav") -> str:
         """
         Recognize speech from audio data using Vosk (offline CPU-based ASR).
 
@@ -212,7 +255,7 @@ class VoskASRHandler(BaseASRHandler):
             audio_format: Audio format of the input media data (default: "wav")
 
         Returns:
-            Recognized text string
+            Recognized text
         """
 
         from vosk import KaldiRecognizer
@@ -238,10 +281,9 @@ class VoskASRHandler(BaseASRHandler):
                 text = result.get("partial", "")
             logger.info(f"Speech recognized: '{text}'")
             return text
-
         except ImportError:
             logger.error("Vosk not installed. Install with: pip install vosk")
-            return ""
+            return {}
         except Exception as e:
             logger.error(f"Speech recognition error: {e}")
-            return ""
+            return {}

@@ -14,6 +14,7 @@ from loguru import logger
 from nanobot.agent.tools.base import Tool
 from nanobot.bus.events import OutboundMessage
 from nanobot.providers.providers_manager import ProvidersManager
+from nanobot.utils.media import get_media_dir
 
 
 class ImageTool(Tool):
@@ -251,7 +252,7 @@ class ImageTool(Tool):
         Returns:
             Analysis result (vision mode), status message (display mode), or generation result (generate mode).
         """
-        media_dir = Path.home() / ".nanobot" / "media"
+        media_dir = get_media_dir()
         if mode == "vision":
             return await self._execute_vision(text=text, image_path=image_path, **kwargs)
         elif mode == "display":

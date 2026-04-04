@@ -525,6 +525,11 @@ const handleTTSMessage = async (data: any) => {
   } else if (state === 'sentence_start') {
     console.debug(`服务器发送语音段：${data.text}`)
     ttsSentenceCount.value++
+    // Update session state if present in metadata
+    if (data.metadata?._session_state) {
+      console.log('🔄 Session state updated:', data.metadata._session_state)
+      emit('status-update', { _session_state: data.metadata._session_state })
+    }
     // Add message to chat immediately
     if (data.text && !data.text.trim().startsWith('/')) {
       messages.value.push({

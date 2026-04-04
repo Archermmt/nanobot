@@ -12,8 +12,7 @@ from nanobot.bus.events import InboundMessage
 from nanobot.bus.handlers.base_handler import BaseHandler
 from nanobot.config.schema import SpeakHandlerConfig
 from nanobot.utils.log import CaptureOutput
-from nanobot.utils.media import pcm_to_wav, webm_to_wav
-from nanobot.utils.message import RetType
+from nanobot.utils.media import get_media_dir, pcm_to_wav, webm_to_wav
 
 
 class BaseSpeakHandler(BaseHandler, ABC):
@@ -162,8 +161,7 @@ class WeSpeakHandler(BaseSpeakHandler):
                 msg.content = "Speaker verification disabled - no reference embedding"
             return 0.0, msg or InboundMessage(content="")
 
-        media_dir = Path.home() / ".nanobot" / "media"
-        media_dir.mkdir(parents=True, exist_ok=True)
+        media_dir = get_media_dir()
         speaker_file = media_dir / "speaker.wav"
         if audio_format == "audio/webm":
             speaker_file = webm_to_wav(audio_bytes, output_file=speaker_file)
@@ -260,8 +258,7 @@ class SbrainSpeakHandler(BaseSpeakHandler):
                 msg.content = "Speaker verification disabled - no reference audio"
             return 0.0, msg or InboundMessage(content="")
 
-        media_dir = Path.home() / ".nanobot" / "media"
-        media_dir.mkdir(parents=True, exist_ok=True)
+        media_dir = get_media_dir()
         speaker_file, separated_files = media_dir / "speaker.wav", []
         # Convert audio to wav format
         if audio_format == "audio/webm":

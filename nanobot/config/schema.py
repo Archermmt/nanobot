@@ -193,6 +193,7 @@ class ASRHandlerConfig(Base):
     enabled: bool = False
     handler_type: str = "funasr"  # vosk or custom
     model: str = "paraformer-zh"
+    save_speech: bool = False  # Save recognized speech text and audio files
 
 
 class VADHandlerConfig(Base):
