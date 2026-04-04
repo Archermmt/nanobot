@@ -242,11 +242,6 @@ const isPlaying = (audioUrl: string) => {
   return props.playingAudioUrl === audioUrl
 }
 
-const isChineseContent = (content: string) => {
-  // Check if content contains Chinese characters
-  return /[\u4e00-\u9fa5]/.test(content);
-}
-
 const renderMarkdown = (content: string) => {
   return marked.parse(content)
 }
@@ -419,8 +414,7 @@ watch(() => props.showProgressMessages, scrollToBottom)
         </div>
 
         <!-- Message Content -->
-        <div class="prose prose-xs markdown-content" :class="isChineseContent(msg.content) ? 'zh' : 'pixel-font'"
-          v-html="renderMarkdown(msg.content)"></div>
+        <div class="prose prose-xs markdown-content zh" v-html="renderMarkdown(msg.content)"></div>
 
         <!-- Timestamp -->
         <div class="text-xs mt-2 opacity-70">
@@ -436,7 +430,7 @@ watch(() => props.showProgressMessages, scrollToBottom)
         <div class="flex items-center space-x-2">
           <div class="text-xs text-yellow-800">
             {{ props.chatState }}<span v-if="props.chatState === 'Thinking' && currentModeHint">({{ currentModeHint
-              }})</span>
+            }})</span>
           </div>
           <div class="flex space-x-1">
             <div class="w-2 h-2 bg-blue-500 rounded animate-bounce" style="animation-delay: 0ms"></div>
