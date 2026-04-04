@@ -12,7 +12,7 @@ from typing import Dict, List, Tuple
 from aiohttp import web
 from loguru import logger
 
-from nanobot.channels.proto.xiaozhi.core.schema import XiaoZhiConfig
+from nanobot.channels.ws_client.xiaozhi.core.schema import XiaoZhiConfig
 
 from ..auth import AuthManager
 from ..utils.util import get_local_ip, get_vision_url

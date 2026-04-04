@@ -14,8 +14,8 @@ from loguru import logger
 from nanobot.bus.events import OutboundMessage
 from nanobot.bus.queue import MessageBus
 from nanobot.channels.base import BaseChannel
-from nanobot.channels.proto.xiaozhi.core.http_server import SimpleHttpServer
-from nanobot.channels.proto.xiaozhi.core.schema import XiaoZhiConfig
+from nanobot.channels.ws_client.xiaozhi.core.http_server import SimpleHttpServer
+from nanobot.channels.ws_client.xiaozhi.core.schema import XiaoZhiConfig
 from nanobot.utils.text_utils import check_emoji, get_string_no_punctuation_or_emoji
 
 

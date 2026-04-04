@@ -3,7 +3,6 @@
 import asyncio
 import json
 from collections import OrderedDict
-from pathlib import Path
 
 from botpy import Any
 from loguru import logger
@@ -13,20 +12,20 @@ from nanobot.bus.events import OutboundMessage
 from nanobot.bus.queue import MessageBus
 from nanobot.channels.base import BaseChannel
 from nanobot.config.schema import Base
-from nanobot.utils.media import get_media_dir, save_media
+from nanobot.utils.media import save_media
 
 
 class WebSocketConfig(Base):
     """Generic WebSocket channel configuration."""
 
     enabled: bool = False
-    server_url: str = "ws://localhost:8765"  # WebSocket server URL
+    host: str = "localhost"  # WebSocket server host
+    port: int = 8765  # WebSocket server port
     auth_token: str = ""  # Authentication token for WebSocket connection
     allow_from: list[str] = Field(default_factory=list)  # Allowed sender identifiers
     reconnect_interval: int = 5  # Reconnection interval in seconds
     heartbeat_interval: int = 30  # Heartbeat interval in seconds
     as_server: bool = True  # If True, act as WebSocket server; if False, connect as client
-    frame_duration: int = 60  # Frame duration in milliseconds
 
 
 class WebSocketChannel(BaseChannel):
@@ -73,27 +72,25 @@ class WebSocketChannel(BaseChannel):
             config = WebSocketConfig.model_validate(config)
         super().__init__(config, bus)
         self.config: WebSocketConfig = config
-        self._ws = None
-        self._processed_message_ids: OrderedDict[str, None] = OrderedDict()  # Ordered dedup cache
-        # self._loop: asyncio.AbstractEventLoop | None = None
+        self._server = None
+        self._clients: dict[any, dict] = {}  # Track multiple client connections
         self._heartbeat_task: asyncio.Task | None = None
         self._reconnect_task: asyncio.Task | None = None
-        self._connected = False
         self._mcp_result_queue: asyncio.Queue = asyncio.Queue()  # Queue for MCP results
+        self._connected = False
         self._stop_audio = False
 
     async def start(self) -> None:
         """Start the WebSocket channel with reconnection logic."""
         self._running = True
-        # self._loop = asyncio.get_running_loop()
-
         if self.config.as_server:
             # Act as WebSocket server
-            logger.info("Starting WebSocket server on {}", self.config.server_url)
+            logger.info("Starting WebSocket server on {}:{}", self.config.host, self.config.port)
             await self._start_server()
         else:
             # Act as WebSocket client (connect to external server)
-            logger.info("Starting WebSocket client connecting to {}", self.config.server_url)
+            server_url = f"ws://{self.config.host}:{self.config.port}"
+            logger.info("Starting WebSocket client connecting to {}", server_url)
             await self._connect_with_retry()
 
             # Keep running until stopped
@@ -121,40 +118,47 @@ class WebSocketChannel(BaseChannel):
                 pass
             self._reconnect_task = None
 
-        # Close WebSocket connection/server
-        if self._ws:
+        # Close all connected clients
+        for ws in list(self._clients.keys()):
             try:
-                if self.config.as_server and hasattr(self._ws, "close"):
+                await ws.close()
+            except Exception as e:
+                logger.warning("Error closing client connection: {}", e)
+
+        self._clients.clear()
+
+        # Close WebSocket connection/server
+        if self._server:
+            try:
+                if self.config.as_server and hasattr(self._server, "close"):
                     # Server mode - close server
-                    await self._ws.close()
-                elif hasattr(self._ws, "close"):
+                    await self._server.close()
+                elif hasattr(self._server, "close"):
                     # Client mode - close connection
-                    await self._ws.close()
+                    await self._server.close()
             except Exception as e:
                 logger.warning("Error closing WebSocket: {}", e)
-            self._ws = None
+            self._server = None
             self._connected = False
 
         logger.info("WebSocket channel stopped")
 
     async def _start_server(self) -> None:
         """Start WebSocket server to accept client connections."""
-        # Parse server URL to get host and port
-        from urllib.parse import urlparse
-
         import websockets
 
-        parsed = urlparse(self.config.server_url)
-        host = parsed.hostname or "localhost"
-        port = parsed.port or 8765
+        host = self.config.host
+        port = self.config.port
 
         logger.info("Starting WebSocket server on {}:{}", host, port)
 
         async def handler(websocket, *args):
             """Handle individual WebSocket connections."""
             logger.info("New WebSocket client connected from {}", websocket.remote_address)
-            self._ws = websocket
-            self._connected = True
+
+            # Extract client information from authentication or use defaults
+            client_sender_id = "web_user"
+            client_chat_id = "default"
 
             try:
                 # Handle authentication if token is required
@@ -167,6 +171,9 @@ class WebSocketChannel(BaseChannel):
                             and auth_data.get("token") == self.config.auth_token
                         ):
                             logger.debug("Client authenticated successfully")
+                            # Extract sender_id and chat_id from auth message if provided
+                            client_sender_id = auth_data.get("sender_id", client_sender_id)
+                            client_chat_id = auth_data.get("chat_id", client_chat_id)
                         else:
                             logger.warning("Authentication failed")
                             await websocket.close(4001, "Authentication required")
@@ -180,6 +187,19 @@ class WebSocketChannel(BaseChannel):
                         await websocket.close(4001, "Invalid authentication")
                         return
 
+                # Register client
+                client_info = {
+                    "sender_id": client_sender_id,
+                    "chat_id": client_chat_id,
+                    "authenticated": True,
+                }
+                self._clients[websocket] = client_info
+                logger.info(
+                    "Client registered: sender_id={}, chat_id={}",
+                    client_sender_id,
+                    client_chat_id,
+                )
+
                 # Start heartbeat for this connection
                 if self.config.heartbeat_interval > 0:
                     self._heartbeat_task = asyncio.create_task(
@@ -187,18 +207,25 @@ class WebSocketChannel(BaseChannel):
                     )
 
                 # Process messages from this client
-                await self._handle_client_messages(websocket)
+                await self._handle_client_messages(websocket, client_info)
 
             except websockets.exceptions.ConnectionClosed:
                 logger.info("WebSocket client disconnected")
             except Exception as e:
                 logger.error("Error handling WebSocket client: {}", e)
             finally:
+                # Clean up
+                if websocket in self._clients:
+                    del self._clients[websocket]
                 self._connected = False
-                self._ws = None
                 if self._heartbeat_task:
                     self._heartbeat_task.cancel()
                     self._heartbeat_task = None
+                # Close connection if still open
+                try:
+                    await websocket.close()
+                except Exception as close_error:
+                    logger.warning("Error closing connection: {}", close_error)
 
         # Start server
         try:
@@ -212,7 +239,7 @@ class WebSocketChannel(BaseChannel):
             logger.error("WebSocket server error: {}", e)
             raise
 
-    async def _handle_client_messages(self, websocket) -> None:
+    async def _handle_client_messages(self, websocket, client_info: dict) -> None:
         """Handle incoming messages from connected clients."""
         async for message in websocket:
             if not self._running:
@@ -225,7 +252,7 @@ class WebSocketChannel(BaseChannel):
                     msg_data = {"type": "audio_clip", "bytes": message}
                 else:
                     return
-                await self._process_incoming_message(msg_data)
+                await self._process_incoming_message(msg_data, client_info)
             except json.JSONDecodeError as e:
                 logger.warning("Invalid JSON message received: {}", e)
             except Exception as e:
@@ -235,10 +262,7 @@ class WebSocketChannel(BaseChannel):
         """Send periodic heartbeat messages to connected client."""
         while self._running and self._connected:
             try:
-                heartbeat_msg = {
-                    "type": "heartbeat",
-                    "timestamp": asyncio.get_event_loop().time(),
-                }
+                heartbeat_msg = {"type": "heartbeat", "timestamp": asyncio.get_event_loop().time()}
                 await websocket.send(json.dumps(heartbeat_msg, ensure_ascii=False))
                 await asyncio.sleep(self.config.heartbeat_interval)
             except Exception as e:
@@ -247,19 +271,20 @@ class WebSocketChannel(BaseChannel):
 
     async def _connect_with_retry(self) -> None:
         """Connect to WebSocket server with retry logic."""
+        import websockets
+
+        server_url = f"ws://{self.config.host}:{self.config.port}"
         while self._running and not self._connected:
             try:
-                import websockets
+                logger.info("Connecting to WebSocket server at {}", server_url)
 
-                logger.info("Connecting to WebSocket server at {}", self.config.server_url)
-
-                self._ws = await websockets.connect(self.config.server_url)
+                self._server = await websockets.connect(server_url)
                 self._connected = True
 
                 # Send authentication if token provided
                 if self.config.auth_token:
                     auth_msg = {"type": "auth", "token": self.config.auth_token}
-                    await self._ws.send(json.dumps(auth_msg, ensure_ascii=False))
+                    await self._server.send(json.dumps(auth_msg, ensure_ascii=False))
                     logger.debug("Sent authentication token")
 
                 logger.info("Connected to WebSocket server")
@@ -285,7 +310,7 @@ class WebSocketChannel(BaseChannel):
     async def _receive_messages(self) -> None:
         """Receive and process incoming messages."""
         try:
-            async for message in self._ws:
+            async for message in self._server:
                 if not self._running:
                     break
 
@@ -305,20 +330,16 @@ class WebSocketChannel(BaseChannel):
                 # Schedule reconnection
                 self._reconnect_task = asyncio.create_task(self._connect_with_retry())
 
-    async def _process_incoming_message(self, msg_data: dict) -> None:
+    async def _process_incoming_message(self, msg_data: dict, client_info: dict) -> None:
         """Process an incoming message from WebSocket."""
         msg_type = msg_data.get("type", "message")
         # Extract message fields
-        message_id = msg_data.get("message_id") or str(hash(str(msg_data)))
-        sender_id = msg_data.get("sender_id", "web_user")
-        chat_id = msg_data.get("chat_id", "default")
+        sender_id = msg_data.get("sender_id", client_info["sender_id"])
+        chat_id = msg_data.get("chat_id", client_info["chat_id"])
         content = msg_data.get("content", "")
         media = msg_data.get("media", [])
         metadata = msg_data.get("metadata", {})
 
-        if content == "/stop_audio":
-            self._stop_audio = True
-            return
         if msg_type == "audio_clip":
             await self._handle_message(
                 sender_id=sender_id,
@@ -326,6 +347,9 @@ class WebSocketChannel(BaseChannel):
                 content=msg_data["bytes"],
                 metadata={"msg_type": "audio_clip"},
             )
+            return
+        if content == "/stop_audio":
+            self._stop_audio = True
             return
         if content == "/register_extern_tools":
             mcp_tools, tools_data = [], metadata["tools"]
@@ -351,7 +375,7 @@ class WebSocketChannel(BaseChannel):
                 metadata={
                     "type": "websocket",
                     "kwargs": {
-                        "websocket": self._ws,
+                        "websocket": self._server,
                         "timeout": 30,
                         "result_queue": self._mcp_result_queue,
                     },
@@ -378,15 +402,6 @@ class WebSocketChannel(BaseChannel):
             return
 
         meta_type = metadata.get("msg_type", "text")
-        # Deduplication check
-        if message_id in self._processed_message_ids:
-            return
-        self._processed_message_ids[message_id] = None
-
-        # Trim cache
-        while len(self._processed_message_ids) > 1000:
-            self._processed_message_ids.popitem(last=False)
-
         # Skip empty messages (unless it's a media message)
         if not content and not media and not metadata:
             return
@@ -443,7 +458,7 @@ class WebSocketChannel(BaseChannel):
                     "type": "heartbeat",
                     "timestamp": asyncio.get_event_loop().time(),
                 }
-                await self._ws.send(json.dumps(heartbeat_msg, ensure_ascii=False))
+                await self._server.send(json.dumps(heartbeat_msg, ensure_ascii=False))
                 await asyncio.sleep(self.config.heartbeat_interval)
             except Exception as e:
                 logger.warning("Heartbeat failed: {}", e)
@@ -456,14 +471,25 @@ class WebSocketChannel(BaseChannel):
                 "type": "heartbeat_response",
                 "timestamp": asyncio.get_event_loop().time(),
             }
-            await self._ws.send(json.dumps(response, ensure_ascii=False))
+            await self._server.send(json.dumps(response, ensure_ascii=False))
         except Exception as e:
             logger.warning("Failed to send heartbeat response: {}", e)
 
     async def send(self, msg: OutboundMessage) -> None:
         """Send a message through WebSocket."""
-        if not self._connected or not self._ws:
-            logger.warning("WebSocket not connected, cannot send message")
+        if not self._running:
+            logger.warning("Channel not running, cannot send message")
+            return
+
+        # Find the appropriate client connection based on chat_id
+        target_ws = None
+        for ws, client_info in self._clients.items():
+            if client_info["chat_id"] == msg.chat_id or client_info["sender_id"] == msg.chat_id:
+                target_ws = ws
+                break
+
+        if not target_ws:
+            logger.warning("No connected client found for chat_id: {}", msg.chat_id)
             return
 
         if (
@@ -471,10 +497,11 @@ class WebSocketChannel(BaseChannel):
             and msg.metadata.get("encoder_type", "") == "opus"
         ):
             self._stop_audio = False
-            await self._ws.send(
+            frame_duration = msg.metadata.get("frame_duration", 60)
+            await target_ws.send(
                 json.dumps({"type": "tts", "state": "start", "session_id": msg.chat_id})
             )
-            await self._ws.send(
+            await target_ws.send(
                 json.dumps(
                     {
                         "type": "tts",
@@ -485,15 +512,15 @@ class WebSocketChannel(BaseChannel):
                     }
                 )
             )
-            for media in msg.media:
+            for media_item in msg.media:
                 if self._stop_audio:
                     break
-                await self._ws.send(media)
-                await asyncio.sleep(self.config.frame_duration / 1000.0)
-            await self._ws.send(
+                await target_ws.send(media_item)
+                await asyncio.sleep(frame_duration / 1000.0)
+            await target_ws.send(
                 json.dumps({"type": "tts", "state": "sentence_end", "session_id": msg.chat_id})
             )
-            await self._ws.send(
+            await target_ws.send(
                 json.dumps({"type": "tts", "state": "stop", "session_id": msg.chat_id})
             )
         else:
@@ -518,7 +545,7 @@ class WebSocketChannel(BaseChannel):
                     "metadata": msg.metadata,
                     "timestamp": asyncio.get_event_loop().time(),
                 }
-                # Send message ( works for both client and server mode)
-                await self._ws.send(json.dumps(message_data, ensure_ascii=False))
+                # Send message to the specific client
+                await target_ws.send(json.dumps(message_data, ensure_ascii=False))
             except Exception as e:
                 logger.error("Error sending WebSocket message: {}", e)
