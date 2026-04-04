@@ -1,4 +1,4 @@
-"""Utility functions for xiaozhi_server."""
+"""Utility functions for xiaozhi proto module."""
 
 import socket
 from typing import Dict

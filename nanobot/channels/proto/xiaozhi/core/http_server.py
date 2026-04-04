@@ -3,7 +3,7 @@ import asyncio
 from aiohttp import web
 from loguru import logger
 
-from nanobot.channels.xiaozhi_server.core.schema import XiaoZhiConfig
+from nanobot.channels.proto.xiaozhi.core.schema import XiaoZhiConfig
 
 from .api.ota_handler import OTAHandler
 
