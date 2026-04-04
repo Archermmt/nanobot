@@ -81,6 +81,7 @@ class WebSocketChannel(BaseChannel):
         self._reconnect_task: asyncio.Task | None = None
         self._connected = False
         self._mcp_result_queue: asyncio.Queue = asyncio.Queue()  # Queue for MCP results
+        self._stop_audio = False
 
     async def start(self) -> None:
         """Start the WebSocket channel with reconnection logic."""
@@ -316,6 +317,9 @@ class WebSocketChannel(BaseChannel):
         media = msg_data.get("media", [])
         metadata = msg_data.get("metadata", {})
 
+        if content == "/stop_audio":
+            self._stop_audio = True
+            return
         if msg_type == "audio_clip":
             await self._handle_message(
                 sender_id=sender_id,
@@ -481,7 +485,7 @@ class WebSocketChannel(BaseChannel):
             msg.metadata.get("msg_type", "text") == "audio"
             and msg.metadata.get("encoder_type", "") == "opus"
         ):
-            # Send opus back for testing
+            self._stop_audio = False
             await self._ws.send(
                 json.dumps({"type": "tts", "state": "start", "session_id": msg.chat_id})
             )
@@ -496,13 +500,14 @@ class WebSocketChannel(BaseChannel):
                 )
             )
             for media in msg.media:
+                if self._stop_audio:
+                    print("[TMINF] break sending msg", flush=True)
+                    break
                 await self._ws.send(media)
+                await asyncio.sleep(self.config.frame_duration / 1000.0)
             await self._ws.send(
                 json.dumps({"type": "tts", "state": "sentence_end", "session_id": msg.chat_id})
             )
-            play_time = len(msg.media) * self.config.frame_duration / 1000.0
-            logger.debug(f"Sending audio message as opus frames, wait {play_time} s")
-            await asyncio.sleep(play_time)
             await self._ws.send(
                 json.dumps({"type": "tts", "state": "stop", "session_id": msg.chat_id})
             )

@@ -53,7 +53,7 @@ class BaseVADHandler(BaseHandler, ABC):
             True if the message type is audio
         """
         msg_type = msg.metadata.get("msg_type", "text")
-        return msg_type == "audio_clip"
+        return msg_type == "audio_clip" or msg.content == "/val_process"
 
     def can_handle_output(self, msg: OutboundMessage) -> bool:
         """
@@ -101,6 +101,10 @@ class BaseVADHandler(BaseHandler, ABC):
             msg.metadata["ret_type"] = RetType.IGNORE
             return msg
 
+        if msg.content == "/vad_reset":
+            self._reset_audio()
+            return _ignore_msg(msg)
+
         if not msg.content or self._waiting_id:
             return _ignore_msg(msg)
 
@@ -111,7 +115,7 @@ class BaseVADHandler(BaseHandler, ABC):
             return _ignore_msg(msg)
 
         if len(self._asr_audio) > 15 and not audio_have_voice and self._client_voice_stop:
-            pcm_data, self._asr_audio = self._asr_audio.copy(), []
+            pcm_data = self._asr_audio.copy()
             if self.audio_format == "opus":
                 pcm_data = self.decode_opus(pcm_data)
             msg.content, msg.media = "", [{"data": b"".join(pcm_data)}]
@@ -119,11 +123,7 @@ class BaseVADHandler(BaseHandler, ABC):
             msg.metadata.update(
                 {"msg_type": "audio", "audio_format": "audio/pcm", "vad_id": self._waiting_id}
             )
-            self._client_audio_buffer.clear()
-            self._client_voice_window.clear()
-            self._client_have_voice = False
-            self._client_voice_stop = False
-            self._last_is_voice = False
+            self._reset_audio()
             return msg
         return _ignore_msg(msg)
 
@@ -140,6 +140,15 @@ class BaseVADHandler(BaseHandler, ABC):
 
         self._asr_audio, self._waiting_id = [], ""
         return msg
+
+    def _reset_audio(self):
+        """Reset the audio state."""
+        self._asr_audio = []
+        self._client_audio_buffer.clear()
+        self._client_voice_window.clear()
+        self._client_have_voice = False
+        self._client_voice_stop = False
+        self._last_is_voice = False
 
     def decode_opus(self, opus_data: List[bytes]) -> List[bytes]:
         """将Opus音频数据解码为PCM数据"""

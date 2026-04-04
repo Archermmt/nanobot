@@ -356,6 +356,14 @@ class XiaoZhiChannel(BaseChannel):
             logger.warning(f"Received unknown message({msg_type}): {msg_data}")
             return
 
+        if msg_data["state"] == "start":
+            logger.debug(f"Client started recording: {msg_data}")
+            await self._handle_message(
+                sender_id=self.session_id,
+                chat_id=msg_data.get("chat_id", client_info["client_id"]),
+                content="/vad_reset",
+            )
+            return
         if msg_data["state"] != "detect":
             logger.warning(f"Received unknown state type({msg_data['state']}): {msg_data}")
             return

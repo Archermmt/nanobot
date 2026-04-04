@@ -496,6 +496,9 @@ const stopAudio = () => {
     }
   }
   chatState.value = "Waiting"
+
+  // Send /stop_audio command to stop audio sending
+  sendMessage('/stop_audio', true)
 }
 
 // Watch for chatState changes and emit to parent

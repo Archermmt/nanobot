@@ -51,16 +51,15 @@ class Session:
 
     def setup(self, config: SessionConfig, send_callback=None) -> None:
         if config.enable_wakeup:
-            self.wakeup_words, self.wakeup_response = [], []
-        else:
             self.wakeup_words = config.wakeup_words
             self.wakeup_response = config.wakeup_response
+        else:
+            self.wakeup_words, self.wakeup_response = [], []
         if self.wakeup_words:
             self.goodbye_words = config.goodbye_words
             self.goodbye_response = config.goodbye_response
         else:
             self.goodbye_words, self.goodbye_response = [], []
-        self._state = SessionState.STANDBY if self.wakeup_words else SessionState.READY
         self._default_channel = None
         self._default_chat_id = None
         self._default_message_id = None
@@ -68,6 +67,7 @@ class Session:
         self._last_meta = None
         # Start background timeout checking task
         if self.wakeup_words:
+            self._state = SessionState.STANDBY
             self._stop_timeout_check = False
             self._timeout_task = asyncio.create_task(
                 self._check_timeout_loop(
@@ -75,7 +75,9 @@ class Session:
                 )
             )
         else:
-            self._stop_timeout_check, self._timeout_task = True, None
+            self._state = SessionState.READY
+            self._stop_timeout_check = True
+            self._timeout_task = None
 
     def add_message(self, role: str, content: str, **kwargs: Any) -> None:
         """Add a message to the session."""
