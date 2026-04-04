@@ -2,7 +2,6 @@
 
 import asyncio
 import json
-from collections import OrderedDict
 
 from botpy import Any
 from loguru import logger
@@ -26,6 +25,7 @@ class WebSocketConfig(Base):
     reconnect_interval: int = 5  # Reconnection interval in seconds
     heartbeat_interval: int = 30  # Heartbeat interval in seconds
     as_server: bool = True  # If True, act as WebSocket server; if False, connect as client
+    protos: dict[str, Any] = Field(default_factory=dict)  # Protocol handler configurations
 
 
 class WebSocketChannel(BaseChannel):
@@ -79,6 +79,38 @@ class WebSocketChannel(BaseChannel):
         self._mcp_result_queue: asyncio.Queue = asyncio.Queue()  # Queue for MCP results
         self._connected = False
         self._stop_audio = False
+        self._protos: dict[str, Any] = {}  # Protocol handlers for message processing
+
+        self._init_protos()
+
+    def _init_protos(self) -> None:
+        """Initialize protocol handlers discovered via ws_proto directory."""
+        from nanobot.channels.ws_proto.registry import discover_all_protos
+
+        # Initialize each discovered protocol handler
+        for name, cls in discover_all_protos().items():
+            try:
+                # Get protocol-specific configuration (section)
+                proto_section = self.config.protos.get(name, {})
+
+                # Check if protocol is enabled
+                enabled = (
+                    proto_section.get("enabled", True)
+                    if isinstance(proto_section, dict)
+                    else getattr(proto_section, "enabled", True)
+                )
+                if not enabled:
+                    continue
+                # Initialize protocol with config and ws_config
+                self._protos[name] = cls(config=proto_section, ws_config=self.config)
+                # Set channel reference for the protocol handler
+                if hasattr(self._protos[name], "channel_ref"):
+                    self._protos[name].channel_ref = self
+                logger.info("{} protocol handler enabled", name)
+            except Exception as e:
+                logger.warning("{} protocol handler not available: {}", name, e)
+
+        logger.info("WebSocket protocol handlers initialized: {}", list(self._protos.keys()))
 
     async def start(self) -> None:
         """Start the WebSocket channel with reconnection logic."""
@@ -142,6 +174,21 @@ class WebSocketChannel(BaseChannel):
             self._connected = False
 
         logger.info("WebSocket channel stopped")
+
+    def _get_websocket_for_chat(self, chat_id: str):
+        """
+        Get the WebSocket connection for a specific chat_id.
+
+        Args:
+            chat_id: The chat identifier to find the connection for.
+
+        Returns:
+            WebSocket connection if found, None otherwise.
+        """
+        for ws, client_info in self._clients.items():
+            if client_info.get("chat_id") == chat_id or client_info.get("sender_id") == chat_id:
+                return ws
+        return None
 
     async def _start_server(self) -> None:
         """Start WebSocket server to accept client connections."""
