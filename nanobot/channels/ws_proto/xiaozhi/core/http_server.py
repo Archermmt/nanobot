@@ -15,7 +15,7 @@ class SimpleHttpServer:
         self.config = config
         self.host = host
         self.port = port
-        self.ota_handler = OTAHandler(config)
+        self.ota_handler = OTAHandler(config, host, port)
 
     async def start(self):
         try:
