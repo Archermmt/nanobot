@@ -418,21 +418,21 @@ class XiaoZhiProto(BaseProto):
         Returns:
             info: A dictionary containing information about the sent message.
         """
+
         # Ignore some cases
         if msg.metadata.get("_cmd_ref", "") == "register_extern_tools":
             return {"success": True}
         if msg.metadata.get("_progress", False) or msg.metadata.get("_hide_message", False):
             return {"success": True}
 
-        msg_type = msg.metadata.get("type", "audio")
-        frame_duration = msg.metadata.get("frame_duration", 60)
-
+        msg_type = msg.metadata.get("msg_type", "audio")
         if msg_type == "audio":
+            frame_duration = msg.metadata.get("frame_duration", 60)
             await self._send_tts_message(websocket, "start")
             await self._send_tts_message(websocket, "sentence_start", msg.content)
             for media in msg.media:
                 await websocket.send(media)
-                await asyncio.sleep(frame_duration)
+                await asyncio.sleep(frame_duration / 1000.0)
             await self._send_tts_message(websocket, "sentence_end")
             await self._send_tts_message(websocket, "stop")
         else:

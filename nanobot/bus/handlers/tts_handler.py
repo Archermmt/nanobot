@@ -91,7 +91,7 @@ class BaseTTSHandler(BaseHandler):
                 msg.media.extend(audio_datas)
                 msg.metadata.update({"msg_type": "audio", "encoder_type": self.encoder_type})
                 if self.encoder_type == "opus":
-                    msg.metadata.update({"frame_duration": self.encoder.frame_duration})
+                    msg.metadata.update({"frame_duration": 60})
         except Exception as e:
             # If TTS fails, keep original text message
             msg.metadata["tts_error"] = str(e)
