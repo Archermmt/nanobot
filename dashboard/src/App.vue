@@ -91,15 +91,6 @@ const connectWebSocket = () => {
       url: wsUrl.value
     }
 
-    // Send auth message
-    if (ws) {
-      const authMsg = {
-        type: 'auth',
-        token: 'your_auth_token_here'
-      }
-      ws.send(JSON.stringify(authMsg))
-    }
-
     // Notify Chat component
     if (chatComponentRef.value && chatComponentRef.value.setWebSocket) {
       chatComponentRef.value.setWebSocket(ws)

@@ -46,7 +46,7 @@ class BaseProto(ABC):
         """
         pass
 
-    def accept(self, websocket) -> dict | None:
+    async def accept(self, websocket) -> dict | None:
         """
         Check if the current websocket can be accepted by this proto.
 

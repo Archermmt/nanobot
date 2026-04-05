@@ -20,7 +20,6 @@ class WebSocketConfig(Base):
     enabled: bool = False
     host: str = "localhost"  # WebSocket server host
     port: int = 8765  # WebSocket server port
-    auth_token: str = ""  # Authentication token for WebSocket connection
     allow_from: list[str] = Field(default_factory=list)  # Allowed sender identifiers
     reconnect_interval: int = 5  # Reconnection interval in seconds
     heartbeat_interval: int = 30  # Heartbeat interval in seconds
@@ -72,14 +71,14 @@ class WebSocketChannel(BaseChannel):
             config = WebSocketConfig.model_validate(config)
         super().__init__(config, bus)
         self.config: WebSocketConfig = config
-        self._server = None
+        self._ws_client = None
         self._clients: dict[any, dict] = {}  # Track multiple client connections
+        self._protos: dict[str, Any] = self._init_protos()
+        self._connected = False
         self._heartbeat_task: asyncio.Task | None = None
         self._reconnect_task: asyncio.Task | None = None
         self._mcp_result_queue: asyncio.Queue = asyncio.Queue()  # Queue for MCP results
-        self._connected = False
         self._stop_audio = False
-        self._protos: dict[str, Any] = self._init_protos()
 
     def _init_protos(self) -> None:
         """Initialize protocol handlers discovered via ws_proto directory."""
@@ -109,22 +108,15 @@ class WebSocketChannel(BaseChannel):
         """Start the WebSocket channel with reconnection logic."""
         self._running = True
         if self.config.as_server:
-            # Act as WebSocket server
-            logger.info("Starting WebSocket server on {}:{}", self.config.host, self.config.port)
             await self._start_server()
         else:
-            # Act as WebSocket client (connect to external server)
-            server_url = f"ws://{self.config.host}:{self.config.port}"
-            logger.info("Starting WebSocket client connecting to {}", server_url)
             await self._connect_with_retry()
-
             # Keep running until stopped
             while self._running:
                 await asyncio.sleep(1)
 
     async def stop(self) -> None:
         """Stop the WebSocket channel."""
-        self._running = False
 
         # Cancel tasks
         if self._heartbeat_task:
@@ -148,170 +140,26 @@ class WebSocketChannel(BaseChannel):
             try:
                 await ws.close()
             except Exception as e:
-                logger.warning("Error closing client connection: {}", e)
-
+                logger.warning(f"Error closing client {ws} : {e}")
         self._clients.clear()
-
-        # Close WebSocket connection/server
-        if self._server:
-            try:
-                if self.config.as_server and hasattr(self._server, "close"):
-                    # Server mode - close server
-                    await self._server.close()
-                elif hasattr(self._server, "close"):
-                    # Client mode - close connection
-                    await self._server.close()
-            except Exception as e:
-                logger.warning("Error closing WebSocket: {}", e)
-            self._server = None
-            self._connected = False
-
+        self._connected = False
+        self._running = False
         logger.info("WebSocket channel stopped")
-
-    def _get_websocket_for_chat(self, chat_id: str):
-        """
-        Get the WebSocket connection for a specific chat_id.
-
-        Args:
-            chat_id: The chat identifier to find the connection for.
-
-        Returns:
-            WebSocket connection if found, None otherwise.
-        """
-        for ws, client_info in self._clients.items():
-            if client_info.get("chat_id") == chat_id or client_info.get("sender_id") == chat_id:
-                return ws
-        return None
 
     async def _start_server(self) -> None:
         """Start WebSocket server to accept client connections."""
         import websockets
 
-        host = self.config.host
-        port = self.config.port
-
-        logger.info("Starting WebSocket server on {}:{}", host, port)
-
         async def handler(websocket, *args):
             """Handle individual WebSocket connections."""
-            logger.info("New WebSocket client connected from {}", websocket.remote_address)
-
             try:
-                # Try to accept the connection with each protocol handler
-                if websocket in self._clients:
-                    logger.info(
-                        "Use cached proto {} for websocket {}",
-                        self._clients[websocket]["proto"],
-                        websocket,
-                    )
-                else:
-                    for name, proto in self._protos.items():
-                        client_info = proto.accept(websocket)
-                        if client_info:
-                            logger.info("Client accepted by {} : {}", name, client_info)
-                            self._clients[websocket] = {**client_info, "proto": name}
-                            break
-                    if websocket not in self._clients:
-                        logger.warning("No protocol handler accepted the connection")
-                        await websocket.close(4001, "No protocol handler available")
-                        return
-
-                """
-                headers = dict(websocket.request.headers)
-
-                # Extract sender_id and chat_id from URL query parameters
-                client_sender_id = "web_user"
-                client_chat_id = "default"
-
-                try:
-                    # Get query parameters from the request path
-                    request_path = websocket.request.path
-                    if "?" in request_path:
-                        query_string = request_path.split("?", 1)[1]
-                        from urllib.parse import parse_qs
-
-                        query_params = parse_qs(query_string)
-
-                        # Extract sender_id and chat_id from query params
-                        if "sender_id" in query_params:
-                            client_sender_id = query_params["sender_id"][0]
-                        if "chat_id" in query_params:
-                            client_chat_id = query_params["chat_id"][0]
-                        print(
-                            "[TMINFO] Extracted from URL - sender_id: {}, chat_id: {}".format(
-                                client_sender_id, client_chat_id
-                            ),
-                            flush=True,
-                        )
-
-                        logger.info(
-                            "Extracted from URL - sender_id: {}, chat_id: {}",
-                            client_sender_id,
-                            client_chat_id,
-                        )
-                except Exception as e:
-                    logger.warning("Failed to extract query parameters: {}", e)
-
-                # Handle authentication if token is required
-                if self.config.auth_token:
-                    try:
-                        auth_msg = await asyncio.wait_for(websocket.recv(), timeout=10.0)
-                        auth_data = json.loads(auth_msg)
-                        if (
-                            auth_data.get("type") == "auth"
-                            and auth_data.get("token") == self.config.auth_token
-                        ):
-                            logger.debug("Client authenticated successfully")
-                            # Update client info with authenticated status
-                            if websocket in self._clients:
-                                self._clients[websocket]["authenticated"] = True
-                                # Extract sender_id and chat_id from auth message if provided,
-                                # otherwise use values from URL query parameters
-                                self._clients[websocket]["sender_id"] = auth_data.get(
-                                    "sender_id",
-                                    self._clients[websocket].get("sender_id", client_sender_id),
-                                )
-                                self._clients[websocket]["chat_id"] = auth_data.get(
-                                    "chat_id",
-                                    self._clients[websocket].get("chat_id", client_chat_id),
-                                )
-                        else:
-                            logger.warning("Authentication failed")
-                            await websocket.close(4001, "Authentication required")
-                            return
-                    except asyncio.TimeoutError:
-                        logger.warning("Authentication timeout")
-                        await websocket.close(4001, "Authentication timeout")
-                        return
-                    except json.JSONDecodeError:
-                        logger.warning("Invalid authentication message")
-                        await websocket.close(4001, "Invalid authentication")
-                        return
-
-                # Register client (update with final values)
-                if websocket in self._clients:
-                    # Ensure we have the latest sender_id and chat_id
-                    if "sender_id" not in self._clients[websocket]:
-                        self._clients[websocket]["sender_id"] = client_sender_id
-                    if "chat_id" not in self._clients[websocket]:
-                        self._clients[websocket]["chat_id"] = client_chat_id
-
-                    logger.info(
-                        "Client registered: sender_id={}, chat_id={}",
-                        self._clients[websocket]["sender_id"],
-                        self._clients[websocket]["chat_id"],
-                    )
-                """
-
+                await self._get_client_info(websocket)
+                self._connected = True
                 # Start heartbeat for this connection
                 if self.config.heartbeat_interval > 0:
-                    self._heartbeat_task = asyncio.create_task(
-                        self._server_heartbeat_loop(websocket)
-                    )
-
+                    self._heartbeat_task = asyncio.create_task(self._heartbeat_loop(websocket))
                 # Process messages from this client
-                await self._handle_client_messages(websocket, client_info)
-
+                await self._receive_messages(websocket)
             except websockets.exceptions.ConnectionClosed:
                 logger.info("WebSocket client disconnected")
             except Exception as e:
@@ -332,43 +180,68 @@ class WebSocketChannel(BaseChannel):
 
         # Start server
         try:
-            # Set max_size to 20MB to support large file uploads
+            host, port = self.config.host, self.config.port
             async with websockets.serve(handler, host, port, max_size=20 * 1024 * 1024):
-                logger.info("WebSocket server started and listening")
-                # Keep server running
+                logger.info(f"WebSocket server started and listening on {host}:{port}")
                 while self._running:
                     await asyncio.sleep(1)
         except Exception as e:
             logger.error("WebSocket server error: {}", e)
             raise
 
-    async def _handle_client_messages(self, websocket, client_info: dict) -> None:
+    async def _connect_with_retry(self) -> None:
+        """Connect to WebSocket server with retry logic."""
+        import websockets
+
+        server_url = f"ws://{self.config.host}:{self.config.port}"
+        while self._running and not self._connected:
+            try:
+                logger.info("Connecting to WebSocket server at {}", server_url)
+                self._ws_client = await websockets.connect(server_url)
+                await self._get_client_info(self._ws_client)
+                self._connected = True
+                # Start heartbeat
+                if self.config.heartbeat_interval > 0:
+                    self._heartbeat_task = asyncio.create_task(
+                        self._heartbeat_loop(self._ws_client)
+                    )
+                # Start message receiving
+                await self._receive_messages(self._ws_client)
+            except Exception as e:
+                if self._running:
+                    logger.warning(
+                        "WebSocket connection failed: {}, retrying in {}s",
+                        e,
+                        self.config.reconnect_interval,
+                    )
+                    await asyncio.sleep(self.config.reconnect_interval)
+                else:
+                    break
+
+    async def _receive_messages(self, websocket) -> None:
         """Handle incoming messages from connected clients."""
         async for message in websocket:
             if not self._running:
                 break
-            try:
-                await self._process_incoming_message(message, client_info)
-            except json.JSONDecodeError as e:
-                logger.warning("Invalid JSON message received: {}", e)
-            except Exception as e:
-                logger.error("Error processing message: {}", e)
+            await self._receive_message(message, websocket)
 
-    async def _process_incoming_message(self, message: str | bytes, client_info: dict) -> None:
+    async def _receive_message(self, message: str | bytes, websocket: Any) -> None:
         """Process an incoming message from WebSocket."""
 
         msg_data = None
         try:
             if isinstance(message, str):
                 msg_data = json.loads(message)
-            elif isinstance(message, bytes):
-                msg_data = {"type": "bytes", "data": message}
+            else:
+                msg_data = {"type": type(message).__name__, "data": message}
         except json.JSONDecodeError as e:
             logger.warning("Invalid JSON message received: {}", e)
         except Exception as e:
             logger.error("Error processing message: {}", e)
         if not msg_data:
             return
+        client_info = await self._get_client_info(websocket)
+        print(f"[TMINFO] should process msg {msg_data} with {client_info}", flush=True)
 
         msg_type = msg_data.get("type", "message")
         sender_id = msg_data.get("sender_id", client_info["sender_id"])
@@ -412,7 +285,7 @@ class WebSocketChannel(BaseChannel):
                 metadata={
                     "type": "websocket",
                     "kwargs": {
-                        "websocket": self._server,
+                        "websocket": self._ws_client,
                         "timeout": 30,
                         "result_queue": self._mcp_result_queue,
                     },
@@ -560,32 +433,27 @@ class WebSocketChannel(BaseChannel):
             except Exception as e:
                 logger.error("Error sending WebSocket message: {}", e)
 
-    async def _heartbeat_loop(self) -> None:
-        """Send periodic heartbeat messages."""
-        while self._running and self._connected:
-            try:
-                heartbeat_msg = {
-                    "type": "heartbeat",
-                    "timestamp": asyncio.get_event_loop().time(),
-                }
-                await self._server.send(json.dumps(heartbeat_msg, ensure_ascii=False))
-                await asyncio.sleep(self.config.heartbeat_interval)
-            except Exception as e:
-                logger.warning("Heartbeat failed: {}", e)
-                break
+    async def _get_client_info(self, websocket) -> dict | None:
+        """
+        Get client info by trying each protocol handler's accept method.
 
-    async def _send_heartbeat_response(self) -> None:
-        """Send heartbeat response."""
-        try:
-            response = {
-                "type": "heartbeat_response",
-                "timestamp": asyncio.get_event_loop().time(),
-            }
-            await self._server.send(json.dumps(response, ensure_ascii=False))
-        except Exception as e:
-            logger.warning("Failed to send heartbeat response: {}", e)
+        Args:
+            websocket: The WebSocket connection object.
 
-    async def _server_heartbeat_loop(self, websocket) -> None:
+        Returns:
+            Client information dictionary if accepted by a proto, None otherwise.
+            The returned dict includes 'proto' field indicating which proto accepted it.
+        """
+        if websocket not in self._clients:
+            for name, proto in self._protos.items():
+                client_info = await proto.accept(websocket)
+                if client_info:
+                    self._clients[websocket] = {**client_info, "proto": name}
+                    logger.info(f"Bind {websocket.remote_address} -> {self._clients[websocket]}")
+        assert websocket in self._clients, "WebSocket not found in clients"
+        return self._clients[websocket]
+
+    async def _heartbeat_loop(self, websocket) -> None:
         """Send periodic heartbeat messages to connected client."""
         while self._running and self._connected:
             try:
@@ -596,62 +464,13 @@ class WebSocketChannel(BaseChannel):
                 logger.warning("Server heartbeat failed: {}", e)
                 break
 
-    async def _connect_with_retry(self) -> None:
-        """Connect to WebSocket server with retry logic."""
-        import websockets
-
-        server_url = f"ws://{self.config.host}:{self.config.port}"
-        while self._running and not self._connected:
-            try:
-                logger.info("Connecting to WebSocket server at {}", server_url)
-
-                self._server = await websockets.connect(server_url)
-                self._connected = True
-
-                # Send authentication if token provided
-                if self.config.auth_token:
-                    auth_msg = {"type": "auth", "token": self.config.auth_token}
-                    await self._server.send(json.dumps(auth_msg, ensure_ascii=False))
-                    logger.debug("Sent authentication token")
-
-                logger.info("Connected to WebSocket server")
-
-                # Start heartbeat
-                if self.config.heartbeat_interval > 0:
-                    self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
-
-                # Start message receiving
-                await self._receive_messages()
-
-            except Exception as e:
-                if self._running:
-                    logger.warning(
-                        "WebSocket connection failed: {}, retrying in {}s",
-                        e,
-                        self.config.reconnect_interval,
-                    )
-                    await asyncio.sleep(self.config.reconnect_interval)
-                else:
-                    break
-
-    async def _receive_messages(self) -> None:
-        """Receive and process incoming messages."""
+    async def _send_heartbeat_response(self) -> None:
+        """Send heartbeat response."""
         try:
-            async for message in self._server:
-                if not self._running:
-                    break
-
-                try:
-                    # Parse message
-                    await self._process_incoming_message(message)
-                except json.JSONDecodeError as e:
-                    logger.warning("Invalid JSON message received: {}", e)
-                except Exception as e:
-                    logger.error("Error processing message: {}", e)
-
+            response = {
+                "type": "heartbeat_response",
+                "timestamp": asyncio.get_event_loop().time(),
+            }
+            await self._ws_client.send(json.dumps(response, ensure_ascii=False))
         except Exception as e:
-            logger.warning("WebSocket connection lost: {}", e)
-            self._connected = False
-            if self._running:
-                # Schedule reconnection
-                self._reconnect_task = asyncio.create_task(self._connect_with_retry())
+            logger.warning("Failed to send heartbeat response: {}", e)

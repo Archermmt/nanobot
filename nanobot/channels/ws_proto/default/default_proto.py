@@ -18,6 +18,7 @@ class DefaultProtoConfig(Base):
 
     enabled: bool = True  # Whether this protocol is enabled
     auth_token: str = ""  # Authentication token for WebSocket connection
+    accept_senders: list[str] = ["web_user"]  # List of accepted sender IDs
 
 
 class DefaultProto(BaseProto):
@@ -31,7 +32,7 @@ class DefaultProto(BaseProto):
     - Tool call result management
     """
 
-    def __init__(self, config: DefaultProtoConfig | dict, ws_config: Any = None):
+    def __init__(self, config: DefaultProtoConfig | dict, ws_config: Any):
         """
         Initialize the default protocol handler.
 
@@ -46,12 +47,13 @@ class DefaultProto(BaseProto):
         self._mcp_result_queue: asyncio.Queue = asyncio.Queue()
         self._stop_audio = False
 
-    def accept(self, websocket) -> dict | None:
+    async def accept(self, websocket) -> dict | None:
         """
         Check if the current websocket can be accepted by this proto.
 
         The default proto accepts all connections and extracts client info from
-        URL query parameters or uses default values.
+        URL query parameters or uses default values. If auth_token is configured,
+        it will perform authentication.
 
         Args:
             websocket: The WebSocket connection object.
@@ -64,23 +66,45 @@ class DefaultProto(BaseProto):
 
         try:
             # Extract sender_id and chat_id from URL query parameters
-            client_sender_id = "web_user"
-            client_chat_id = "default"
+            sender_id, chat_id = None, None
             # Get query parameters from the request path
             request_path = websocket.request.path
             if "?" in request_path:
                 query_params = parse_qs(request_path.split("?", 1)[1])
                 # Extract sender_id and chat_id from query params
                 if "sender_id" in query_params:
-                    client_sender_id = query_params["sender_id"][0]
+                    sender_id = query_params["sender_id"][0]
                 if "chat_id" in query_params:
-                    client_chat_id = query_params["chat_id"][0]
+                    chat_id = query_params["chat_id"][0]
 
-            return {
-                "sender_id": client_sender_id,
-                "chat_id": client_chat_id,
-                "authenticated": False,  # Will be set during auth process
-            }
+            # Check if sender_id is in the list of accepted senders
+            if sender_id not in self.config.accept_senders:
+                logger.warning(f"Sender {sender_id} not accepted from {websocket.remote_address}")
+                return None
+
+            # Handle authentication if token is configured
+            if self.config.auth_token:
+                try:
+                    auth_msg = await asyncio.wait_for(websocket.recv(), timeout=10.0)
+                    auth_data = json.loads(auth_msg)
+                    if (
+                        auth_data.get("type") == "auth"
+                        and auth_data.get("token") == self.config.auth_token
+                    ):
+                        logger.debug("Client authenticated successfully")
+                        sender_id = auth_data.get("sender_id", sender_id)
+                        chat_id = auth_data.get("chat_id", chat_id)
+                    else:
+                        logger.warning("Authentication failed")
+                        return None
+                except asyncio.TimeoutError:
+                    logger.warning("Authentication timeout")
+                    return None
+                except json.JSONDecodeError:
+                    logger.warning("Invalid authentication message")
+                    return None
+
+            return {"sender_id": sender_id, "chat_id": chat_id}
         except Exception as e:
             logger.warning("Failed to extract client info from websocket: {}", e)
             return None
