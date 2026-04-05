@@ -79,38 +79,31 @@ class WebSocketChannel(BaseChannel):
         self._mcp_result_queue: asyncio.Queue = asyncio.Queue()  # Queue for MCP results
         self._connected = False
         self._stop_audio = False
-        self._protos: dict[str, Any] = {}  # Protocol handlers for message processing
-
-        self._init_protos()
+        self._protos: dict[str, Any] = self._init_protos()
 
     def _init_protos(self) -> None:
         """Initialize protocol handlers discovered via ws_proto directory."""
         from nanobot.channels.ws_proto.registry import discover_all_protos
 
         # Initialize each discovered protocol handler
+        protos: dict[str, Any] = {}
         for name, cls in discover_all_protos().items():
             try:
-                # Get protocol-specific configuration (section)
-                proto_section = self.config.protos.get(name, {})
-
-                # Check if protocol is enabled
+                section = self.config.protos.get(name, {})
                 enabled = (
-                    proto_section.get("enabled", True)
-                    if isinstance(proto_section, dict)
-                    else getattr(proto_section, "enabled", True)
+                    section.get("enabled", True)
+                    if isinstance(section, dict)
+                    else getattr(section, "enabled", True)
                 )
                 if not enabled:
                     continue
                 # Initialize protocol with config and ws_config
-                self._protos[name] = cls(config=proto_section, ws_config=self.config)
-                # Set channel reference for the protocol handler
-                if hasattr(self._protos[name], "channel_ref"):
-                    self._protos[name].channel_ref = self
-                logger.info("{} protocol handler enabled", name)
+                protos[name] = cls(config=section, ws_config=self.config)
             except Exception as e:
                 logger.warning("{} protocol handler not available: {}", name, e)
 
-        logger.info("WebSocket protocol handlers initialized: {}", list(self._protos.keys()))
+        logger.info("WebSocket protocol handlers initialized: {}", list(protos.keys()))
+        return protos
 
     async def start(self) -> None:
         """Start the WebSocket channel with reconnection logic."""
@@ -203,11 +196,55 @@ class WebSocketChannel(BaseChannel):
             """Handle individual WebSocket connections."""
             logger.info("New WebSocket client connected from {}", websocket.remote_address)
 
-            # Extract client information from authentication or use defaults
-            client_sender_id = "web_user"
-            client_chat_id = "default"
-
             try:
+                """
+                for name, proto in self._protos.items():
+                    client_info = proto.accept(websocket)
+                    if client_info:
+                        print("should use the proto " + str(proto))
+                        self._clients[websocket] = client_info
+                        logger.info(f"Client accepted by {name} : {client_info}")
+                assert websocket in self._clients, "Can not find accept proto for client " + str(
+                    websocket
+                )
+                """
+
+                headers = dict(websocket.request.headers)
+                print("[TMINFO] headers " + str(headers), flush=True)
+
+                # Extract sender_id and chat_id from URL query parameters
+                client_sender_id = "web_user"
+                client_chat_id = "default"
+
+                try:
+                    # Get query parameters from the request path
+                    request_path = websocket.request.path
+                    if "?" in request_path:
+                        query_string = request_path.split("?", 1)[1]
+                        from urllib.parse import parse_qs
+
+                        query_params = parse_qs(query_string)
+
+                        # Extract sender_id and chat_id from query params
+                        if "sender_id" in query_params:
+                            client_sender_id = query_params["sender_id"][0]
+                        if "chat_id" in query_params:
+                            client_chat_id = query_params["chat_id"][0]
+                        print(
+                            "[TMINFO] Extracted from URL - sender_id: {}, chat_id: {}".format(
+                                client_sender_id, client_chat_id
+                            ),
+                            flush=True,
+                        )
+
+                        logger.info(
+                            "Extracted from URL - sender_id: {}, chat_id: {}",
+                            client_sender_id,
+                            client_chat_id,
+                        )
+                except Exception as e:
+                    logger.warning("Failed to extract query parameters: {}", e)
+
                 # Handle authentication if token is required
                 if self.config.auth_token:
                     try:
@@ -218,7 +255,8 @@ class WebSocketChannel(BaseChannel):
                             and auth_data.get("token") == self.config.auth_token
                         ):
                             logger.debug("Client authenticated successfully")
-                            # Extract sender_id and chat_id from auth message if provided
+                            # Extract sender_id and chat_id from auth message if provided,
+                            # otherwise use values from URL query parameters
                             client_sender_id = auth_data.get("sender_id", client_sender_id)
                             client_chat_id = auth_data.get("chat_id", client_chat_id)
                         else:

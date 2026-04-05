@@ -15,6 +15,8 @@ let audioRecorder: any = null
 
 // WebSocket connection state
 const wsUrl = ref('ws://localhost:8765')
+const senderId = ref('web_user')
+const chatId = ref('default')
 const isConnected = ref(false)
 const isConnecting = ref(false)
 const connectionError = ref<string | null>(null)
@@ -58,7 +60,16 @@ const connectWebSocket = () => {
     url: wsUrl.value
   }
 
-  ws = new WebSocket(wsUrl.value)
+  // Build WebSocket URL with query parameters
+  const urlParams = new URLSearchParams()
+  if (senderId.value) urlParams.append('sender_id', senderId.value)
+  if (chatId.value) urlParams.append('chat_id', chatId.value)
+
+  const fullWsUrl = wsUrl.value.includes('?')
+    ? `${wsUrl.value}&${urlParams.toString()}`
+    : `${wsUrl.value}?${urlParams.toString()}`
+
+  ws = new WebSocket(fullWsUrl)
 
   ws.onopen = () => {
     console.log('✅ WebSocket connected to WebSocketChannel')
