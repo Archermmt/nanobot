@@ -30,14 +30,14 @@ const props = defineProps<{
   showProgressMessages?: boolean
   isOnlineChatOn?: boolean
   msgHandlers?: string[]
+  senderId?: string
+  chatId?: string
 }>()
 
 const emit = defineEmits(['status-update', 'chat-state-change'])
 const messages = ref<Message[]>([])
 const chatState = ref<string>("Waiting")
 const sessionId = ref(`session_${Date.now()}`)
-const senderId = ref('web_user')  // Global sender ID
-const chatId = ref('default')  // Global chat ID
 const currentAudio = ref<HTMLAudioElement | null>(null)
 const chatInputRef = ref<InstanceType<typeof ChatInput> | null>(null)
 const pendingCommandsCount = ref(0)  // Track pending commands during connection
@@ -362,8 +362,8 @@ const sendMessage = async (
     } = {
       type: "message",
       message_id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      sender_id: senderId.value,
-      chat_id: chatId.value,
+      sender_id: props.senderId || 'web_user',
+      chat_id: props.chatId || 'default',
       content: text,
       media: mediaItems,
       metadata: {

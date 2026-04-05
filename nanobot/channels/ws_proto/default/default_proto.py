@@ -18,7 +18,7 @@ class DefaultProtoConfig(Base):
 
     enabled: bool = True  # Whether this protocol is enabled
     auth_token: str = ""  # Authentication token for WebSocket connection
-    accept_senders: list[str] = ["web_user"]  # List of accepted sender IDs
+    accept_senders: list[str] = ["nanoboard"]  # List of accepted sender IDs
 
 
 class DefaultProto(BaseProto):
@@ -228,114 +228,63 @@ class DefaultProto(BaseProto):
             "metadata": metadata,
         }
 
-    async def send_msg(self, msg: OutboundMessage) -> bool:
+    async def send_msg(self, msg: OutboundMessage, websocket: Any) -> dict:
         """
         Send a message through WebSocket.
 
         Args:
             msg: Outbound message to send.
+            websocket: The WebSocket connection object.
 
         Returns:
-            True if message was sent successfully, False otherwise.
+            info: A dictionary containing information about the sent message.
         """
-        if not self.channel_ref or not self.channel_ref._running:
-            logger.warning("Channel not running, cannot send message")
-            return False
 
-        # Get the appropriate websocket connection from channel
-        websocket = self.channel_ref._get_websocket_for_chat(msg.chat_id)
-        if not websocket:
-            logger.warning("No WebSocket connection available for chat_id: {}", msg.chat_id)
-            return False
-
+        if (
+            msg.metadata.get("msg_type", "text") == "audio"
+            and msg.metadata.get("encoder_type", "") == "opus"
+        ):
+            self._stop_audio = False
+            frame_duration = msg.metadata.get("frame_duration", 60)
+            tts_info = {"type": "tts", "chat_id": msg.chat_id}
+            await websocket.send(json.dumps({**tts_info, "state": "start"}))
+            await websocket.send(
+                json.dumps(
+                    {
+                        **tts_info,
+                        "state": "sentence_start",
+                        "text": msg.content,
+                        "metadata": msg.metadata,
+                    }
+                )
+            )
+            for media_item in msg.media:
+                if self._stop_audio:
+                    break
+                await websocket.send(media_item)
+                await asyncio.sleep(frame_duration / 1000.0)
+            await websocket.send(json.dumps({**tts_info, "state": "sentence_end"}))
+            await websocket.send(json.dumps({**tts_info, "state": "stop"}))
+            return {"success": True}
+        # Send common messages
         try:
-            # Handle audio messages with opus encoding
-            if (
-                msg.metadata.get("msg_type", "text") == "audio"
-                and msg.metadata.get("encoder_type", "") == "opus"
-            ):
-                return await self._send_audio_message(msg, websocket)
-            else:
-                return await self._send_text_message(msg, websocket)
+            media_items = []
+            if msg.media:
+                for media_item in msg.media:
+                    if isinstance(media_item, bytes):
+                        media_items.append(base64.b64encode(media_item).decode("utf-8"))
+                    else:
+                        media_items.append(media_item)
+            message_data = {
+                "type": "message",
+                "chat_id": msg.chat_id,
+                "content": msg.content,
+                "media": media_items,
+                "metadata": msg.metadata,
+                "timestamp": asyncio.get_event_loop().time(),
+            }
+            await websocket.send(json.dumps(message_data, ensure_ascii=False))
         except Exception as e:
             logger.error("Error sending WebSocket message: {}", e)
-            return False
-
-    async def _send_audio_message(self, msg: OutboundMessage, websocket: Any) -> bool:
-        """
-        Send audio message with TTS streaming.
-
-        Args:
-            msg: Outbound message containing audio data.
-            websocket: WebSocket connection.
-
-        Returns:
-            True if message was sent successfully.
-        """
-        self._stop_audio = False
-        frame_duration = msg.metadata.get("frame_duration", 60)
-
-        # Send TTS start signals
-        await websocket.send(
-            json.dumps({"type": "tts", "state": "start", "session_id": msg.chat_id})
-        )
-        await websocket.send(
-            json.dumps(
-                {
-                    "type": "tts",
-                    "state": "sentence_start",
-                    "session_id": msg.chat_id,
-                    "text": msg.content,
-                    "metadata": msg.metadata,
-                }
-            )
-        )
-
-        # Send audio frames
-        for media_item in msg.media:
-            if self._stop_audio:
-                break
-            await websocket.send(media_item)
-            await asyncio.sleep(frame_duration / 1000.0)
-
-        # Send TTS end signals
-        await websocket.send(
-            json.dumps({"type": "tts", "state": "sentence_end", "session_id": msg.chat_id})
-        )
-        await websocket.send(
-            json.dumps({"type": "tts", "state": "stop", "session_id": msg.chat_id})
-        )
-
-        return True
-
-    async def _send_text_message(self, msg: OutboundMessage, websocket: Any) -> bool:
-        """
-        Send text message with optional media.
-
-        Args:
-            msg: Outbound message containing text and/or media.
-            websocket: WebSocket connection.
-
-        Returns:
-            True if message was sent successfully.
-        """
-        # Convert media bytes to base64 for JSON serialization
-        media_items = []
-        if msg.media:
-            for media_item in msg.media:
-                if isinstance(media_item, bytes):
-                    media_items.append(base64.b64encode(media_item).decode("utf-8"))
-                else:
-                    media_items.append(media_item)
-
-        message_data = {
-            "type": "message",
-            "chat_id": msg.chat_id,
-            "content": msg.content,
-            "media": media_items,
-            "metadata": msg.metadata,
-            "timestamp": asyncio.get_event_loop().time(),
-        }
-
-        await websocket.send(json.dumps(message_data, ensure_ascii=False))
-        return True
+            return {"success": False}
+        return {"success": True}

@@ -64,16 +64,15 @@ class BaseProto(ABC):
         pass
 
     @abstractmethod
-    async def send_msg(self, msg: OutboundMessage) -> bool:
+    async def send_msg(self, msg: OutboundMessage, websocket: Any) -> dict:
         """
         Send a message through WebSocket.
 
-        Subclasses must implement this method to format and send messages.
-
         Args:
-            msg: Message to send.
+            msg: Outbound message to send.
+            websocket: The WebSocket connection object.
 
         Returns:
-            True if message was sent successfully, False otherwise.
+            info: A dictionary containing information about the sent message.
         """
         pass

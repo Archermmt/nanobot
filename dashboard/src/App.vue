@@ -15,8 +15,8 @@ let audioRecorder: any = null
 
 // WebSocket connection state
 const wsUrl = ref('ws://localhost:8765')
-const senderId = ref('web_user')
-const chatId = ref('default')
+const senderId = ref('nanoboard')
+const chatId = ref('nanochat')
 const isConnected = ref(false)
 const isConnecting = ref(false)
 const connectionError = ref<string | null>(null)
@@ -503,7 +503,8 @@ document.addEventListener('mouseup', stopDragCamera)
       <main class="flex-1 overflow-hidden bg-gray-900">
         <Chat ref="chatComponentRef" v-show="currentSection === 'chat'" @status-update="handleStatusUpdate"
           @ws-status-change="handleWsStatusChange" @chat-state-change="handlechatStateChange"
-          :show-progress-messages="!hideProgress" :is-online-chat-on="isOnlineChatOn" :msg-handlers="msgHandlers" />
+          :show-progress-messages="!hideProgress" :is-online-chat-on="isOnlineChatOn" :msg-handlers="msgHandlers"
+          :sender-id="senderId" :chat-id="chatId" />
         <div v-show="currentSection !== 'chat'" class="p-6 text-gray-500 text-center">
           <p class="text-lg">Section under construction</p>
           <p class="text-sm mt-2">{{ currentSection }} view coming soon...</p>

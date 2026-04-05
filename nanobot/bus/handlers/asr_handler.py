@@ -13,7 +13,7 @@ from nanobot.bus.events import InboundMessage
 from nanobot.bus.handlers.base_handler import BaseHandler
 from nanobot.config.schema import ASRHandlerConfig
 from nanobot.utils.log import CaptureOutput
-from nanobot.utils.media import get_media_dir, webm_to_wav
+from nanobot.utils.media import get_media_dir, pcm_to_wav, webm_to_wav
 
 
 class BaseASRHandler(BaseHandler):
@@ -208,6 +208,9 @@ class FunASRHandler(BaseASRHandler):
                         audio_bytes = io.BytesIO(f.read())
                 else:
                     audio_bytes = webm_to_wav(audio_bytes)
+            elif audio_format == "audio/pcm":
+                if self._save_speech:
+                    audio_file = pcm_to_wav(audio_bytes, audio_file)
             text = self._model.generate(
                 input=audio_bytes, cache={}, language="auto", use_itn=True, batch_size_s=60
             )

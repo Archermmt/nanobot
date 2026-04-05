@@ -9,9 +9,9 @@ from nanobot.utils.media import save_media
 from .extern_tool import ExternTool
 
 
-class WebUserTool(ExternTool):
+class NanoboardTool(ExternTool):
     """
-    WebUser tool that communicates via WebSocket.
+    Nanoboard tool that communicates via WebSocket.
 
     This tool wraps the WebSocket MCP (Model Context Protocol) functionality,
     allowing remote tool execution via WebSocket.
@@ -81,5 +81,5 @@ class WebUserTool(ExternTool):
             raise e
 
 
-# Automatically register with type 'web_user'
-ExternTool.register_type("web_user", WebUserTool)
+# Automatically register with type 'nanoboard'
+ExternTool.register_type("nanoboard", NanoboardTool)

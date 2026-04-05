@@ -244,20 +244,14 @@ class WebSocketChannel(BaseChannel):
         if msg_type == "heartbeat":
             await self._send_heartbeat_response()
             return
-
-        # Get client info
+        # Process message using protocol handler
         client_info = await self._get_client_info(websocket)
         if not client_info:
             logger.warning("No protocol handler accepted the connection")
             return
-        # Process message using protocol handler
-        proto_name = client_info.get("proto")
-        if proto_name and proto_name in self._protos:
-            kwargs = await self._protos[proto_name].receive_msg(msg_data, client_info, websocket)
-            if kwargs:
-                await self._handle_message(**kwargs)
-        else:
-            logger.warning("No protocol handler found for proto: {}", proto_name)
+        kwargs = await client_info["proto"].receive_msg(msg_data, client_info, websocket)
+        if kwargs:
+            await self._handle_message(**kwargs)
 
     async def send(self, msg: OutboundMessage) -> None:
         """Send a message through WebSocket."""
@@ -266,71 +260,20 @@ class WebSocketChannel(BaseChannel):
             return
 
         # Find the appropriate client connection based on chat_id
-        target_ws = None
+        proto, target_ws = None, None
         for ws, client_info in self._clients.items():
-            if client_info["chat_id"] == msg.chat_id or client_info["sender_id"] == msg.chat_id:
-                target_ws = ws
+            if client_info["chat_id"] == msg.chat_id:
+                target_ws, proto = ws, client_info["proto"]
                 break
-
-        if not target_ws:
-            logger.warning("No connected client found for chat_id: {}", msg.chat_id)
+        if not proto or not target_ws:
+            logger.warning("No proto or ws found for sender_id: {}", msg.chat_id)
             return
-
-        if (
-            msg.metadata.get("msg_type", "text") == "audio"
-            and msg.metadata.get("encoder_type", "") == "opus"
-        ):
-            self._stop_audio = False
-            frame_duration = msg.metadata.get("frame_duration", 60)
-            await target_ws.send(
-                json.dumps({"type": "tts", "state": "start", "session_id": msg.chat_id})
-            )
-            await target_ws.send(
-                json.dumps(
-                    {
-                        "type": "tts",
-                        "state": "sentence_start",
-                        "session_id": msg.chat_id,
-                        "text": msg.content,
-                        "metadata": msg.metadata,
-                    }
-                )
-            )
-            for media_item in msg.media:
-                if self._stop_audio:
-                    break
-                await target_ws.send(media_item)
-                await asyncio.sleep(frame_duration / 1000.0)
-            await target_ws.send(
-                json.dumps({"type": "tts", "state": "sentence_end", "session_id": msg.chat_id})
-            )
-            await target_ws.send(
-                json.dumps({"type": "tts", "state": "stop", "session_id": msg.chat_id})
-            )
-        else:
-            try:
-                # Convert media bytes to base64 for JSON serialization
-                media_items = []
-                if msg.media:
-                    for media_item in msg.media:
-                        if isinstance(media_item, bytes):
-                            import base64
-
-                            media_items.append(base64.b64encode(media_item).decode("utf-8"))
-                        else:
-                            media_items.append(media_item)
-                message_data = {
-                    "type": "message",
-                    "chat_id": msg.chat_id,
-                    "content": msg.content,
-                    "media": media_items,
-                    "metadata": msg.metadata,
-                    "timestamp": asyncio.get_event_loop().time(),
-                }
-                # Send message to the specific client
-                await target_ws.send(json.dumps(message_data, ensure_ascii=False))
-            except Exception as e:
-                logger.error("Error sending WebSocket message: {}", e)
+        info = await proto.send_msg(msg, target_ws)
+        if "broadcast_msg" in info:
+            for ws, client_info in self._clients.items():
+                if ws == target_ws:
+                    continue
+                await client_info["proto"].send_msg(info["broadcast_msg"], ws)
 
     async def _get_client_info(self, websocket) -> dict | None:
         """
@@ -344,10 +287,10 @@ class WebSocketChannel(BaseChannel):
             The returned dict includes 'proto' field indicating which proto accepted it.
         """
         if websocket not in self._clients:
-            for name, proto in self._protos.items():
+            for proto in self._protos.values():
                 client_info = await proto.accept(websocket)
                 if client_info:
-                    self._clients[websocket] = {**client_info, "proto": name}
+                    self._clients[websocket] = {**client_info, "proto": proto}
                     logger.info(f"Bind {websocket.remote_address} -> {self._clients[websocket]}")
         assert websocket in self._clients, "WebSocket not found in clients"
         return self._clients[websocket]

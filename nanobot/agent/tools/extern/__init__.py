@@ -1,7 +1,7 @@
 """External tools module."""
 
 from .extern_tool import ExternTool
-from .web_user_tool import WebUserTool
+from .nanoboard_tool import NanoboardTool
 from .xiaozhi_tool import XiaozhiTool
 
-__all__ = ["ExternTool", "XiaozhiTool", "WebUserTool"]
+__all__ = ["ExternTool", "XiaozhiTool", "NanoboardTool"]
