@@ -536,7 +536,7 @@ class AgentLoop:
             media=msg.media if msg.media else None,
             channel=msg.channel,
             chat_id=msg.chat_id,
-            features=self.features,
+            features=self.features.get(msg.sender_id, {}),
         )
 
         async def _bus_progress(content: str, *, tool_hint: bool = False) -> None:

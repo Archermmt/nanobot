@@ -212,7 +212,12 @@ class XiaoZhiProto(BaseProto):
         # Handle hello message
         if msg_type == TextMessageType.HELLO.value:
             await self._handle_hello_message(msg_data, websocket)
-            return None
+            return {
+                "sender_id": client_info["sender_id"],
+                "chat_id": client_info["chat_id"],
+                "content": "/update_features",
+                "metadata": {"features": {"need_tts": True}},
+            }
 
         # Handle MCP message
         if msg_type == TextMessageType.MCP.value:
