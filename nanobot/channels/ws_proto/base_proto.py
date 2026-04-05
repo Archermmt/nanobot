@@ -46,6 +46,24 @@ class BaseProto(ABC):
         """
         pass
 
+    def accept(self, websocket) -> dict | None:
+        """
+        Check if the current websocket can be accepted by this proto.
+
+        This method is called during WebSocket connection establishment to determine
+        if this protocol handler should handle the connection.
+
+        Args:
+            websocket: The WebSocket connection object.
+
+        Returns:
+            A dictionary containing client information if accepted, None otherwise.
+            When returning a dict, it should contain at least 'sender_id' and 'chat_id'.
+        """
+        # Default implementation returns None (not accepted)
+        # Subclasses should override this method to provide custom acceptance logic
+        return None
+
     @abstractmethod
     async def send_msg(self, msg: OutboundMessage) -> bool:
         """

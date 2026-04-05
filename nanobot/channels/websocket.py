@@ -197,20 +197,27 @@ class WebSocketChannel(BaseChannel):
             logger.info("New WebSocket client connected from {}", websocket.remote_address)
 
             try:
-                """
-                for name, proto in self._protos.items():
-                    client_info = proto.accept(websocket)
-                    if client_info:
-                        print("should use the proto " + str(proto))
-                        self._clients[websocket] = client_info
-                        logger.info(f"Client accepted by {name} : {client_info}")
-                assert websocket in self._clients, "Can not find accept proto for client " + str(
-                    websocket
-                )
-                """
+                # Try to accept the connection with each protocol handler
+                if websocket in self._clients:
+                    logger.info(
+                        "Use cached proto {} for websocket {}",
+                        self._clients[websocket]["proto"],
+                        websocket,
+                    )
+                else:
+                    for name, proto in self._protos.items():
+                        client_info = proto.accept(websocket)
+                        if client_info:
+                            logger.info("Client accepted by {} : {}", name, client_info)
+                            self._clients[websocket] = {**client_info, "proto": name}
+                            break
+                    if websocket not in self._clients:
+                        logger.warning("No protocol handler accepted the connection")
+                        await websocket.close(4001, "No protocol handler available")
+                        return
 
+                """
                 headers = dict(websocket.request.headers)
-                print("[TMINFO] headers " + str(headers), flush=True)
 
                 # Extract sender_id and chat_id from URL query parameters
                 client_sender_id = "web_user"
@@ -255,10 +262,19 @@ class WebSocketChannel(BaseChannel):
                             and auth_data.get("token") == self.config.auth_token
                         ):
                             logger.debug("Client authenticated successfully")
-                            # Extract sender_id and chat_id from auth message if provided,
-                            # otherwise use values from URL query parameters
-                            client_sender_id = auth_data.get("sender_id", client_sender_id)
-                            client_chat_id = auth_data.get("chat_id", client_chat_id)
+                            # Update client info with authenticated status
+                            if websocket in self._clients:
+                                self._clients[websocket]["authenticated"] = True
+                                # Extract sender_id and chat_id from auth message if provided,
+                                # otherwise use values from URL query parameters
+                                self._clients[websocket]["sender_id"] = auth_data.get(
+                                    "sender_id",
+                                    self._clients[websocket].get("sender_id", client_sender_id),
+                                )
+                                self._clients[websocket]["chat_id"] = auth_data.get(
+                                    "chat_id",
+                                    self._clients[websocket].get("chat_id", client_chat_id),
+                                )
                         else:
                             logger.warning("Authentication failed")
                             await websocket.close(4001, "Authentication required")
@@ -272,18 +288,20 @@ class WebSocketChannel(BaseChannel):
                         await websocket.close(4001, "Invalid authentication")
                         return
 
-                # Register client
-                client_info = {
-                    "sender_id": client_sender_id,
-                    "chat_id": client_chat_id,
-                    "authenticated": True,
-                }
-                self._clients[websocket] = client_info
-                logger.info(
-                    "Client registered: sender_id={}, chat_id={}",
-                    client_sender_id,
-                    client_chat_id,
-                )
+                # Register client (update with final values)
+                if websocket in self._clients:
+                    # Ensure we have the latest sender_id and chat_id
+                    if "sender_id" not in self._clients[websocket]:
+                        self._clients[websocket]["sender_id"] = client_sender_id
+                    if "chat_id" not in self._clients[websocket]:
+                        self._clients[websocket]["chat_id"] = client_chat_id
+
+                    logger.info(
+                        "Client registered: sender_id={}, chat_id={}",
+                        self._clients[websocket]["sender_id"],
+                        self._clients[websocket]["chat_id"],
+                    )
+                """
 
                 # Start heartbeat for this connection
                 if self.config.heartbeat_interval > 0:

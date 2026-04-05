@@ -46,6 +46,45 @@ class DefaultProto(BaseProto):
         self._mcp_result_queue: asyncio.Queue = asyncio.Queue()
         self._stop_audio = False
 
+    def accept(self, websocket) -> dict | None:
+        """
+        Check if the current websocket can be accepted by this proto.
+
+        The default proto accepts all connections and extracts client info from
+        URL query parameters or uses default values.
+
+        Args:
+            websocket: The WebSocket connection object.
+
+        Returns:
+            A dictionary containing client information if accepted, None otherwise.
+        """
+
+        from urllib.parse import parse_qs
+
+        try:
+            # Extract sender_id and chat_id from URL query parameters
+            client_sender_id = "web_user"
+            client_chat_id = "default"
+            # Get query parameters from the request path
+            request_path = websocket.request.path
+            if "?" in request_path:
+                query_params = parse_qs(request_path.split("?", 1)[1])
+                # Extract sender_id and chat_id from query params
+                if "sender_id" in query_params:
+                    client_sender_id = query_params["sender_id"][0]
+                if "chat_id" in query_params:
+                    client_chat_id = query_params["chat_id"][0]
+
+            return {
+                "sender_id": client_sender_id,
+                "chat_id": client_chat_id,
+                "authenticated": False,  # Will be set during auth process
+            }
+        except Exception as e:
+            logger.warning("Failed to extract client info from websocket: {}", e)
+            return None
+
     async def receive_msg(self, msg_data: dict, client_info: dict) -> None:
         """
         Receive and process incoming message from WebSocket.
