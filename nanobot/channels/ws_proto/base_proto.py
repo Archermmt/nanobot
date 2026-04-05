@@ -49,6 +49,24 @@ class BaseProto(ABC):
         """
         return None
 
+    async def start(self) -> None:
+        """
+        Start the protocol handler.
+
+        This method is called when the WebSocket channel starts.
+        Subclasses can override this to perform initialization tasks.
+        """
+        pass
+
+    async def stop(self) -> None:
+        """
+        Stop the protocol handler.
+
+        This method is called when the WebSocket channel stops.
+        Subclasses can override this to perform cleanup tasks.
+        """
+        pass
+
     @abstractmethod
     async def receive_msg(self, msg_data: dict, client_info: dict, websocket) -> dict | None:
         """

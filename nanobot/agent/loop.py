@@ -492,8 +492,9 @@ class AgentLoop:
         session = self.sessions.get_or_create(key)
 
         # Add features
-        if self.features:
-            msg.metadata.update({k: v for k, v in self.features.items() if k not in msg.metadata})
+        if msg.sender_id in self.features:
+            features = self.features[msg.sender_id]
+            msg.metadata.update({k: v for k, v in features.items() if k not in msg.metadata})
 
         # Slash commands
         raw = msg.content.strip()

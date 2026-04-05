@@ -3,7 +3,7 @@ import asyncio
 from aiohttp import web
 from loguru import logger
 
-from nanobot.channels.ws_proto.xiaozhi.core.schema import XiaoZhiConfig
+from nanobot.channels.ws_proto.xiaozhi.core.schema import XiaoZhiProtoConfig
 
 from .api.ota_handler import OTAHandler
 
@@ -11,14 +11,15 @@ TAG = __name__
 
 
 class SimpleHttpServer:
-    def __init__(self, config: XiaoZhiConfig):
+    def __init__(self, config: XiaoZhiProtoConfig, host: str, port: int):
         self.config = config
+        self.host = host
+        self.port = port
         self.ota_handler = OTAHandler(config)
 
     async def start(self):
         try:
             read_config_from_api = self.config.read_config_from_api
-            host = self.config.host
             port = self.config.http_port
 
             if port:
@@ -46,9 +47,9 @@ class SimpleHttpServer:
                 # 运行服务
                 runner = web.AppRunner(app)
                 await runner.setup()
-                site = web.TCPSite(runner, host, port)
+                site = web.TCPSite(runner, self.host, port)
                 await site.start()
-                logger.info(f"HTTP服务器已启动，监听地址: {host}:{port}")
+                logger.info(f"HTTP服务器已启动，监听地址: {self.host}:{port}")
 
                 # 保持服务运行
                 while True:

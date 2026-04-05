@@ -215,11 +215,15 @@ async def cmd_register_extern_tools(ctx: CommandContext) -> OutboundMessage:
 async def cmd_update_features(ctx: CommandContext) -> OutboundMessage:
     """Update features."""
 
+    sender_id = ctx.msg.sender_id
     if ctx.msg.metadata.get("reset", False):
-        ctx.loop.features = {}
+        ctx.loop.features[sender_id] = {}
     else:
-        ctx.loop.features.update(ctx.msg.metadata.get("features", {}))
-        content = "Update features: " + ",".join([f"{k}={v}" for k, v in ctx.loop.features.items()])
+        features = ctx.loop.features.setdefault(sender_id, {})
+        features.update(ctx.msg.metadata.get("features", {}))
+        content = "Update features({}): {}".format(
+            sender_id, ",".join([f"{k}={v}" for k, v in features.items()])
+        )
         logger.info(content)
     return OutboundMessage(
         channel=ctx.msg.channel,

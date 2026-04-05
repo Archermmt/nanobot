@@ -71,13 +71,11 @@ class WebSocketChannel(BaseChannel):
         super().__init__(config, bus)
         self.config: WebSocketConfig = config
         self._ws_client = None
-        self._clients: dict[any, dict] = {}  # Track multiple client connections
-        self._protos: dict[str, Any] = self._init_protos()
+        self._clients: dict[any, dict] = {}
+        self._protos: dict[str, Any] = {}
         self._connected = False
         self._heartbeat_task: asyncio.Task | None = None
         self._reconnect_task: asyncio.Task | None = None
-        self._mcp_result_queue: asyncio.Queue = asyncio.Queue()  # Queue for MCP results
-        self._stop_audio = False
 
     def _init_protos(self) -> None:
         """Initialize protocol handlers discovered via ws_proto directory."""
@@ -106,6 +104,10 @@ class WebSocketChannel(BaseChannel):
     async def start(self) -> None:
         """Start the WebSocket channel with reconnection logic."""
         self._running = True
+        # Start all protocol handlers
+        self._protos = self._init_protos()
+        for proto in self._protos.values():
+            await proto.start()
         if self.config.as_server:
             await self._start_server()
         else:
@@ -116,6 +118,9 @@ class WebSocketChannel(BaseChannel):
 
     async def stop(self) -> None:
         """Stop the WebSocket channel."""
+        # Stop all protocol handlers
+        for proto in self._protos.values():
+            await proto.stop()
 
         # Cancel tasks
         if self._heartbeat_task:
