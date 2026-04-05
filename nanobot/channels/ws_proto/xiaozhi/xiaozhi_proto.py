@@ -236,6 +236,7 @@ class XiaoZhiProto(BaseProto):
                 "sender_id": client_info["sender_id"],
                 "chat_id": client_info["chat_id"],
                 "content": "/vad_reset",
+                "metadata": {"msg_type": "audio_clip"},
             }
 
         if msg_data.get("state") != "detect":
@@ -444,4 +445,7 @@ class XiaoZhiProto(BaseProto):
             await websocket.send(
                 json.dumps({"type": "stt", "text": msg.content, "session_id": self.session_id})
             )
-        return {"success": True}
+        broadcast_msg = msg
+        broadcast_msg.media = []
+        broadcast_msg.metadata.update({"msg_type": "text"})
+        return {"success": True, "broadcast_msg": broadcast_msg}

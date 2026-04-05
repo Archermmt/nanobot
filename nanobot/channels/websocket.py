@@ -274,7 +274,7 @@ class WebSocketChannel(BaseChannel):
             logger.warning("No proto or ws found for sender_id: {}", msg.chat_id)
             return
         info = await proto.send_msg(msg, target_ws)
-        if "broadcast_msg" in info:
+        if info.get("broadcast_msg"):
             for ws, client_info in self._clients.items():
                 if ws == target_ws:
                     continue
