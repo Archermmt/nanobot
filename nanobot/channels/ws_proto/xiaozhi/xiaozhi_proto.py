@@ -136,9 +136,6 @@ class XiaoZhiProto(BaseProto):
 
             # Validate device-id
             if not device_id:
-                logger.warning("Connection rejected: missing device-id")
-                await websocket.send("Error: device-id required")
-                await websocket.close()
                 return None
 
             # Authenticate if enabled
@@ -147,8 +144,6 @@ class XiaoZhiProto(BaseProto):
                     await self._authenticate(device_id, client_id, authorization)
                 except AuthenticationError as e:
                     logger.warning("Authentication failed for device {}: {}", device_id, str(e))
-                    await websocket.send(f"Authentication failed: {str(e)}")
-                    await websocket.close()
                     return None
             return {"sender_id": self.session_id, "chat_id": client_id or device_id}
         except Exception as e:
@@ -206,11 +201,11 @@ class XiaoZhiProto(BaseProto):
         msg_type = msg_data.get("type", TextMessageType.LISTEN.value)
 
         # Handle audio_clip message type
-        if msg_type == "audio_clip":
+        if msg_type == "bytes":
             return {
                 "sender_id": client_info["sender_id"],
                 "chat_id": client_info["chat_id"],
-                "content": msg_data["bytes"],
+                "content": msg_data["data"],
                 "metadata": {"msg_type": "audio_clip", "need_tts": True},
             }
 
@@ -268,7 +263,7 @@ class XiaoZhiProto(BaseProto):
             response["audio_params"] = audio_params
         self.features = msg_data.get("features", {})
         if self.features.get("mcp"):
-            asyncio.create_task(self._send_mcp_initialize_messawebsocketge())
+            asyncio.create_task(self._send_mcp_initialize_message(websocket))
         try:
             await websocket.send(json.dumps(response, ensure_ascii=False))
         except Exception as e:
@@ -299,7 +294,8 @@ class XiaoZhiProto(BaseProto):
                 logger.debug(f"Client MCP server info: name={name}, version={version}")
             await asyncio.sleep(1)
             logger.debug("Initialization complete, start requesting MCP tool list")
-            await self._send_mcp_message({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
+            msg = {"jsonrpc": "2.0", "id": 2, "method": "tools/list"}
+            await self._send_mcp_message(msg, websocket)
             return
 
         if msg_id == 2:  # mcpToolsListID

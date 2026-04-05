@@ -13,9 +13,10 @@ from aiohttp import web
 from loguru import logger
 
 from nanobot.channels.ws_proto.xiaozhi.core.schema import XiaoZhiProtoConfig
+from nanobot.utils.connect import get_local_ip
 
 from ..auth import AuthManager
-from ..utils.util import get_local_ip, get_vision_url
+from ..utils.util import get_vision_url
 from .base_handler import BaseHandler
 
 TAG = __name__
@@ -49,10 +50,9 @@ def _is_higher_version(a: str, b: str) -> bool:
 
 
 class OTAHandler(BaseHandler):
-    def __init__(self, config: XiaoZhiProtoConfig, host: str, port: int):
+    def __init__(self, config: XiaoZhiProtoConfig, port: int):
         super().__init__(config)
-        self.host = host
-        self.port = port
+        self.host, self.port = get_local_ip(), port
         # firmware storage
         self.bin_dir = Path(self.config.depends_folder).expanduser() / "bin"
         # cache structure: { 'updated_at': timestamp, 'ttl': seconds, 'files_by_model': { model: [(version, filename), ...] } }
@@ -127,8 +127,7 @@ class OTAHandler(BaseHandler):
         Returns:
             str: websocket地址
         """
-        local_ip = self.host or get_local_ip()
-        return f"ws://{local_ip}:{self.port}/xiaozhi/v1/"
+        return f"ws://{self.host}:{self.port}/xiaozhi/v1/"
 
     async def handle_post(self, request):
         """处理 OTA POST 请求
@@ -263,7 +262,7 @@ class OTAHandler(BaseHandler):
             else:  # 未配置 mqtt_gateway，下发 WebSocket
                 # 如果开启了认证，则进行认证校验
                 token = ""
-                if self.config.auth_enable:
+                if self.config.auth_enabled:
                     allowed_devices = set(self.config.allowed_devices)
                     auth = AuthManager(
                         secret_key=self.config.auth_key, expire_seconds=self.config.expire_seconds

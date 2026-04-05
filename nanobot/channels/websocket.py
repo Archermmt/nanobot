@@ -11,6 +11,7 @@ from nanobot.bus.events import OutboundMessage
 from nanobot.bus.queue import MessageBus
 from nanobot.channels.base import BaseChannel
 from nanobot.config.schema import Base
+from nanobot.utils.connect import get_local_ip
 
 
 class WebSocketConfig(Base):
@@ -69,13 +70,13 @@ class WebSocketChannel(BaseChannel):
         if isinstance(config, dict):
             config = WebSocketConfig.model_validate(config)
         super().__init__(config, bus)
-        self.config: WebSocketConfig = config
         self._ws_client = None
         self._clients: dict[any, dict] = {}
         self._protos: dict[str, Any] = {}
         self._connected = False
         self._heartbeat_task: asyncio.Task | None = None
         self._reconnect_task: asyncio.Task | None = None
+        self.host, self.port = config.host, config.port
 
     def _init_protos(self) -> None:
         """Initialize protocol handlers discovered via ws_proto directory."""
@@ -184,9 +185,8 @@ class WebSocketChannel(BaseChannel):
 
         # Start server
         try:
-            host, port = self.config.host, self.config.port
-            async with websockets.serve(handler, host, port, max_size=20 * 1024 * 1024):
-                logger.info(f"WebSocket server started and listening on {host}:{port}")
+            async with websockets.serve(handler, self.host, self.port, max_size=20 * 1024 * 1024):
+                logger.info(f"WebSocket server started and listening on {self.host}:{self.port}")
                 while self._running:
                     await asyncio.sleep(1)
         except Exception as e:
@@ -197,7 +197,7 @@ class WebSocketChannel(BaseChannel):
         """Connect to WebSocket server with retry logic."""
         import websockets
 
-        server_url = f"ws://{self.config.host}:{self.config.port}"
+        server_url = f"ws://{self.host}:{self.port}"
         while self._running and not self._connected:
             try:
                 logger.info("Connecting to WebSocket server at {}", server_url)
