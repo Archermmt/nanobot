@@ -109,98 +109,108 @@ class DefaultProto(BaseProto):
             logger.warning("Failed to extract client info from websocket: {}", e)
             return None
 
-    async def receive_msg(self, msg_data: dict, client_info: dict) -> None:
+    async def receive_msg(self, msg_data: dict, client_info: dict, websocket) -> dict | None:
         """
         Receive and process incoming message from WebSocket.
 
         Args:
             msg_data: Parsed message data dictionary.
             client_info: Client connection information (sender_id, chat_id, etc.).
+            websocket: The WebSocket connection object.
         """
+
         msg_type = msg_data.get("type", "message")
-        sender_id = msg_data.get("sender_id", client_info.get("sender_id", "default_user"))
-        chat_id = msg_data.get("chat_id", client_info.get("chat_id", "default"))
+        sender_id = msg_data.get("sender_id", client_info["sender_id"])
+        chat_id = msg_data.get("chat_id", client_info["chat_id"])
         content = msg_data.get("content", "")
         media = msg_data.get("media", [])
         metadata = msg_data.get("metadata", {})
 
-        # Handle binary/audio clip messages
         if msg_type == "bytes":
-            await self.channel_ref._handle_message(
-                sender_id=sender_id,
-                chat_id=chat_id,
-                content=msg_data["data"],
-                metadata={"msg_type": "audio_clip"},
-            )
-            return
+            return {
+                "sender_id": sender_id,
+                "chat_id": chat_id,
+                "content": msg_data["data"],
+                "metadata": {"msg_type": "audio_clip"},
+            }
 
-        # Handle stop audio command
         if content == "/stop_audio":
             self._stop_audio = True
-            return
+            return None
 
-        # Handle external tool registration
         if content == "/register_extern_tools":
-            await self._handle_register_extern_tools(sender_id, chat_id, metadata)
-            return
+            mcp_tools, tools_data = [], metadata["tools"]
+            for i, tool in enumerate(tools_data):
+                if not isinstance(tool, dict):
+                    continue
+                name = tool.get("name", "")
+                description = tool.get("description", "")
+                input_schema = {"type": "object", "properties": {}, "required": []}
+                if "inputSchema" in tool and isinstance(tool["inputSchema"], dict):
+                    schema = tool["inputSchema"]
+                    input_schema["type"] = schema.get("type", "object")
+                    input_schema["properties"] = schema.get("properties", {})
+                    input_schema["required"] = [
+                        s for s in schema.get("required", []) if isinstance(s, str)
+                    ]
+                new_tool = {"name": name, "description": description, "inputSchema": input_schema}
+                mcp_tools.append(new_tool)
+            return {
+                "sender_id": sender_id,
+                "chat_id": chat_id,
+                "content": "/register_extern_tools",
+                "metadata": {
+                    "type": sender_id,
+                    "kwargs": {
+                        "websocket": websocket,
+                        "timeout": 30,
+                        "result_queue": self._mcp_result_queue,
+                    },
+                    "tools": mcp_tools,
+                },
+            }
 
-        # Handle tool call results
         if msg_type == "tool_call":
-            await self._handle_tool_call_result(msg_data, metadata)
-            return
+            # Put result into queue for tool to fetch
+            try:
+                tool_name = msg_data.get("name") or metadata.get("tool_name")
+                await self._mcp_result_queue.put(
+                    {"msg_id": tool_name, "result": msg_data.get("result", {})}
+                )
+                logger.debug(f"Put tool call result into queue, tool_name={tool_name}")
+            except Exception as e:
+                logger.error(f"Failed to put tool call result into queue: {e}")
+            return None
 
-        # Ignore non-message types
         if msg_type != "message":
-            return
+            # Ignore unknown message types
+            return None
 
-        # Process regular messages
-        await self._process_text_message(sender_id, chat_id, content, media, metadata)
-
-    async def _process_text_message(
-        self, sender_id: str, chat_id: str, content: str, media: list, metadata: dict
-    ) -> None:
-        """
-        Process text message with optional media attachments.
-
-        Args:
-            sender_id: Message sender identifier.
-            chat_id: Chat session identifier.
-            content: Message text content.
-            media: List of media items.
-            metadata: Additional message metadata.
-        """
         meta_type = metadata.get("msg_type", "text")
-
         # Skip empty messages (unless it's a media message)
         if not content and not media and not metadata:
-            return
+            return None
 
-        # Handle audio-only messages
         if not content and meta_type == "audio":
-            await self.channel_ref._handle_message(
-                sender_id=sender_id,
-                chat_id=chat_id,
-                content=content,
-                media=media,
-                metadata=metadata,
-            )
-            return
+            # Handle the message
+            return {
+                "sender_id": sender_id,
+                "chat_id": chat_id,
+                "content": content,
+                "media": media,
+                "metadata": metadata,
+            }
 
         # Handle base64-encoded media (images, audio, files)
-        content_parts = []
-        media_paths = []
-
+        # Convert base64 data to temporary files
+        content_parts, media_paths = [], []
         if content:
             content_parts.append(content)
         elif media:
             content_parts.append("Just save the following files, do nothing else: ")
-
         if media:
             for media_item in media:
-                media_data = media_item["data"]
-                filename = media_item.get("file_name", "")
-
-                # Check if media is base64 data (data URL format: data:<mime>;base64,<data>)
+                media_data, filename = media_item["data"], media_item.get("file_name", "")
                 if isinstance(media_data, str) and media_data.startswith("data:"):
                     try:
                         file_path, filename = save_media(media_data, filename)
@@ -209,19 +219,14 @@ class DefaultProto(BaseProto):
                     except Exception as e:
                         logger.error("Failed to process base64 media: {}", e)
                 else:
-                    # Already a file path
                     media_paths.append(media_item)
-
-        content = "\n".join(content_parts) if content_parts else ""
-
-        # Forward to message bus
-        await self.channel_ref._handle_message(
-            sender_id=sender_id,
-            chat_id=chat_id,
-            content=content,
-            media=media_paths,
-            metadata=metadata,
-        )
+        return {
+            "sender_id": sender_id,
+            "chat_id": chat_id,
+            "content": "\n".join(content_parts) if content_parts else "",
+            "media": media_paths,
+            "metadata": metadata,
+        }
 
     async def send_msg(self, msg: OutboundMessage) -> bool:
         """
@@ -334,53 +339,3 @@ class DefaultProto(BaseProto):
 
         await websocket.send(json.dumps(message_data, ensure_ascii=False))
         return True
-
-    async def _handle_register_extern_tools(self, sender_id: str, chat_id: str, metadata: dict):
-        """Handle external tool registration request."""
-        mcp_tools = []
-        tools_data = metadata.get("tools", [])
-
-        for i, tool in enumerate(tools_data):
-            if not isinstance(tool, dict):
-                continue
-
-            name = tool.get("name", "")
-            description = tool.get("description", "")
-            input_schema = {"type": "object", "properties": {}, "required": []}
-
-            if "inputSchema" in tool and isinstance(tool["inputSchema"], dict):
-                schema = tool["inputSchema"]
-                input_schema["type"] = schema.get("type", "object")
-                input_schema["properties"] = schema.get("properties", {})
-                input_schema["required"] = [
-                    s for s in schema.get("required", []) if isinstance(s, str)
-                ]
-
-            new_tool = {"name": name, "description": description, "inputSchema": input_schema}
-            mcp_tools.append(new_tool)
-
-        await self.channel_ref._handle_message(
-            sender_id=sender_id,
-            chat_id=chat_id,
-            content="/register_extern_tools",
-            metadata={
-                "type": "websocket",
-                "kwargs": {
-                    "websocket": self.channel_ref._server,
-                    "timeout": 30,
-                    "result_queue": self._mcp_result_queue,
-                },
-                "tools": mcp_tools,
-            },
-        )
-
-    async def _handle_tool_call_result(self, msg_data: dict, metadata: dict):
-        """Handle tool call result and put it into queue."""
-        try:
-            tool_name = msg_data.get("name") or metadata.get("tool_name")
-            await self._mcp_result_queue.put(
-                {"msg_id": tool_name, "result": msg_data.get("result", {})}
-            )
-            logger.debug(f"Put tool call result into queue, tool_name={tool_name}")
-        except Exception as e:
-            logger.error(f"Failed to put tool call result into queue: {e}")

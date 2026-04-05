@@ -33,19 +33,6 @@ class BaseProto(ABC):
         self.config = config
         self.ws_config = ws_config
 
-    @abstractmethod
-    async def receive_msg(self, msg_data: dict, client_info: dict) -> None:
-        """
-        Receive and process incoming message from WebSocket.
-
-        Subclasses must implement this method to parse and handle received messages.
-
-        Args:
-            msg_data: Raw message data (JSON string or binary data).
-            client_info: Client connection information (sender_id, chat_id, etc.).
-        """
-        pass
-
     async def accept(self, websocket) -> dict | None:
         """
         Check if the current websocket can be accepted by this proto.
@@ -60,9 +47,21 @@ class BaseProto(ABC):
             A dictionary containing client information if accepted, None otherwise.
             When returning a dict, it should contain at least 'sender_id' and 'chat_id'.
         """
-        # Default implementation returns None (not accepted)
-        # Subclasses should override this method to provide custom acceptance logic
         return None
+
+    @abstractmethod
+    async def receive_msg(self, msg_data: dict, client_info: dict, websocket) -> dict | None:
+        """
+        Receive and process incoming message from WebSocket.
+
+        Subclasses must implement this method to parse and handle received messages.
+
+        Args:
+            msg_data: Raw message data (JSON string or binary data).
+            client_info: Client connection information (sender_id, chat_id, etc.).
+            websocket: The WebSocket connection object.
+        """
+        pass
 
     @abstractmethod
     async def send_msg(self, msg: OutboundMessage) -> bool:

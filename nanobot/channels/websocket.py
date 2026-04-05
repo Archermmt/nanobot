@@ -11,7 +11,6 @@ from nanobot.bus.events import OutboundMessage
 from nanobot.bus.queue import MessageBus
 from nanobot.channels.base import BaseChannel
 from nanobot.config.schema import Base
-from nanobot.utils.media import save_media
 
 
 class WebSocketConfig(Base):
@@ -240,125 +239,25 @@ class WebSocketChannel(BaseChannel):
             logger.error("Error processing message: {}", e)
         if not msg_data:
             return
-        client_info = await self._get_client_info(websocket)
-        print(f"[TMINFO] should process msg {msg_data} with {client_info}", flush=True)
-
+        # Common message processing
         msg_type = msg_data.get("type", "message")
-        sender_id = msg_data.get("sender_id", client_info["sender_id"])
-        chat_id = msg_data.get("chat_id", client_info["chat_id"])
-        content = msg_data.get("content", "")
-        media = msg_data.get("media", [])
-        metadata = msg_data.get("metadata", {})
-
-        if msg_type == "bytes":
-            await self._handle_message(
-                sender_id=sender_id,
-                chat_id=chat_id,
-                content=msg_data["data"],
-                metadata={"msg_type": "audio_clip"},
-            )
-            return
-        if content == "/stop_audio":
-            self._stop_audio = True
-            return
-        if content == "/register_extern_tools":
-            mcp_tools, tools_data = [], metadata["tools"]
-            for i, tool in enumerate(tools_data):
-                if not isinstance(tool, dict):
-                    continue
-                name = tool.get("name", "")
-                description = tool.get("description", "")
-                input_schema = {"type": "object", "properties": {}, "required": []}
-                if "inputSchema" in tool and isinstance(tool["inputSchema"], dict):
-                    schema = tool["inputSchema"]
-                    input_schema["type"] = schema.get("type", "object")
-                    input_schema["properties"] = schema.get("properties", {})
-                    input_schema["required"] = [
-                        s for s in schema.get("required", []) if isinstance(s, str)
-                    ]
-                new_tool = {"name": name, "description": description, "inputSchema": input_schema}
-                mcp_tools.append(new_tool)
-            await self._handle_message(
-                sender_id=sender_id,
-                chat_id=chat_id,
-                content="/register_extern_tools",
-                metadata={
-                    "type": "websocket",
-                    "kwargs": {
-                        "websocket": self._ws_client,
-                        "timeout": 30,
-                        "result_queue": self._mcp_result_queue,
-                    },
-                    "tools": mcp_tools,
-                },
-            )
-            return
         if msg_type == "heartbeat":
-            # Respond to heartbeat
             await self._send_heartbeat_response()
             return
-        if msg_type == "tool_call":
-            # Put result into queue for tool to fetch
-            try:
-                tool_name = msg_data.get("name") or metadata.get("tool_name")
-                await self._mcp_result_queue.put(
-                    {"msg_id": tool_name, "result": msg_data.get("result", {})}
-                )
-                logger.debug(f"Put tool call result into queue, tool_name={tool_name}")
-            except Exception as e:
-                logger.error(f"Failed to put tool call result into queue: {e}")
-        if msg_type != "message":
-            # Ignore unknown message types
+
+        # Get client info
+        client_info = await self._get_client_info(websocket)
+        if not client_info:
+            logger.warning("No protocol handler accepted the connection")
             return
-
-        meta_type = metadata.get("msg_type", "text")
-        # Skip empty messages (unless it's a media message)
-        if not content and not media and not metadata:
-            return
-
-        if not content and meta_type == "audio":
-            # Handle the message
-            await self._handle_message(
-                sender_id=sender_id,
-                chat_id=chat_id,
-                content=content,
-                media=media,
-                metadata=metadata,
-            )
-            return
-
-        # Handle base64-encoded media (images, audio, files)
-        # Convert base64 data to temporary files
-        content_parts = []
-        media_paths = []
-        if content:
-            content_parts.append(content)
-        elif media:
-            content_parts.append("Just save the following files, do nothing else: ")
-        if media:
-            for media_item in media:
-                media_data, filename = media_item["data"], media_item.get("file_name", "")
-                # Check if media is base64 data (data URL format: data:<mime>;base64,<data>)
-                if isinstance(media_data, str) and media_data.startswith("data:"):
-                    try:
-                        file_path, filename = save_media(media_data, filename)
-                        media_paths.append(str(file_path))
-                        content_parts.append(f"{filename}({meta_type}) saved to {file_path}")
-                    except Exception as e:
-                        logger.error("Failed to process base64 media: {}", e)
-                else:
-                    # Already a file path
-                    media_paths.append(media_item)
-
-        content = "\n".join(content_parts) if content_parts else ""
-        # Forward to message bus
-        await self._handle_message(
-            sender_id=sender_id,
-            chat_id=chat_id,
-            content=content,
-            media=media_paths,
-            metadata=metadata,
-        )
+        # Process message using protocol handler
+        proto_name = client_info.get("proto")
+        if proto_name and proto_name in self._protos:
+            kwargs = await self._protos[proto_name].receive_msg(msg_data, client_info, websocket)
+            if kwargs:
+                await self._handle_message(**kwargs)
+        else:
+            logger.warning("No protocol handler found for proto: {}", proto_name)
 
     async def send(self, msg: OutboundMessage) -> None:
         """Send a message through WebSocket."""
