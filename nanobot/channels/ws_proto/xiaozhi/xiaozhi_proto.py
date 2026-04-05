@@ -425,11 +425,11 @@ class XiaoZhiProto(BaseProto):
             info: A dictionary containing information about the sent message.
         """
 
-        # Ignore some cases
+        # filter messages
         if msg.metadata.get("_cmd_ref", "") == "register_extern_tools":
-            return {"success": True}
+            return {"success": True, "broadcast_msg": msg}
         if msg.metadata.get("_progress", False) or msg.metadata.get("_hide_message", False):
-            return {"success": True}
+            return {"success": True, "broadcast_msg": msg}
 
         msg_type = msg.metadata.get("msg_type", "audio")
         if msg_type == "audio":
