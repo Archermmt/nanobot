@@ -306,6 +306,45 @@ def pcm_to_data_stream(
             callback(frame_data)
 
 
+def get_audio_bytes(media_data, audio_format: str = "audio/wav") -> tuple[bytes, str]:
+    """
+    从多种格式的媒体数据中提取音频字节数据和音频格式
+
+    Args:
+        media_data: 媒体数据，可以是以下格式：
+            - dict: 包含 'data' 键的字典
+            - str: data URI 格式 (data:audio/wav;base64,...) 或 base64 字符串
+            - bytes: 原始音频字节数据
+            - str: 文件路径
+        audio_format: 默认音频格式，默认为 "audio/wav"
+
+    Returns:
+        tuple[bytes, str]: (音频字节数据, 音频格式)
+    """
+    # If media is a dict with 'data' key, extract it
+    if isinstance(media_data, dict):
+        media_data = media_data.get("data", "")
+
+    # Handle data URI format
+    if isinstance(media_data, str) and media_data.startswith("data:"):
+        header, media_data = media_data.split(",", 1)
+        audio_format = header.split(";")[0].replace("data:", "")
+
+    # Read audio data based on type
+    if isinstance(media_data, bytes):
+        audio_bytes = media_data
+    elif os.path.isfile(media_data):
+        with open(media_data, "rb") as f:
+            audio_bytes = f.read()
+    else:
+        # Assume it's base64 encoded string
+        audio_bytes = base64.b64decode(
+            media_data.split(",", 1)[1] if "," in media_data else media_data
+        )
+
+    return audio_bytes, audio_format
+
+
 def audio_bytes_to_data_stream(
     audio_bytes,
     file_type,

@@ -231,7 +231,6 @@ class XiaoZhiProto(BaseProto):
 
         # Handle listen state messages
         if msg_data.get("state") == "start":
-            logger.debug(f"Client started recording: {msg_data}")
             return {
                 "sender_id": client_info["sender_id"],
                 "chat_id": client_info["chat_id"],
@@ -445,7 +444,6 @@ class XiaoZhiProto(BaseProto):
             await websocket.send(
                 json.dumps({"type": "stt", "text": msg.content, "session_id": self.session_id})
             )
-        broadcast_msg = msg
-        broadcast_msg.media = []
-        broadcast_msg.metadata.update({"msg_type": "text"})
-        return {"success": True, "broadcast_msg": broadcast_msg}
+        msg.media = []
+        msg.metadata.update({"msg_type": "text"})
+        return {"success": True, "broadcast_msg": msg}

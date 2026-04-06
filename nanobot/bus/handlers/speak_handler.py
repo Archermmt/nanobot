@@ -12,7 +12,7 @@ from nanobot.bus.events import InboundMessage
 from nanobot.bus.handlers.base_handler import BaseHandler
 from nanobot.config.schema import SpeakHandlerConfig
 from nanobot.utils.log import CaptureOutput
-from nanobot.utils.media import get_media_dir, pcm_to_wav, webm_to_wav
+from nanobot.utils.media import get_audio_bytes, get_media_dir, pcm_to_wav, webm_to_wav
 
 
 class BaseSpeakHandler(BaseHandler, ABC):
@@ -70,35 +70,17 @@ class BaseSpeakHandler(BaseHandler, ABC):
 
         if self.threshold == 0.0:
             return msg
+        audio_format = msg.metadata.get("audio_format", "audio/wav")
+        audio_bytes, audio_format = get_audio_bytes(msg.media[0], audio_format)
         try:
-            media_data, audio_format = msg.media[0], msg.metadata.get("audio_format", "audio/wav")
-            # If media is a dict with 'data' key, extract it
-            if isinstance(media_data, dict):
-                media_data = media_data.get("data", "")
-            if isinstance(media_data, str) and media_data.startswith("data:"):
-                header, media_data = media_data.split(",", 1)
-                audio_format = header.split(";")[0].replace("data:", "")
-            # Read base64 audio data
-            if isinstance(media_data, bytes):
-                audio_bytes = media_data
-            elif os.path.isfile(media_data):
-                with open(media_data, "rb") as f:
-                    audio_bytes = f.read()
-            else:
-                audio_bytes = base64.b64decode(
-                    media_data.split(",", 1)[1] if "," in media_data else media_data
-                )
-            try:
-                # Verify speaker and get score and message
+            # Verify speaker and get score and message
+            with CaptureOutput():
                 score, msg = self._verify_speaker(audio_bytes, audio_format, msg)
-                is_verified = score > self.threshold
-                if not is_verified:
-                    msg.metadata.update({"msg_type": "text", "_warning_msg": "speaker_not_verify"})
-                    logger.debug(msg.content)
-            finally:
-                # Clean up temporary file if exists
-                pass
-
+            if score < self.threshold:
+                msg.content = f"Speaker verification failed: {score:.2f}<{self.threshold}"
+                msg.media = []
+                msg.metadata.update({"msg_type": "text", "_warning_msg": "speaker_not_verify"})
+                logger.debug(msg.content)
         except Exception as e:
             msg.content, msg.media = "Failed to verify speaker: " + str(e), []
             msg.metadata.update({"msg_type": "text", "_warning_msg": "speaker_not_verify"})
@@ -169,24 +151,15 @@ class WeSpeakHandler(BaseSpeakHandler):
             speaker_file = pcm_to_wav(audio_bytes, output_file=speaker_file)
         else:
             speaker_file.write_bytes(audio_bytes)
-        try:
-            emb = self.speaker.extract_embedding(speaker_file)
-            # Compute max score across all reference embeddings
-            max_score = 0.0
-            for ref_emb in self.ref_embs:
-                score = self.speaker.compute_cosine_score(ref_emb.flatten(), emb.flatten())
-                max_score = max(max_score, score)
-            return max_score, msg or InboundMessage(content="")
-        except Exception as e:
-            logger.error(f"WeSpeaker verification error: {e}")
-            if msg:
-                msg.content = f"Speaker verification error: {str(e)}"
-                msg.media = []
-            return 0.0, msg or InboundMessage(content="")
-        finally:
-            # Clean up temporary file
-            if speaker_file.exists():
-                speaker_file.unlink()
+        emb = self.speaker.extract_embedding(speaker_file)
+        # Compute max score across all reference embeddings
+        max_score = 0.0
+        for ref_emb in self.ref_embs:
+            score = self.speaker.compute_cosine_score(ref_emb.flatten(), emb.flatten())
+            max_score = max(max_score, score)
+        if speaker_file.exists():
+            speaker_file.unlink()
+        return max_score, msg or InboundMessage(content="")
 
 
 @BaseSpeakHandler.register()
@@ -274,7 +247,7 @@ class SbrainSpeakHandler(BaseSpeakHandler):
                 est_sources = self.separator.separate_file(path=str(speaker_file))
                 # Save each separated source and verify against reference
                 for i in range(est_sources.shape[2]):
-                    sep_file = media_dir / f"test_speech_source_{i}.wav"
+                    sep_file = media_dir / f"speech_{i}.wav"
                     # Save separated source as mono 8kHz WAV
                     torchaudio.save(str(sep_file), est_sources[:, :, i].detach().cpu(), 8000)
                     separated_files.append(sep_file)
@@ -284,39 +257,33 @@ class SbrainSpeakHandler(BaseSpeakHandler):
                 separated_files = [speaker_file]
         else:
             separated_files = [speaker_file]
-        try:
-            # Verify each separated source against all reference audios
-            max_score = 0.0
-            best_source_idx = -1
-            for idx, sep_file in enumerate(separated_files):
-                for ref_audio_path in self.ref_audios:
-                    score, _ = self.verification.verify_files(ref_audio_path, str(sep_file))
-                    score = (float(score) + 1) / 2
-                    if score > max_score:
-                        max_score = score
-                        best_source_idx = idx
+        # Verify each separated source against all reference audios
+        max_score = 0.0
+        best_source_idx = -1
+        for idx, sep_file in enumerate(separated_files):
+            for ref_audio_path in self.ref_audios:
+                score, _ = self.verification.verify_files(ref_audio_path, str(sep_file))
+                score = (float(score) + 1) / 2
+                if score > max_score:
+                    max_score = score
+                    best_source_idx = idx
 
-            # Set the best matching separated source to msg.media
-            if msg and best_source_idx >= 0 and max_score > 0:
-                best_source_file = separated_files[best_source_idx]
-                # Read the best source file and encode as base64
-                with open(best_source_file, "rb") as f:
-                    best_audio_data = f.read()
-                # Create data URL for the separated audio
-                audio_data_url = (
-                    f"data:audio/wav;base64,{base64.b64encode(best_audio_data).decode('utf-8')}"
-                )
-                msg.media = [audio_data_url]
-                msg.metadata["audio_format"] = "audio/wav"
-                logger.debug(f"Selected source {best_source_idx} with score {max_score:.2f}")
-            return max_score, msg or InboundMessage(content="")
-        except Exception as e:
-            logger.error(f"SpeechBrain verification error: {e}")
-            return 0.0, msg or InboundMessage(content="")
-        finally:
-            # Clean up temporary files
-            if speaker_file.exists():
-                speaker_file.unlink()
-            for sep_file in separated_files:
-                if sep_file.exists():
-                    sep_file.unlink()
+        # Set the best matching separated source to msg.media
+        if msg and best_source_idx >= 0 and max_score > 0:
+            best_source_file = separated_files[best_source_idx]
+            # Read the best source file and encode as base64
+            with open(best_source_file, "rb") as f:
+                best_audio_data = f.read()
+            # Create data URL for the separated audio
+            audio_data_url = (
+                f"data:audio/wav;base64,{base64.b64encode(best_audio_data).decode('utf-8')}"
+            )
+            msg.media = [audio_data_url]
+            msg.metadata["audio_format"] = "audio/wav"
+            logger.debug(f"Selected source {best_source_idx} with score {max_score:.2f}")
+        if speaker_file.exists():
+            speaker_file.unlink()
+        for sep_file in separated_files:
+            if sep_file.exists():
+                sep_file.unlink()
+        return max_score, msg or InboundMessage(content="")

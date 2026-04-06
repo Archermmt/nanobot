@@ -13,7 +13,7 @@ from nanobot.bus.events import InboundMessage
 from nanobot.bus.handlers.base_handler import BaseHandler
 from nanobot.config.schema import ASRHandlerConfig
 from nanobot.utils.log import CaptureOutput
-from nanobot.utils.media import get_media_dir, pcm_to_wav, webm_to_wav
+from nanobot.utils.media import get_audio_bytes, get_media_dir, pcm_to_wav, webm_to_wav
 
 
 class BaseASRHandler(BaseHandler):
@@ -98,31 +98,13 @@ class BaseASRHandler(BaseHandler):
             return msg
 
         try:
-            # Process first media item (assuming single audio file)
-            media_data, audio_format = msg.media[0], msg.metadata.get("audio_format", "audio/wav")
-            # If media is a dict with 'data' key, extract it
-            if isinstance(media_data, dict):
-                media_data = media_data.get("data", "")
-            if isinstance(media_data, str) and media_data.startswith("data:"):
-                header, media_data = media_data.split(",", 1)
-                audio_format = header.split(";")[0].replace("data:", "")
-            # Read base64 audio data
-            if isinstance(media_data, bytes):
-                audio_bytes = media_data
-            elif os.path.isfile(media_data):
-                with open(media_data, "rb") as f:
-                    audio_bytes = f.read()
-            else:
-                audio_bytes = base64.b64decode(
-                    media_data.split(",", 1)[1] if "," in media_data else media_data
-                )
-
-            # Recognize speech from audio
+            audio_format = msg.metadata.get("audio_format", "audio/wav")
+            audio_bytes, audio_format = get_audio_bytes(msg.media[0], audio_format)
             msg.media = []
             msg.metadata.update({"msg_type": "text"})
-            text = self._process_audio(audio_bytes, audio_format)
+            with CaptureOutput():
+                text = self._process_audio(audio_bytes, audio_format)
             if text:
-                logger.debug(f"Recognized speech: '{text}'")
                 msg.content = text
                 msg.metadata.update({"_as_input": True})
             else:
