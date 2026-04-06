@@ -72,19 +72,19 @@ class BaseSpeakHandler(BaseHandler, ABC):
             return msg
         audio_format = msg.metadata.get("audio_format", "audio/wav")
         audio_bytes, audio_format = get_audio_bytes(msg.media[0], audio_format)
+
+        def _mark_failed(msg, err):
+            msg.content, msg.media = "Speaker verify failed: " + str(err), []
+            msg.metadata.update({"msg_type": "text", "_warning_msg": "speaker_not_verify"})
+            return msg
+
         try:
-            # Verify speaker and get score and message
             with CaptureOutput():
                 score, msg = self._verify_speaker(audio_bytes, audio_format, msg)
             if score < self.threshold:
-                msg.content = f"Speaker verification failed: {score:.2f}<{self.threshold}"
-                msg.media = []
-                msg.metadata.update({"msg_type": "text", "_warning_msg": "speaker_not_verify"})
-                logger.debug(msg.content)
+                msg = _mark_failed(msg, f"{score:.2f}<{self.threshold}")
         except Exception as e:
-            msg.content, msg.media = "Failed to verify speaker: " + str(e), []
-            msg.metadata.update({"msg_type": "text", "_warning_msg": "speaker_not_verify"})
-            logger.debug(msg.content)
+            msg = _mark_failed(msg, e)
         return msg
 
 
@@ -112,16 +112,17 @@ class WeSpeakHandler(BaseSpeakHandler):
             and len(self.voice_config["voices"]) > 0
         ), "Voice configuration missing 'voices' array or it's empty"
         # Load reference speaker embeddings from all voices
-        self.ref_embs = []
+        self.ref_embs, ref_audios = [], []
         for voice_entry in self.voice_config["voices"]:
             assert "audio" in voice_entry, f"Voice entry missing 'audio' key: {voice_entry}"
             ref_audio = self.depends_folder / voice_entry["audio"]
             if config.speaker and ref_audio.exists():
                 try:
                     self.ref_embs.append(self.speaker.extract_embedding(str(ref_audio)))
-                    logger.info(f"Loaded reference speaker embedding from {ref_audio}")
+                    ref_audios.append(voice_entry["audio"])
                 except Exception as e:
                     logger.error(f"Failed to extract reference speaker embedding: {e}")
+        logger.debug(f"Loaded reference speaker embedding from {ref_audios}")
 
     def _verify_speaker(
         self, audio_bytes: bytes, audio_format: str = "audio/wav", msg: InboundMessage | None = None

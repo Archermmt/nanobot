@@ -178,36 +178,32 @@ async def cmd_inspect(ctx: CommandContext) -> OutboundMessage:
 
 async def cmd_register_extern_tools(ctx: CommandContext) -> OutboundMessage:
     """Register external tools."""
+    from nanobot.agent.tools.extern import ExternTool
+
     metadata = ctx.msg.metadata or {}
     required_fields = {"type", "tools"}
     assert all(field in metadata for field in required_fields), "Missing required fields " + str(
         required_fields
     )
     tool_type, kwargs = metadata["type"], metadata.get("kwargs", {})
-    # Get the ExternTool subclass by type
-    from nanobot.agent.tools.extern import ExternTool
-
     tool_class, tools = ExternTool.get_registered_type(tool_type), []
     if tool_class:
-        # Register each tool spec as an instance of the ExternTool subclass
-        for idx, spec in enumerate(metadata["tools"]):
+        for spec in metadata["tools"]:
             try:
-                spec.update(kwargs)
-                tool_instance = tool_class(**spec)
+                tool_instance = tool_class({**spec, **kwargs, "chatId": ctx.msg.chat_id})
                 ctx.loop.tools.register(tool_instance)
-                logger.info(
-                    f"Registered extern tool[{idx}/{len(metadata['tools'])}]({tool_type}): {tool_instance.name}"
-                )
                 tools.append(tool_instance.name)
             except Exception as e:
                 logger.warning(f"Failed to register extern tool {spec.get('name', 'unknown')}: {e}")
                 continue
     else:
         logger.warning(f"ExternTool type '{tool_type}' not registered")
+    content = f"Register {len(tools)} {tool_type} tools: {', '.join(tools)}"
+    logger.info(content)
     return OutboundMessage(
         channel=ctx.msg.channel,
         chat_id=ctx.msg.chat_id,
-        content="Registered extern tools: " + ",".join(tools),
+        content=content,
         metadata={"_cmd_ref": "register_extern_tools"},
     )
 

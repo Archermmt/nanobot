@@ -17,12 +17,12 @@ class NanoboardTool(ExternTool):
     allowing remote tool execution via WebSocket.
     """
 
-    def setup(self, kwargs: dict[str, Any]) -> None:
+    def setup(self, config: dict[str, Any]) -> None:
         """Setup the tool with WebSocket connection from kwargs."""
-        if "websocket" in kwargs:
-            self._websocket = kwargs["websocket"]
-        self._timeout = kwargs.get("timeout", 30)
-        self._result_queue = kwargs.get("result_queue")  # Queue for fetching MCP results
+        if "websocket" in config:
+            self._websocket = config["websocket"]
+        self._timeout = config.get("timeout", 30)
+        self._result_queue = config.get("result_queue")  # Queue for fetching MCP results
 
     async def execute(self, **kwargs: Any) -> str:
         """

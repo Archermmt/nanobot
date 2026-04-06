@@ -48,14 +48,11 @@ def discover_all_protos() -> dict[str, type[BaseProto]]:
     Scans ws_proto subdirectories and loads the first BaseProto subclass from each.
     """
     protos: dict[str, type[BaseProto]] = {}
-
     for modname in discover_proto_names():
         try:
             cls = load_proto_class(modname)
             if cls is not None:
                 protos[modname] = cls
-                logger.debug("Discovered protocol handler: {}", modname)
         except Exception as e:
             logger.warning("Failed to load protocol handler '{}': {}", modname, e)
-
     return protos

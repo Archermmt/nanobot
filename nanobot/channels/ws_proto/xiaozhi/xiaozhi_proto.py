@@ -221,8 +221,7 @@ class XiaoZhiProto(BaseProto):
 
         # Handle MCP message
         if msg_type == TextMessageType.MCP.value:
-            await self._handle_mcp_message(msg_data, client_info, websocket)
-            return None
+            return await self._handle_mcp_message(msg_data, client_info, websocket)
 
         # Handle unknown message types
         if msg_type != TextMessageType.LISTEN.value:
@@ -282,14 +281,12 @@ class XiaoZhiProto(BaseProto):
             error_data = payload["error"]
             error_msg = error_data.get("message", "Unknown error")
             logger.error(f"Received MCP error response: {error_msg}")
-            return
+            return None
 
         if "result" not in payload:
-            return
+            return None
 
-        result = payload["result"]
-        msg_id = int(payload.get("id", 0))
-
+        msg_id, result = int(payload.get("id", 0)), payload["result"]
         if msg_id == 1:  # mcpInitializeID
             logger.debug("Received MCP initialization response")
             server_info = result.get("serverInfo")
@@ -301,7 +298,7 @@ class XiaoZhiProto(BaseProto):
             logger.debug("Initialization complete, start requesting MCP tool list")
             msg = {"jsonrpc": "2.0", "id": 2, "method": "tools/list"}
             await self._send_mcp_message(msg, websocket)
-            return
+            return None
 
         if msg_id == 2:  # mcpToolsListID
             logger.debug("Received MCP tool list response")
@@ -355,6 +352,7 @@ class XiaoZhiProto(BaseProto):
                 logger.debug(f"Put tool call result into queue, msg_id={msg_id}")
             except Exception as e:
                 logger.error(f"Failed to put tool call result into queue: {e}")
+            return None
 
     async def _send_mcp_initialize_message(self, websocket: any):
         """Send MCP initialization message."""

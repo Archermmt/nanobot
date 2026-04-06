@@ -16,13 +16,13 @@ class XiaozhiTool(ExternTool):
     allowing remote tool execution on Xiaozhi devices.
     """
 
-    def setup(self, kwargs: dict[str, Any]) -> None:
+    def setup(self, config: dict[str, Any]) -> None:
         """Setup the tool with WebSocket connection from kwargs."""
-        if "websocket" in kwargs:
-            self._websocket = kwargs["websocket"]
-        self._timeout = kwargs.get("timeout", 30)
-        self._result_queue = kwargs.get("result_queue")  # Queue for fetching MCP results
-        self._tool_id = kwargs.get("tool_id", 1)
+        if "websocket" in config:
+            self._websocket = config["websocket"]
+        self._timeout = config.get("timeout", 30)
+        self._result_queue = config.get("result_queue")  # Queue for fetching MCP results
+        self._tool_id = config.get("tool_id", 1)
 
     async def execute(self, **kwargs: Any) -> str:
         """

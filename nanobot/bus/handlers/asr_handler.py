@@ -158,7 +158,6 @@ class FunASRHandler(BaseASRHandler):
                 logger.warning(f"FunASR model not found at {model}. Please download it manually.")
                 return
             model = str(model_dir_expanded)
-        logger.info(f"Loading FunASR model {model}")
         with CaptureOutput():
             self._model = AutoModel(
                 model=model,
@@ -167,6 +166,7 @@ class FunASRHandler(BaseASRHandler):
                 hub="hf",
                 disable_update=True,
             )
+        logger.debug(f"Load FunASR model {model}")
 
     def _process_audio(self, audio_bytes: bytes, audio_format: str = "audio/wav") -> str:
         """
