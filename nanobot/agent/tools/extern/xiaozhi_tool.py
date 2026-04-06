@@ -42,18 +42,17 @@ class XiaozhiTool(ExternTool):
             TimeoutError: If tool call times out.
             ValueError: If parameters are invalid.
         """
-        args = kwargs.get("args", "{}")
         if not self._websocket:
             raise RuntimeError("WebSocket not initialized")
 
         # Process arguments
-        try:
-            if isinstance(args, str):
-                if not args.strip():
-                    arguments = {}
-                else:
+        arguments = {}
+        if "args" in kwargs:
+            args = kwargs.pop("args")
+            try:
+                if isinstance(args, str):
                     try:
-                        arguments = json.loads(args)
+                        arguments = json.loads(args.strip())
                     except json.JSONDecodeError:
                         # Try to merge multiple JSON objects
                         try:
@@ -75,27 +74,25 @@ class XiaozhiTool(ExternTool):
                                 raise ValueError(f"参数 JSON 解析失败：{args}")
                         except Exception as e:
                             raise ValueError(f"参数 JSON 解析失败：{str(e)}")
-            elif isinstance(args, dict):
-                arguments = args
-            else:
-                raise ValueError(f"参数类型错误，期望字符串或字典，实际类型：{type(args)}")
-
-            if not isinstance(arguments, dict):
-                raise ValueError(f"参数必须是字典类型，实际类型：{type(arguments)}")
-
-        except Exception as e:
-            if not isinstance(e, ValueError):
-                raise ValueError(f"参数处理失败：{str(e)}")
-            raise e
+                elif isinstance(args, dict):
+                    arguments = args
+                else:
+                    raise ValueError(f"参数类型错误，期望字符串或字典，实际类型：{type(args)}")
+                assert isinstance(arguments, dict), (
+                    f"参数必须是字典类型，实际类型：{type(arguments)}"
+                )
+            except Exception as e:
+                if not isinstance(e, ValueError):
+                    raise ValueError(f"参数处理失败：{str(e)}")
+                raise e
 
         # Send tool call request
         payload = {
             "jsonrpc": "2.0",
             "id": self._tool_id,
             "method": "tools/call",
-            "params": {"name": self.name, "arguments": arguments},
+            "params": {"name": self.name, "arguments": {**arguments, **kwargs}},
         }
-
         message = json.dumps({"type": "mcp", "payload": payload})
         await self._websocket.send(message)
 
