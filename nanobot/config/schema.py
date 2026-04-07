@@ -193,6 +193,7 @@ class ASRHandlerConfig(Base):
     enabled: bool = False
     handler_type: str = "funasr"  # vosk or custom
     model: str = "paraformer-zh"
+    save_speech: bool = False  # Save recognized speech text and audio files
 
 
 class VADHandlerConfig(Base):
@@ -213,11 +214,21 @@ class TTSHandlerConfig(Base):
     enabled: bool = False
     handler_type: str = "edge_tts"  # edge_tts or custom
     depends_folder: str = "~/.nanobot/depends/tts"  # Depends folder for voice configuration
-    output_dir: str = "~/.nanobot/media"
     model: str | None = None  # Model name for TTS service (e.g., cosyvoice-v3.5-plus for Qwen TTS)
     voice: str = "zh-CN-XiaoxiaoNeural"
     audio_format: str = "opus"  # Edge TTS returns mp3 format
     sample_rate: int = 16000
+
+
+class SpeakHandlerConfig(Base):
+    """Configuration for Speaker Verification handler."""
+
+    enabled: bool = False
+    handler_type: str = "wespeaker"  # wespeaker or custom
+    depends_folder: str = "~/.nanobot/depends/speak"  # Folder for speaker reference audio files
+    speaker: str = ""  # Reference speaker audio file name (relative to depends_folder)
+    threshold: float = 0.9  # Similarity threshold for speaker verification
+    separate_speaker: bool = False  # Enable speech separation for multi-speaker scenarios
 
 
 class HandlersConfig(Base):
@@ -226,6 +237,7 @@ class HandlersConfig(Base):
     asr: ASRHandlerConfig | None = None
     vad: VADHandlerConfig | None = None
     tts: TTSHandlerConfig | None = None
+    speak: SpeakHandlerConfig | None = None
 
     def model_post_init(self, __context):
         if self.asr is None:
@@ -234,6 +246,8 @@ class HandlersConfig(Base):
             self.vad = VADHandlerConfig()
         if self.tts is None:
             self.tts = TTSHandlerConfig()
+        if self.speak is None:
+            self.speak = SpeakHandlerConfig()
 
 
 class BusConfig(Base):
@@ -249,6 +263,7 @@ class BusConfig(Base):
 class SessionConfig(BaseSettings):
     """Configuration for a single session with wake word detection."""
 
+    enable_wakeup: bool = False  # Enable wake word detection
     wakeup_words: list[str] = Field(default_factory=list)  # Wake words to trigger response
     wakeup_response: list[str] = Field(default_factory=list)  # Responses when wake word detected
     goodbye_words: list[str] = Field(default_factory=list)  # Goodbye words to trigger response

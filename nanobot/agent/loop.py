@@ -35,7 +35,7 @@ from nanobot.command import CommandContext, CommandRouter, register_builtin_comm
 from nanobot.config.loader import load_config
 from nanobot.providers.base import LLMProvider
 from nanobot.providers.providers_manager import ProvidersManager
-from nanobot.session.manager import ChatStatus, Session, SessionManager
+from nanobot.session.manager import Session, SessionManager
 from nanobot.utils.message import RetType
 
 if TYPE_CHECKING:
@@ -98,7 +98,9 @@ class AgentLoop:
         self._last_usage: dict[str, int] = {}
 
         self.context = ContextBuilder(workspace, timezone=timezone)
-        self.sessions = session_manager or SessionManager(workspace, self._config.session)
+        self.sessions = session_manager or SessionManager(
+            workspace, self._config.session, send_callback=self.bus.publish_outbound
+        )
         self.tools = ToolRegistry()
         self.runner = AgentRunner(provider)
         self.subagents = SubagentManager(
@@ -490,8 +492,9 @@ class AgentLoop:
         session = self.sessions.get_or_create(key)
 
         # Add features
-        if self.features:
-            msg.metadata.update({k: v for k, v in self.features.items() if k not in msg.metadata})
+        if msg.sender_id in self.features:
+            features = self.features[msg.sender_id]
+            msg.metadata.update({k: v for k, v in features.items() if k not in msg.metadata})
 
         # Slash commands
         raw = msg.content.strip()
@@ -499,14 +502,10 @@ class AgentLoop:
         if result := await self.commands.dispatch(ctx):
             return result
 
-        session.set_send_callback(send_callback=self.bus.publish_outbound)
-        session.set_context(msg.channel, msg.chat_id)
-        if msg.metadata.get("ret_type", RetType.NORMAL) != RetType.NORMAL:
-            if msg.metadata.get("ret_type", RetType.NORMAL) == RetType.PASSBY:
-                msg.metadata.setdefault("_hide_message", True)
-            return OutboundMessage(
-                channel=msg.channel, chat_id=msg.chat_id, content=msg.content, metadata=msg.metadata
-            )
+        if result := await session.check_reply(msg):
+            return result
+
+        # Handle _as_input flag
         if msg.metadata.get("_as_input", False):
             msg.metadata.pop("_as_input")
             meta = dict(msg.metadata)
@@ -518,23 +517,6 @@ class AgentLoop:
                     metadata={**meta, "_as_input": True, "_progress": True},
                 )
             )
-        s_info = session.check_status(msg)
-        if s_info.get("response"):
-            return OutboundMessage(
-                channel=msg.channel,
-                chat_id=msg.chat_id,
-                content=s_info["response"],
-                metadata=msg.metadata,
-            )
-        if s_info["status"] == ChatStatus.MUTE:
-            if "need_tts" in msg.metadata:
-                msg.metadata.pop("need_tts")
-            return OutboundMessage(
-                channel=msg.channel,
-                chat_id=msg.chat_id,
-                content="Session muted, please wake up the assistant.",
-                metadata=msg.metadata,
-            )
 
         await self.memory_consolidator.maybe_consolidate_by_tokens(session)
 
@@ -545,6 +527,8 @@ class AgentLoop:
         if isinstance(self.provider, ProvidersManager):
             self.provider.set_context(msg.channel, msg.chat_id)
 
+        if isinstance(self.provider, ProvidersManager):
+            msg.metadata["_mode_hint"] = await self.provider.choose_mode(msg.content)
         history = session.get_history(max_messages=0)
         initial_messages = self.context.build_messages(
             history=history,
@@ -552,7 +536,7 @@ class AgentLoop:
             media=msg.media if msg.media else None,
             channel=msg.channel,
             chat_id=msg.chat_id,
-            features=self.features,
+            features=self.features.get(msg.sender_id, {}),
         )
 
         async def _bus_progress(content: str, *, tool_hint: bool = False) -> None:
@@ -594,6 +578,7 @@ class AgentLoop:
         meta = dict(msg.metadata or {})
         if on_stream is not None:
             meta["_streamed"] = True
+        meta["_is_final"] = True
         return OutboundMessage(
             channel=msg.channel,
             chat_id=msg.chat_id,

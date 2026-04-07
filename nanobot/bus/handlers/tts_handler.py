@@ -48,7 +48,6 @@ class BaseTTSHandler(BaseHandler):
         assert voice_path.exists(), f"Voice configuration not found: {voice_path}"
         with open(voice_path, "r", encoding="utf-8") as f:
             self.voice_config = json.load(f).get(self.voice, {})
-        self.output_dir = Path(config.output_dir).expanduser().resolve()
         if self.encoder_type == "opus":
             self.encoder = opuslib_next.Encoder(self.sample_rate, 1, opuslib_next.APPLICATION_AUDIO)
 
@@ -68,6 +67,7 @@ class BaseTTSHandler(BaseHandler):
             msg_type == "text"
             and msg.metadata.get("need_tts", False)
             and not msg.metadata.get("_progress", False)
+            and "_warning_msg" not in msg.metadata
         )
 
     async def handle_output(self, msg: OutboundMessage) -> OutboundMessage:
@@ -90,6 +90,8 @@ class BaseTTSHandler(BaseHandler):
                 # Add audio data to message
                 msg.media.extend(audio_datas)
                 msg.metadata.update({"msg_type": "audio", "encoder_type": self.encoder_type})
+                if self.encoder_type == "opus":
+                    msg.metadata.update({"frame_duration": 60})
         except Exception as e:
             # If TTS fails, keep original text message
             msg.metadata["tts_error"] = str(e)
@@ -208,11 +210,17 @@ class F5TTSHandler(BaseTTSHandler):
 
         super().__init__(config)
         # Build reference audio path relative to depends folder
-        assert "audio" in self.voice_config and "text" in self.voice_config, (
-            "Voice configuration missing 'audio' or 'text' key"
+        assert (
+            "voices" in self.voice_config
+            and isinstance(self.voice_config["voices"], list)
+            and len(self.voice_config["voices"]) > 0
+        ), "Voice configuration missing 'voices' array or it's empty"
+        first_voice = self.voice_config["voices"][0]
+        assert "audio" in first_voice and "text" in first_voice, (
+            "First voice entry missing 'audio' or 'text' key"
         )
-        ref_audio = self.depends_folder / self.voice_config["audio"]
-        ref_text = self.voice_config["text"]
+        ref_audio = self.depends_folder / first_voice["audio"]
+        ref_text = first_voice["text"]
         assert ref_audio.exists(), f"Reference audio not found: {ref_audio}"
         with CaptureOutput():
             self.tts = F5TTS(model=config.model)
@@ -312,8 +320,14 @@ class QwenTTSHandler(BaseTTSHandler):
         if self._check_voice(self.voice_id):
             logger.info(f"Use registered voice id {self.voice_id}")
         else:
-            assert "audio" in self.voice_config, "Voice configuration missing 'audio' key"
-            ref_audio = self.depends_folder / self.voice_config["audio"]
+            assert (
+                "voices" in self.voice_config
+                and isinstance(self.voice_config["voices"], list)
+                and len(self.voice_config["voices"]) > 0
+            ), "Voice configuration missing 'voices' array or it's empty"
+            first_voice = self.voice_config["voices"][0]
+            assert "audio" in first_voice, "First voice entry missing 'audio' key"
+            ref_audio = self.depends_folder / first_voice["audio"]
             self._clone_voice(str(ref_audio))
 
     async def _text_to_speak(self, text, output_file):

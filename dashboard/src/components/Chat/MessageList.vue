@@ -25,16 +25,18 @@ interface Message {
     msg_type?: string
     file_type?: string
     _progress?: boolean
-    _task_ref?: string
+    _cmd_ref?: string
     _mode_hint?: string
+    _tool_hint?: string
     isPlayingOpus?: boolean
     _as_input?: boolean
+    _warning_msg?: string
   }
 }
 
 interface Props {
   messages: Message[]
-  chatStatus: string
+  chatState: string
   showProgressMessages?: boolean
   playingAudioUrl?: string | null
 }
@@ -240,36 +242,56 @@ const isPlaying = (audioUrl: string) => {
   return props.playingAudioUrl === audioUrl
 }
 
-const isChineseContent = (content: string) => {
-  // Check if content contains Chinese characters
-  return /[\u4e00-\u9fa5]/.test(content);
-}
-
 const renderMarkdown = (content: string) => {
   return marked.parse(content)
 }
 
 // Filter messages based on showProgressMessages prop
 const visibleMessages = computed(() => {
-  // Filter messages based on showProgressMessages prop
-  if (props.showProgressMessages !== false) {
-    // Show all messages including_progress messages
-    props.messages.forEach(msg => {
-      // Cache _mode_hint from messages
-      if (msg.metadata?._mode_hint) {
-        currentModeHint.value = msg.metadata._mode_hint
+  const filterMessages = (messages: Message[]) => {
+    // Find the first message without _tool_hint in metadata
+    let firstNonToolHintIndex = -1
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (!messages[i].metadata?._tool_hint) {
+        firstNonToolHintIndex = i
+        break
       }
+    }
+
+    return messages.filter((msg, index) => {
+      // Skip duplicate warning messages with same _warning_msg
+      if (msg.metadata?._warning_msg && index > 0) {
+        const prevMsg = messages[index - 1]
+        if (prevMsg?.metadata?._warning_msg === msg.metadata._warning_msg) {
+          return false
+        }
+      }
+
+      // If we found a message without _tool_hint, remove all previous messages with _tool_hint
+      if (firstNonToolHintIndex !== -1 && index < firstNonToolHintIndex) {
+        if (msg.metadata?._tool_hint) {
+          return false
+        }
+      }
+
+      return true
     })
-    return props.messages.filter(msg => !msg.metadata?._mode_hint)
+  }
+
+  // Cache _mode_hint from messages
+  props.messages.forEach(msg => {
+    if (msg.metadata?._mode_hint) {
+      currentModeHint.value = msg.metadata._mode_hint
+    }
+  })
+
+  if (props.showProgressMessages !== false) {
+    // Show all messages including progress messages
+    return filterMessages(props.messages)
   } else {
     // Hide messages with _progress: true in metadata
-    props.messages.forEach(msg => {
-      // Cache _mode_hint from messages (even progress messages)
-      if (msg.metadata?._mode_hint) {
-        currentModeHint.value = msg.metadata._mode_hint
-      }
-    })
-    return props.messages.filter(msg => !msg.metadata?._progress && !msg.metadata?._mode_hint)
+    const filteredMessages = props.messages.filter(msg => !msg.metadata?._progress)
+    return filterMessages(filteredMessages)
   }
 })
 
@@ -301,7 +323,7 @@ const scrollToBottom = () => {
 
 // Watch for messages changes and scroll to bottom
 watch(() => props.messages, scrollToBottom, { deep: true })
-watch(() => props.chatStatus, scrollToBottom)
+watch(() => props.chatState, scrollToBottom)
 watch(() => props.showProgressMessages, scrollToBottom)
 </script>
 
@@ -310,10 +332,11 @@ watch(() => props.showProgressMessages, scrollToBottom)
     <div v-for="(msg, index) in visibleMessages" :key="index" class="flex" :class="getMessageClass(msg)">
       <div class="border-2 rounded shadow-[4px_4px_0_rgba(0,0,0,0.5)] px-4 py-3 flex flex-col" :class="{
         'bg-gradient-to-br from-blue-500 to-blue-600 border-blue-700 text-white max-w-[80%]': isUserMessage(msg),
-        'bg-gradient-to-br from-gray-100 to-gray-200 border-gray-300 text-gray-800 max-w-[80%]': !isUserMessage(msg) && msg.role === 'assistant' && !msg.metadata?._progress && msg.metadata?._task_ref !== 'status',
-        'bg-gradient-to-br from-green-100 to-green-200 border-green-300 text-gray-700 max-w-[80%]': !isUserMessage(msg) && msg.role === 'assistant' && msg.metadata?._progress,
+        'bg-gradient-to-br from-gray-100 to-gray-200 border-gray-300 text-gray-800 max-w-[80%]': !isUserMessage(msg) && msg.role === 'assistant' && !msg.metadata?._progress && !msg.metadata?._warning_msg,
+        'bg-gradient-to-br from-gray-300 to-gray-400 border-gray-300 text-gray-800 max-w-[80%]': !isUserMessage(msg) && msg.role === 'assistant' && msg.metadata?._tool_hint,
+        'bg-gradient-to-br from-green-100 to-green-200 border-green-300 text-gray-700 max-w-[80%]': !isUserMessage(msg) && msg.role === 'assistant' && msg.metadata?._progress && !msg.metadata?._tool_hint,
         'bg-gradient-to-br from-red-100 to-red-200 border-red-300 text-red-800 max-w-[80%]': msg.role === 'system',
-        'bg-gradient-to-br from-yellow-100 to-yellow-200 border-yellow-300 text-gray-700 max-w-[80%]': msg.metadata?._task_ref === 'status'
+        'bg-gradient-to-br from-pink-100 to-pink-200 border-pink-300 text-gray-700 max-w-[80%]': msg.metadata?._warning_msg
       }">
         <!-- Image Display -->
         <div v-if="getImageUrlFromMessage(msg)" class="mb-3 w-full">
@@ -391,8 +414,7 @@ watch(() => props.showProgressMessages, scrollToBottom)
         </div>
 
         <!-- Message Content -->
-        <div class="prose prose-xs markdown-content" :class="isChineseContent(msg.content) ? 'zh' : 'pixel-font'"
-          v-html="renderMarkdown(msg.content)"></div>
+        <div class="prose prose-xs markdown-content zh" v-html="renderMarkdown(msg.content)"></div>
 
         <!-- Timestamp -->
         <div class="text-xs mt-2 opacity-70">
@@ -402,12 +424,12 @@ watch(() => props.showProgressMessages, scrollToBottom)
     </div>
 
     <!-- Loading Indicator -->
-    <div v-if="props.chatStatus" class="flex justify-start">
+    <div v-if="props.chatState && props.chatState !== 'Waiting'" class="flex justify-start">
       <div
         class="bg-gradient-to-br from-yellow-100 to-yellow-200 border border-yellow-300 rounded shadow-[4px_4px_0_rgba(0,0,0,0.5)] px-4 py-3">
         <div class="flex items-center space-x-2">
           <div class="text-xs text-yellow-800">
-            {{ props.chatStatus }}<span v-if="props.chatStatus === 'Thinking' && currentModeHint">({{ currentModeHint
+            {{ props.chatState }}<span v-if="props.chatState === 'Thinking' && currentModeHint">({{ currentModeHint
             }})</span>
           </div>
           <div class="flex space-x-1">

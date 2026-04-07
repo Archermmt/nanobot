@@ -7,7 +7,6 @@ import shutil
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
 from pathlib import Path
 from typing import Any
 
@@ -17,13 +16,14 @@ from nanobot.bus.events import InboundMessage, OutboundMessage
 from nanobot.config.paths import get_legacy_sessions_dir
 from nanobot.config.schema import SessionConfig
 from nanobot.utils.helpers import ensure_dir, safe_filename
+from nanobot.utils.message import RetType
 
 
-class ChatStatus(Enum):
+class SessionState:
     """Chat status enum."""
 
-    LISTEN = "listen"
-    MUTE = "mute"
+    READY = "Ready"
+    STANDBY = "Standby"
 
 
 @dataclass
@@ -45,26 +45,29 @@ class Session:
     metadata: dict[str, Any] = field(default_factory=dict)
     last_consolidated: int = 0  # Number of messages already consolidated to files
     _last_activity_time: float = 0.0  # Last activity timestamp in milliseconds
-    _status: ChatStatus = field(default=ChatStatus.MUTE)  # Current chat status
+    _state: SessionState = field(default=SessionState.STANDBY)  # Current chat status
     _timeout_task: Any = None  # Background timeout check task
     _stop_timeout_check: bool = False  # Flag to stop timeout checking
 
-    def setup(self, config: SessionConfig):
-        self.wakeup_words = config.wakeup_words
-        self.wakeup_response = config.wakeup_response
+    def setup(self, config: SessionConfig, send_callback=None) -> None:
+        if config.enable_wakeup:
+            self.wakeup_words = config.wakeup_words
+            self.wakeup_response = config.wakeup_response
+        else:
+            self.wakeup_words, self.wakeup_response = [], []
         if self.wakeup_words:
             self.goodbye_words = config.goodbye_words
             self.goodbye_response = config.goodbye_response
         else:
             self.goodbye_words, self.goodbye_response = [], []
-        self._status = ChatStatus.MUTE if self.wakeup_words else ChatStatus.LISTEN
         self._default_channel = None
         self._default_chat_id = None
         self._default_message_id = None
-        self._send_callback = None
+        self._send_callback = send_callback
         self._last_meta = None
         # Start background timeout checking task
         if self.wakeup_words:
+            self._state = SessionState.STANDBY
             self._stop_timeout_check = False
             self._timeout_task = asyncio.create_task(
                 self._check_timeout_loop(
@@ -72,7 +75,9 @@ class Session:
                 )
             )
         else:
-            self._stop_timeout_check, self._timeout_task = True, None
+            self._state = SessionState.READY
+            self._stop_timeout_check = True
+            self._timeout_task = None
 
     def add_message(self, role: str, content: str, **kwargs: Any) -> None:
         """Add a message to the session."""
@@ -161,32 +166,80 @@ class Session:
         self.last_consolidated = max(0, self.last_consolidated - dropped)
         self.updated_at = datetime.now()
 
-    def set_send_callback(self, send_callback) -> None:
-        """Set the callback for sending messages."""
-        self._send_callback = send_callback
-
-    def set_context(self, channel: str, chat_id: str, message_id: str | None = None) -> None:
-        """Set the current message context."""
-        self._default_channel = channel
-        self._default_chat_id = chat_id
-        self._default_message_id = message_id
-
-    def check_status(self, msg: InboundMessage) -> dict[str, Any]:
+    def _check_state(self, msg: InboundMessage) -> dict[str, Any]:
         """Check the chat status based on the message content."""
-        response = ""
-        if self._status == ChatStatus.LISTEN and msg.content in self.goodbye_words:
-            self._status = ChatStatus.MUTE
-            response = random.choice(self.goodbye_response)
-        elif self._status == ChatStatus.MUTE and msg.content in self.wakeup_words:
-            self._status = ChatStatus.LISTEN
+        response, metadata = "", msg.metadata
+
+        def _match_word(word, col):
+            if word in col or word.lower() in col or word.upper() in col:
+                return True
+            return False
+
+        last_state = self._state
+        if _match_word(msg.content, self.wakeup_words):
+            self._state = SessionState.READY
             response = random.choice(self.wakeup_response)
+        elif _match_word(msg.content, self.goodbye_words):
+            self._state = SessionState.STANDBY
+            if last_state != self._state:
+                response = random.choice(self.goodbye_response)
+        if self._state == SessionState.STANDBY:
+            metadata.update({"_as_input": False})
+            if not response:
+                response = "Session standby, please wake up."
+                metadata.update({"_warning_msg": "session_standby", "_is_final": True})
+        if response:
+            metadata.update({"_is_final": True, "_session_state": self._state, "_as_input": False})
 
         # Update last activity time when in LISTEN state and received a message
-        if self._status == ChatStatus.LISTEN:
+        if self._state == SessionState.READY:
             self._last_meta = msg.metadata
             self._last_activity_time = time.time() * 1000
 
-        return {"status": self._status, "response": response}
+        return {"status": self._state, "response": response, "metadata": metadata}
+
+    async def check_reply(self, msg: InboundMessage) -> OutboundMessage | None:
+        """
+        Check message and return reply if needed.
+
+        Args:
+            msg: The inbound message to check.
+
+        Returns:
+            OutboundMessage if a reply is needed, None otherwise.
+        """
+
+        self._default_channel = msg.channel
+        self._default_chat_id = msg.chat_id
+
+        if "_warning_msg" in msg.metadata:
+            msg.metadata.update(
+                {"ret_type": RetType.PASSBY, "_hide_message": False, "_is_final": True}
+            )
+
+        # Handle non-normal return types
+        if msg.metadata.get("ret_type", RetType.NORMAL) != RetType.NORMAL:
+            if msg.metadata.get("ret_type", RetType.NORMAL) == RetType.PASSBY:
+                msg.metadata.setdefault("_hide_message", True)
+                msg.metadata.setdefault("_is_final", True)
+            return OutboundMessage(
+                channel=msg.channel,
+                chat_id=msg.chat_id,
+                content=msg.content,
+                metadata=msg.metadata,
+            )
+
+        # Check session status
+        s_info = self._check_state(msg)
+        if s_info.get("response"):
+            return OutboundMessage(
+                channel=msg.channel,
+                chat_id=msg.chat_id,
+                content=s_info["response"],
+                metadata=s_info["metadata"],
+            )
+
+        return None
 
     async def _check_timeout_loop(
         self, timeout_seconds: int = 300, check_interval: float = 10.0
@@ -207,20 +260,25 @@ class Session:
                     current_time = time.time() * 1000
                     if current_time - self._last_activity_time > timeout_seconds * 1000:
                         logger.info(f"Session {self.key} timed out, setting status to MUTE")
-                        self._status = ChatStatus.MUTE
                         # Reset _last_activity_time to avoid repeated triggers
                         self._last_activity_time = 0.0
-                        if self.goodbye_response:
-                            content = random.choice(self.goodbye_response)
-                        else:
-                            content = "GoodBye"
-                        msg = OutboundMessage(
-                            channel=self._default_channel,
-                            chat_id=self._default_chat_id,
-                            content=content,
-                            metadata=self._last_meta,
-                        )
-                        await self._send_callback(msg)
+                        if self._state != SessionState.STANDBY:
+                            if self.goodbye_response:
+                                content = random.choice(self.goodbye_response)
+                            else:
+                                content = "GoodBye"
+                            msg = OutboundMessage(
+                                channel=self._default_channel,
+                                chat_id=self._default_chat_id,
+                                content=content,
+                                metadata={
+                                    **self._last_meta,
+                                    "_is_final": True,
+                                    "_session_state": SessionState.STANDBY,
+                                },
+                            )
+                            self._state = SessionState.STANDBY
+                            await self._send_callback(msg)
         except asyncio.CancelledError:
             logger.debug(f"Timeout check loop cancelled for session {self.key}")
         except Exception as e:
@@ -240,6 +298,11 @@ class Session:
             finally:
                 self._timeout_task = None
 
+    @property
+    def state(self) -> str:
+        """Return the current session status."""
+        return self._state
+
 
 class SessionManager:
     """
@@ -248,12 +311,13 @@ class SessionManager:
     Sessions are stored as JSONL files in the sessions directory.
     """
 
-    def __init__(self, workspace: Path, config: SessionConfig):
+    def __init__(self, workspace: Path, config: SessionConfig, send_callback=None):
         self.workspace = workspace
         self.sessions_dir = ensure_dir(self.workspace / "sessions")
         self.legacy_sessions_dir = get_legacy_sessions_dir()
         self._cache: dict[str, Session] = {}
         self._config = config
+        self._send_callback = send_callback
 
     def _get_session_path(self, key: str) -> Path:
         """Get the file path for a session."""
@@ -281,7 +345,7 @@ class SessionManager:
         session = self._load(key)
         if session is None:
             session = Session(key=key)
-            session.setup(self._config)
+            session.setup(self._config, send_callback=self._send_callback)
 
         self._cache[key] = session
         return session
@@ -333,7 +397,7 @@ class SessionManager:
                 metadata=metadata,
                 last_consolidated=last_consolidated,
             )
-            session.setup(self._config)
+            session.setup(self._config, send_callback=self._send_callback)
             return session
         except Exception as e:
             logger.warning("Failed to load session {}: {}", key, e)

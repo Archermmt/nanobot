@@ -1,6 +1,7 @@
 """媒体文件处理工具函数"""
 
 import base64
+import io
 import os
 import subprocess
 import tempfile
@@ -12,8 +13,188 @@ import numpy as np
 from loguru import logger
 
 
+def opus_to_wav(opus_data, sample_rate: int = 16000):
+    """将Opus数据转换为WAV格式的字节流
+
+    Args:
+        output_dir: 输出目录（保留参数以保持接口兼容）
+        opus_data: opus音频数据
+
+    Returns:
+        bytes: WAV格式的音频数据
+    """
+
+    import opuslib_next
+
+    decoder = None
+    try:
+        decoder = opuslib_next.Decoder(sample_rate, 1)  # 16kHz, 单声道
+        pcm_data = []
+
+        for opus_packet in opus_data:
+            pcm_frame = decoder.decode(opus_packet, 960)  # 960 samples = 60ms
+            pcm_data.append(pcm_frame)
+
+        if not pcm_data:
+            raise ValueError("没有有效的PCM数据")
+
+        # 创建WAV文件头
+        pcm_data_bytes = b"".join(pcm_data)
+
+        # WAV文件头
+        wav_header = bytearray()
+        wav_header.extend(b"RIFF")  # ChunkID
+        wav_header.extend((36 + len(pcm_data_bytes)).to_bytes(4, "little"))  # ChunkSize
+        wav_header.extend(b"WAVE")  # Format
+        wav_header.extend(b"fmt ")  # Subchunk1ID
+        wav_header.extend((16).to_bytes(4, "little"))  # Subchunk1Size
+        wav_header.extend((1).to_bytes(2, "little"))  # AudioFormat (PCM)
+        wav_header.extend((1).to_bytes(2, "little"))  # NumChannels
+        wav_header.extend((16000).to_bytes(4, "little"))  # SampleRate
+        wav_header.extend((32000).to_bytes(4, "little"))  # ByteRate
+        wav_header.extend((2).to_bytes(2, "little"))  # BlockAlign
+        wav_header.extend((16).to_bytes(2, "little"))  # BitsPerSample
+        wav_header.extend(b"data")  # Subchunk2ID
+        wav_header.extend(len(pcm_data_bytes).to_bytes(4, "little"))  # Subchunk2Size
+
+        # 返回完整的WAV数据
+        return bytes(wav_header) + pcm_data_bytes
+    finally:
+        if decoder is not None:
+            try:
+                del decoder
+            except Exception as e:
+                pass
+
+
+def pcm_to_wav(
+    pcm_data: bytes | list[bytes], output_file: Path = None, sample_rate: int = 16000
+) -> bytes | Path | None:
+    """
+    Convert PCM data to WAV format.
+
+    Args:
+        pcm_data: PCM audio data bytes or list of bytes (decoded from opus)
+        output_file: Optional output file path. If None, returns bytes.
+        sample_rate: Sample rate in Hz (default: 16000)
+
+    Returns:
+        bytes if output_file is None, otherwise Path to the output file
+    """
+    try:
+        # Handle list of PCM chunks
+        if isinstance(pcm_data, list):
+            pcm_data = b"".join(pcm_data)
+
+        # Create WAV header
+        wav_header = bytearray()
+        wav_header.extend(b"RIFF")  # ChunkID
+        wav_header.extend((36 + len(pcm_data)).to_bytes(4, "little"))  # ChunkSize
+        wav_header.extend(b"WAVE")  # Format
+        wav_header.extend(b"fmt ")  # Subchunk1ID
+        wav_header.extend((16).to_bytes(4, "little"))  # Subchunk1Size
+        wav_header.extend((1).to_bytes(2, "little"))  # AudioFormat (PCM)
+        wav_header.extend((1).to_bytes(2, "little"))  # NumChannels
+        wav_header.extend((sample_rate).to_bytes(4, "little"))  # SampleRate
+        wav_header.extend((sample_rate * 2).to_bytes(4, "little"))  # ByteRate
+        wav_header.extend((2).to_bytes(2, "little"))  # BlockAlign
+        wav_header.extend((16).to_bytes(2, "little"))  # BitsPerSample
+        wav_header.extend(b"data")  # Subchunk2ID
+        wav_header.extend(len(pcm_data).to_bytes(4, "little"))  # Subchunk2Size
+
+        wav_data = bytes(wav_header) + pcm_data
+
+        if output_file:
+            output_file.write_bytes(wav_data)
+            return output_file
+        else:
+            return wav_data
+
+    except Exception as e:
+        logger.error(f"PCM to WAV conversion error: {e}")
+        return None
+
+
+def webm_to_wav(audio_bytes: bytes, output_file: Path = None) -> io.BytesIO | Path | None:
+    """
+    Convert non-WAV audio to WAV format using ffmpeg.
+
+    Args:
+        audio_bytes: Raw audio data bytes
+
+    Returns:
+        BytesIO object with WAV data, or None if conversion fails
+    """
+
+    in_path, out_path = None, None
+    try:
+        # Create temporary input file
+        with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as tmp_in:
+            tmp_in.write(audio_bytes)
+            in_path = tmp_in.name
+
+        # Create temporary output file for WAV
+        if output_file:
+            out_path = str(output_file)
+        else:
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_out:
+                out_path = tmp_out.name
+        # Use ffmpeg to convert to WAV
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-i",
+                in_path,
+                "-ar",
+                "16000",
+                "-ac",
+                "1",
+                "-f",
+                "wav",
+                "-y",
+                out_path,
+            ],
+            capture_output=True,
+            check=True,
+        )
+        if output_file:
+            return output_file
+        # Read converted WAV file
+        with open(out_path, "rb") as f:
+            wav_io = io.BytesIO(f.read())
+        return wav_io
+    except subprocess.CalledProcessError as e:
+        logger.error(f"FFmpeg conversion failed: {e.stderr.decode() if e.stderr else e}")
+        return None
+    except FileNotFoundError:
+        logger.error("FFmpeg not found. Please install ffmpeg to convert non-WAV audio.")
+        return None
+    except Exception as e:
+        logger.error(f"Audio conversion error: {e}")
+        return None
+    finally:
+        # Cleanup temporary files
+        if in_path and os.path.exists(in_path):
+            os.unlink(in_path)
+        if not output_file and out_path and os.path.exists(out_path):
+            os.unlink(out_path)
+
+
+def get_media_dir() -> Path:
+    """
+    Returns:
+        Path: The path to the media directory
+    """
+    media_dir = Path.home() / ".nanobot" / "media"
+    media_dir.mkdir(parents=True, exist_ok=True)
+    return media_dir
+
+
 def save_media(
-    media_data: str, filename: str | None = None, media_dir: Path | None = None
+    media_data: str,
+    filename: str | None = None,
+    media_dir: Path | None = None,
+    target_type: str = "",
 ) -> tuple[Path, str]:
     """
     保存媒体文件到指定目录
@@ -32,68 +213,37 @@ def save_media(
     mime_type = header.split(";")[0].replace("data:", "")
 
     if not media_dir:
-        media_dir = Path.home() / ".nanobot" / "media"
-        media_dir.mkdir(parents=True, exist_ok=True)
+        media_dir = get_media_dir()
 
     # Decode base64
     file_data = base64.b64decode(b64_data)
+    ext_map = {
+        "image/jpeg": ".jpg",
+        "image/png": ".png",
+        "image/gif": ".gif",
+        "image/webp": ".webp",
+        "audio/webm": ".webm",
+        "audio/mp3": ".mp3",
+        "audio/aac": ".aac",
+        "audio/ogg": ".ogg",
+        "audio/wav": ".wav",
+        "video/mp4": ".mp4",
+    }
+    if target_type:
+        ext = ext_map.get(target_type, ".bin")
+    else:
+        ext = ext_map.get(mime_type, ".bin")
 
     if not filename:
-        # Determine file extension from mime type
-        ext_map = {
-            "image/jpeg": ".jpg",
-            "image/png": ".png",
-            "image/gif": ".gif",
-            "image/webp": ".webp",
-            "audio/webm": ".webm",
-            "audio/mp3": ".mp3",
-            "audio/aac": ".aac",
-            "audio/ogg": ".ogg",
-            "audio/wav": ".wav",
-            "video/mp4": ".mp4",
-        }
-        ext = ext_map.get(mime_type, ".bin")
-        # Save to temporary file
-        filename = f"media_{ext}"
+        filename = f"media{ext}"
+    if not filename.endswith(ext):
+        # Split from the right to get the last dot
+        parts = filename.rsplit(".", 1)
+        filename = parts[0] + ext if len(parts) > 1 else filename + ext
 
     file_path = media_dir / filename
-
-    # Handle WebM to WAV conversion for audio files
-    if filename.endswith(".webm"):
-        # Change file extension from .webm to .wav
-        file_path = Path(str(file_path).replace(".webm", ".wav"))
-        with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as tmp_in:
-            tmp_in.write(file_data)
-            tmp_in_path = tmp_in.name
-
-        result = subprocess.run(
-            [
-                "ffmpeg",
-                "-i",
-                tmp_in_path,
-                "-ar",
-                "16000",
-                "-ac",
-                "1",
-                "-f",
-                "wav",
-                "-y",
-                str(file_path),
-            ],
-            capture_output=True,
-            check=True,
-        )
-        # Check if conversion was successful
-        if result.returncode != 0:
-            logger.error(f"FFmpeg conversion failed: {result.stderr.decode()}")
-            raise RuntimeError(f"FFmpeg conversion failed with code {result.returncode}")
-        logger.info("Successfully converted audio to WAV format")
-
-        # Clean up temporary file
-        try:
-            Path(tmp_in_path).unlink()
-        except Exception as e:
-            logger.warning(f"Failed to clean up temporary file: {e}")
+    if mime_type == "audio/webm" and target_type == "audio/wav":
+        file_path = webm_to_wav(file_data, file_path)
     else:
         file_path.write_bytes(file_data)
     logger.debug("Saved base64 media to {}", file_path)
@@ -156,6 +306,45 @@ def pcm_to_data_stream(
             callback(frame_data)
 
 
+def get_audio_bytes(media_data, audio_format: str = "audio/wav") -> tuple[bytes, str]:
+    """
+    从多种格式的媒体数据中提取音频字节数据和音频格式
+
+    Args:
+        media_data: 媒体数据，可以是以下格式：
+            - dict: 包含 'data' 键的字典
+            - str: data URI 格式 (data:audio/wav;base64,...) 或 base64 字符串
+            - bytes: 原始音频字节数据
+            - str: 文件路径
+        audio_format: 默认音频格式，默认为 "audio/wav"
+
+    Returns:
+        tuple[bytes, str]: (音频字节数据, 音频格式)
+    """
+    # If media is a dict with 'data' key, extract it
+    if isinstance(media_data, dict):
+        media_data = media_data.get("data", "")
+
+    # Handle data URI format
+    if isinstance(media_data, str) and media_data.startswith("data:"):
+        header, media_data = media_data.split(",", 1)
+        audio_format = header.split(";")[0].replace("data:", "")
+
+    # Read audio data based on type
+    if isinstance(media_data, bytes):
+        audio_bytes = media_data
+    elif os.path.isfile(media_data):
+        with open(media_data, "rb") as f:
+            audio_bytes = f.read()
+    else:
+        # Assume it's base64 encoded string
+        audio_bytes = base64.b64decode(
+            media_data.split(",", 1)[1] if "," in media_data else media_data
+        )
+
+    return audio_bytes, audio_format
+
+
 def audio_bytes_to_data_stream(
     audio_bytes,
     file_type,
@@ -174,122 +363,3 @@ def audio_bytes_to_data_stream(
     audio = audio.set_channels(1).set_frame_rate(sample_rate).set_sample_width(2)
     raw_data = audio.raw_data
     pcm_to_data_stream(raw_data, is_opus, callback, sample_rate, opus_encoder)
-
-
-def audio_to_data(
-    audio_file_path: str,
-    encoder: Optional[object] = None,
-    sample_rate: int = 16000,
-    is_opus: bool = True,
-):
-    """
-    将音频文件转换为 PCM 或 Opus 数据流
-
-    Args:
-        audio_file_path: 音频文件路径
-        encoder: Opus 编码器对象（可选，如果为 None 且 is_opus=True 则会创建新编码器）
-        is_opus: 是否编码为 Opus 格式
-
-    Returns:
-        list: 音频帧列表
-    """
-    from pydub import AudioSegment
-
-    # 获取文件后缀名
-    file_type = os.path.splitext(audio_file_path)[1]
-    if file_type:
-        file_type = file_type.lstrip(".")
-
-    # 读取音频文件，-nostdin 参数：不要从标准输入读取数据，否则 FFmpeg 会阻塞
-    audio = AudioSegment.from_file(audio_file_path, format=file_type, parameters=["-nostdin"])
-
-    # 转换为单声道/16kHz采样率/16 位小端编码（确保与编码器匹配）
-    audio = audio.set_channels(1).set_frame_rate(sample_rate).set_sample_width(2)
-
-    # 获取原始 PCM 数据（16 位小端）
-    raw_data = audio.raw_data
-
-    # 编码参数
-    frame_duration = 60  # 60ms per frame
-    frame_size = int(sample_rate * frame_duration / 1000)  # 960 samples/frame
-
-    datas = []
-    # 按帧处理所有音频数据（包括最后一帧可能补零）
-    for i in range(0, len(raw_data), frame_size * 2):  # 16bit=2bytes/sample
-        # 获取当前帧的二进制数据
-        chunk = raw_data[i : i + frame_size * 2]
-
-        # 如果最后一帧不足，补零
-        if len(chunk) < frame_size * 2:
-            chunk += b"\x00" * (frame_size * 2 - len(chunk))
-
-        if is_opus:
-            # 转换为 numpy 数组处理
-            np_frame = np.frombuffer(chunk, dtype=np.int16)
-            # 编码 Opus 数据
-            if encoder:
-                # 使用提供的编码器
-                frame_data = encoder.encode(np_frame.tobytes(), frame_size)
-            else:
-                # 如果没有提供编码器，需要用户自己处理
-                raise ValueError("Opus encoding requires an encoder object")
-        else:
-            frame_data = chunk if isinstance(chunk, bytes) else bytes(chunk)
-
-        datas.append(frame_data)
-
-    return datas
-
-
-def opus_to_wav(opus_data, sample_rate: int = 16000):
-    """将Opus数据转换为WAV格式的字节流
-
-    Args:
-        output_dir: 输出目录（保留参数以保持接口兼容）
-        opus_data: opus音频数据
-
-    Returns:
-        bytes: WAV格式的音频数据
-    """
-
-    import opuslib_next
-
-    decoder = None
-    try:
-        decoder = opuslib_next.Decoder(sample_rate, 1)  # 16kHz, 单声道
-        pcm_data = []
-
-        for opus_packet in opus_data:
-            pcm_frame = decoder.decode(opus_packet, 960)  # 960 samples = 60ms
-            pcm_data.append(pcm_frame)
-
-        if not pcm_data:
-            raise ValueError("没有有效的PCM数据")
-
-        # 创建WAV文件头
-        pcm_data_bytes = b"".join(pcm_data)
-
-        # WAV文件头
-        wav_header = bytearray()
-        wav_header.extend(b"RIFF")  # ChunkID
-        wav_header.extend((36 + len(pcm_data_bytes)).to_bytes(4, "little"))  # ChunkSize
-        wav_header.extend(b"WAVE")  # Format
-        wav_header.extend(b"fmt ")  # Subchunk1ID
-        wav_header.extend((16).to_bytes(4, "little"))  # Subchunk1Size
-        wav_header.extend((1).to_bytes(2, "little"))  # AudioFormat (PCM)
-        wav_header.extend((1).to_bytes(2, "little"))  # NumChannels
-        wav_header.extend((16000).to_bytes(4, "little"))  # SampleRate
-        wav_header.extend((32000).to_bytes(4, "little"))  # ByteRate
-        wav_header.extend((2).to_bytes(2, "little"))  # BlockAlign
-        wav_header.extend((16).to_bytes(2, "little"))  # BitsPerSample
-        wav_header.extend(b"data")  # Subchunk2ID
-        wav_header.extend(len(pcm_data_bytes).to_bytes(4, "little"))  # Subchunk2Size
-
-        # 返回完整的WAV数据
-        return bytes(wav_header) + pcm_data_bytes
-    finally:
-        if decoder is not None:
-            try:
-                del decoder
-            except Exception as e:
-                pass

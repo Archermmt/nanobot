@@ -15,7 +15,7 @@ class ExternTool(Tool):
 
     _registered_types: dict[str, Type["ExternTool"]] = {}
 
-    def __init__(self, **kwargs) -> None:
+    def __init__(self, config) -> None:
         """
         Initialize the external tool.
 
@@ -23,16 +23,17 @@ class ExternTool(Tool):
             **kwargs: Tool-specific parameters.
         """
 
-        required = ["name", "description", "inputSchema"]
+        required = ["name", "description", "inputSchema", "chatId"]
         for key in required:
-            if key not in kwargs:
+            if key not in config:
                 raise ValueError(f"Missing required key in spec: {key}")
-        self._name = kwargs["name"]
-        self._description = kwargs["description"]
-        self._parameters = kwargs["inputSchema"]
-        self.setup(kwargs)
+        self._name = config["name"]
+        self._chat_id = config["chatId"]
+        self._description = config["description"]
+        self._parameters = config["inputSchema"]
+        self.setup(config)
 
-    def setup(self, kwargs: dict[str, Any]) -> None:
+    def setup(self, config: dict[str, Any]) -> None:
         """Setup method to initialize the tool with additional parameters."""
         pass
 

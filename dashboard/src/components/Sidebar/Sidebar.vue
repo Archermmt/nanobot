@@ -31,7 +31,7 @@ const navigate = (section: string) => {
     <div class="mb-8 px-3">
       <div class="flex items-center" :class="{ 'justify-center': !isActive }">
         <span class="text-2xl">🤖</span>
-        <span v-if="isActive" class="ml-3 font-bold text-lg whitespace-nowrap">NanoBot</span>
+        <span v-if="isActive" class="ml-3 font-bold text-lg whitespace-nowrap">NanoBoard</span>
       </div>
     </div>
 

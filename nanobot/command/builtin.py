@@ -29,7 +29,12 @@ async def cmd_stop(ctx: CommandContext) -> OutboundMessage:
     sub_cancelled = await loop.subagents.cancel_by_session(msg.session_key)
     total = cancelled + sub_cancelled
     content = f"Stopped {total} task(s)." if total else "No active task to stop."
-    return OutboundMessage(channel=msg.channel, chat_id=msg.chat_id, content=content)
+    return OutboundMessage(
+        channel=msg.channel,
+        chat_id=msg.chat_id,
+        content=content,
+        metadata={"_is_final": True, "_cmd_ref": "stop"},
+    )
 
 
 async def cmd_restart(ctx: CommandContext) -> OutboundMessage:
@@ -133,7 +138,7 @@ async def cmd_history(ctx: CommandContext) -> OutboundMessage:
 
     for message in session.messages:
         _add_msg(message)
-    metadata = {"_task_ref": "history", "_hide_message": True}
+    metadata = {"_cmd_ref": "history", "_hide_message": True}
     return OutboundMessage(
         channel=ctx.msg.channel,
         chat_id=ctx.msg.chat_id,
@@ -160,8 +165,9 @@ async def cmd_inspect(ctx: CommandContext) -> OutboundMessage:
         "skills": len(loop.context.skills.list_skills()),
         "tools": len(loop.tools),
         "msg_handlers": list(loop.bus.handlers.keys()),
+        "_session_state": session.state,
     }
-    metadata = {"_task_ref": "status", "_hide_message": True}
+    metadata = {"_cmd_ref": "status", "_hide_message": True}
     return OutboundMessage(
         channel=ctx.msg.channel,
         chat_id=ctx.msg.chat_id,
@@ -172,52 +178,54 @@ async def cmd_inspect(ctx: CommandContext) -> OutboundMessage:
 
 async def cmd_register_extern_tools(ctx: CommandContext) -> OutboundMessage:
     """Register external tools."""
+    from nanobot.agent.tools.extern import ExternTool
+
     metadata = ctx.msg.metadata or {}
     required_fields = {"type", "tools"}
     assert all(field in metadata for field in required_fields), "Missing required fields " + str(
         required_fields
     )
     tool_type, kwargs = metadata["type"], metadata.get("kwargs", {})
-    # Get the ExternTool subclass by type
-    from nanobot.agent.tools.extern import ExternTool
-
     tool_class, tools = ExternTool.get_registered_type(tool_type), []
     if tool_class:
-        # Register each tool spec as an instance of the ExternTool subclass
         for spec in metadata["tools"]:
             try:
-                spec.update(kwargs)
-                tool_instance = tool_class(**spec)
+                tool_instance = tool_class({**spec, **kwargs, "chatId": ctx.msg.chat_id})
                 ctx.loop.tools.register(tool_instance)
-                logger.info(f"Registered extern tool({tool_type}): {tool_instance.name}")
                 tools.append(tool_instance.name)
             except Exception as e:
                 logger.warning(f"Failed to register extern tool {spec.get('name', 'unknown')}: {e}")
                 continue
     else:
         logger.warning(f"ExternTool type '{tool_type}' not registered")
+    content = f"Register {len(tools)} {tool_type} tools: {', '.join(tools)}"
+    logger.info(content)
     return OutboundMessage(
         channel=ctx.msg.channel,
         chat_id=ctx.msg.chat_id,
-        content="Registered extern tools: " + ",".join(tools),
-        metadata={"_task_ref": "register_extern_tools"},
+        content=content,
+        metadata={"_cmd_ref": "register_extern_tools"},
     )
 
 
 async def cmd_update_features(ctx: CommandContext) -> OutboundMessage:
     """Update features."""
 
+    sender_id = ctx.msg.sender_id
     if ctx.msg.metadata.get("reset", False):
-        ctx.loop.features = {}
+        ctx.loop.features[sender_id] = {}
     else:
-        ctx.loop.features.update(ctx.msg.metadata.get("features", {}))
-        content = "Update features: " + ",".join([f"{k}={v}" for k, v in ctx.loop.features.items()])
+        features = ctx.loop.features.setdefault(sender_id, {})
+        features.update(ctx.msg.metadata.get("features", {}))
+        content = "Update features({}): {}".format(
+            sender_id, ",".join([f"{k}={v}" for k, v in features.items()])
+        )
         logger.info(content)
     return OutboundMessage(
         channel=ctx.msg.channel,
         chat_id=ctx.msg.chat_id,
         content="",
-        metadata={"_task_ref": "update_features", "_hide_message": True},
+        metadata={"_cmd_ref": "update_features", "_hide_message": True},
     )
 
 

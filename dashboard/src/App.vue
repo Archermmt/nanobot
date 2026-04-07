@@ -15,6 +15,8 @@ let audioRecorder: any = null
 
 // WebSocket connection state
 const wsUrl = ref('ws://localhost:8765')
+const senderId = ref('nanoboard')
+const chatId = ref('nanochat')
 const isConnected = ref(false)
 const isConnecting = ref(false)
 const connectionError = ref<string | null>(null)
@@ -58,7 +60,16 @@ const connectWebSocket = () => {
     url: wsUrl.value
   }
 
-  ws = new WebSocket(wsUrl.value)
+  // Build WebSocket URL with query parameters
+  const urlParams = new URLSearchParams()
+  if (senderId.value) urlParams.append('sender_id', senderId.value)
+  if (chatId.value) urlParams.append('chat_id', chatId.value)
+
+  const fullWsUrl = wsUrl.value.includes('?')
+    ? `${wsUrl.value}&${urlParams.toString()}`
+    : `${wsUrl.value}?${urlParams.toString()}`
+
+  ws = new WebSocket(fullWsUrl)
 
   ws.onopen = () => {
     console.log('✅ WebSocket connected to WebSocketChannel')
@@ -78,15 +89,6 @@ const connectWebSocket = () => {
       isConnected: true,
       isConnecting: false,
       url: wsUrl.value
-    }
-
-    // Send auth message
-    if (ws) {
-      const authMsg = {
-        type: 'auth',
-        token: 'your_auth_token_here'
-      }
-      ws.send(JSON.stringify(authMsg))
     }
 
     // Notify Chat component
@@ -117,6 +119,11 @@ const connectWebSocket = () => {
       isConnecting: false,
       url: wsUrl.value
     }
+
+    // Update session state to Disconnected
+    if (statusBarComponentRef.value && statusBarComponentRef.value.handleStatusUpdate) {
+      statusBarComponentRef.value.handleStatusUpdate({ _session_state: 'Disconnected' })
+    }
   }
 
   ws.onerror = (error) => {
@@ -129,6 +136,11 @@ const connectWebSocket = () => {
       isConnected: false,
       isConnecting: false,
       url: wsUrl.value
+    }
+
+    // Update session state to Disconnected on error
+    if (statusBarComponentRef.value && statusBarComponentRef.value.handleStatusUpdate) {
+      statusBarComponentRef.value.handleStatusUpdate({ _session_state: 'Disconnected' })
     }
   }
 }
@@ -178,19 +190,19 @@ onMounted(() => {
   initApp()
 })
 
-const handleChatStatusChange = (chatStatus: string) => {
+const handlechatStateChange = (chatState: string) => {
   if (thinkingInterval) {
     clearInterval(thinkingInterval)
     thinkingInterval = null
   }
-  if (!chatStatus) {
+  if (!chatState || chatState === 'Waiting') {
     document.title = 'NanoBoard'
   } else {
     // Start blinking effect with suffix
     let dots = 0
     thinkingInterval = window.setInterval(() => {
       dots = (dots + 1) % 4
-      document.title = chatStatus + ' ' + '.'.repeat(dots)
+      document.title = chatState + ' ' + '.'.repeat(dots)
     }, 500)
   }
 }
@@ -217,8 +229,8 @@ const isButtonDisabled = (isConnected: boolean, requiredHandlers?: string[]) => 
   if (!isConnected) return true
 
   // Disable if chat is processing (Thinking or Listening)
-  const chatStatus = chatComponentRef.value?.chatStatus
-  if (chatStatus === 'Thinking' || chatStatus === 'Loading') return true
+  const chatState = chatComponentRef.value?.chatState
+  if (chatState === 'Thinking' || chatState === 'Loading') return true
 
   // Check if all required handlers are available
   if (requiredHandlers && requiredHandlers.length > 0) {
@@ -358,28 +370,26 @@ const startOnlineChat = async () => {
 
         // Set callback to check if audio should be sent
         audioRecorder.setShouldSendAudioCallback(() => {
-          // Only check chatStatus, allow recording if status is not Thinking, Speaking, or Listening
-          const chatStatus = chatComponentRef.value?.chatStatus || ""
-          const canRecord = !["Thinking", "Speaking", "Loading"].includes(chatStatus)
+          // Only check chatState, allow recording if status is not Thinking, Speaking, or Listening
+          const chatState = chatComponentRef.value?.chatState || "Waiting"
+          const canRecord = !["Thinking", "Speaking", "Loading"].includes(chatState)
 
           if (!canRecord) {
-            console.debug('⏸️ 暂停发送音频，当前状态:', chatStatus)
+            console.debug('⏸️ 暂停发送音频，当前状态:', chatState)
           } else {
-            // If can record and currently not in Listening state, set it to Listening
-            if (chatStatus !== "Listening") {
-              if (chatComponentRef.value) {
-                chatComponentRef.value.chatStatus = "Listening"
-              }
+            // If can record and currently in Waiting state, set it to Listening
+            if (chatComponentRef.value && chatState === "Waiting") {
+              chatComponentRef.value.chatState = "Listening"
             }
           }
 
           return canRecord
         })
 
-        // Set callback for recording stop to clear chatStatus
+        // Set callback for recording stop to clear chatState
         audioRecorder.onRecordingStop = () => {
           if (chatComponentRef.value) {
-            chatComponentRef.value.chatStatus = ""
+            chatComponentRef.value.chatState = "Waiting"
           }
         }
 
@@ -492,8 +502,9 @@ document.addEventListener('mouseup', stopDragCamera)
       <!-- Content Area -->
       <main class="flex-1 overflow-hidden bg-gray-900">
         <Chat ref="chatComponentRef" v-show="currentSection === 'chat'" @status-update="handleStatusUpdate"
-          @ws-status-change="handleWsStatusChange" @chat-status-change="handleChatStatusChange"
-          :show-progress-messages="!hideProgress" :is-online-chat-on="isOnlineChatOn" :msg-handlers="msgHandlers" />
+          @ws-status-change="handleWsStatusChange" @chat-state-change="handlechatStateChange"
+          :show-progress-messages="!hideProgress" :is-online-chat-on="isOnlineChatOn" :msg-handlers="msgHandlers"
+          :sender-id="senderId" :chat-id="chatId" />
         <div v-show="currentSection !== 'chat'" class="p-6 text-gray-500 text-center">
           <p class="text-lg">Section under construction</p>
           <p class="text-sm mt-2">{{ currentSection }} view coming soon...</p>

@@ -53,7 +53,7 @@ class BaseVADHandler(BaseHandler, ABC):
             True if the message type is audio
         """
         msg_type = msg.metadata.get("msg_type", "text")
-        return msg_type == "audio_clip"
+        return msg_type == "audio_clip" or msg.content == "/val_process"
 
     def can_handle_output(self, msg: OutboundMessage) -> bool:
         """
@@ -65,12 +65,11 @@ class BaseVADHandler(BaseHandler, ABC):
         Returns:
             True if the message can be handled, False otherwise
         """
+
         if msg.metadata.get("_progress", False):
             return False
-        if not self._waiting_id or msg.metadata.get("vad_id", "") != self._waiting_id:
+        if msg.metadata.get("msg_type", "text") == "audio_clip":
             return False
-        if msg.metadata.get("need_tts", False):
-            return msg.metadata.get("msg_type", "") == "audio"
         return True
 
     @abstractmethod
@@ -96,30 +95,37 @@ class BaseVADHandler(BaseHandler, ABC):
         Returns:
             Modified InboundMessage with VAD metadata
         """
-        if not msg.content or self._waiting_id:
-            msg.content = ""
+
+        def _ignore_msg(msg):
+            msg.content, msg.media = "", []
             msg.metadata["ret_type"] = RetType.IGNORE
             return msg
+
+        if msg.content == "/vad_reset":
+            self._reset_audio()
+            return _ignore_msg(msg)
+
+        if not msg.content or self._waiting_id:
+            return _ignore_msg(msg)
 
         self._asr_audio.append(msg.content)
-        audio_have_voice, msg.content = self.is_vad(msg.content), ""
+        audio_have_voice = self.is_vad(msg.content)
         if not audio_have_voice and not self._client_have_voice:
             self._asr_audio = self._asr_audio[-10:]
-            msg.metadata["ret_type"] = RetType.IGNORE
-            return msg
+            return _ignore_msg(msg)
 
-        if len(self._asr_audio) > 30 and not audio_have_voice and self._client_voice_stop:
-            pcm_data, self._asr_audio = self._asr_audio.copy(), []
+        if len(self._asr_audio) > 15 and not audio_have_voice and self._client_voice_stop:
+            pcm_data = self._asr_audio.copy()
             if self.audio_format == "opus":
                 pcm_data = self.decode_opus(pcm_data)
-            msg.media = [{"data": b"".join(pcm_data)}]
+            msg.content, msg.media = "", [{"data": b"".join(pcm_data)}]
             self._waiting_id = str(uuid.uuid4())[:8]
             msg.metadata.update(
-                {"msg_type": "audio", "audio_format": "pcm", "vad_id": self._waiting_id}
+                {"msg_type": "audio", "audio_format": "audio/pcm", "vad_id": self._waiting_id}
             )
-        else:
-            msg.metadata["ret_type"] = RetType.IGNORE
-        return msg
+            self._reset_audio()
+            return msg
+        return _ignore_msg(msg)
 
     async def handle_output(self, msg: OutboundMessage) -> OutboundMessage:
         """
@@ -132,8 +138,17 @@ class BaseVADHandler(BaseHandler, ABC):
             The processed outbound message (may be modified or the same instance)
         """
 
-        self._waiting_id = ""
+        self._asr_audio, self._waiting_id = [], ""
         return msg
+
+    def _reset_audio(self):
+        """Reset the audio state."""
+        self._asr_audio = []
+        self._client_audio_buffer.clear()
+        self._client_voice_window.clear()
+        self._client_have_voice = False
+        self._client_voice_stop = False
+        self._last_is_voice = False
 
     def decode_opus(self, opus_data: List[bytes]) -> List[bytes]:
         """将Opus音频数据解码为PCM数据"""
@@ -170,7 +185,7 @@ class SileroVADHandler(BaseVADHandler):
 
     @classmethod
     def handler_type(cls) -> str:
-        return "silero"
+        return "silero_vad"
 
     def __init__(self, config: VADHandlerConfig):
         super().__init__(config)

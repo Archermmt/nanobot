@@ -23,6 +23,9 @@ const status = ref<Status>({
   enable_tts: false
 })
 
+// Session state for displaying connection status
+const sessionState = ref<string>('Disconnected')
+
 const emit = defineEmits(['send'])
 
 // Receive WebSocket status from parent via prop
@@ -52,15 +55,33 @@ const handleStatusUpdate = (data: any) => {
     // Parse the JSON string if it's a string
     const parsedData = typeof data === 'string' ? JSON.parse(data) : data
 
-    status.value = {
-      mode: parsedData.mode || 'N/A',
-      model: parsedData.model || 'N/A',
-      history: parsedData.history || 0,
-      skills: parsedData.skills || 0,
-      tools: parsedData.tools || 0,
-      connected: true,
-      enable_asr: parsedData.enable_asr || false,
-      enable_tts: parsedData.enable_tts || false
+    // Only update fields that are present in parsedData
+    if (parsedData.mode !== undefined) {
+      status.value.mode = parsedData.mode
+    }
+    if (parsedData.model !== undefined) {
+      status.value.model = parsedData.model
+    }
+    if (parsedData.history !== undefined) {
+      status.value.history = parsedData.history
+    }
+    if (parsedData.skills !== undefined) {
+      status.value.skills = parsedData.skills
+    }
+    if (parsedData.tools !== undefined) {
+      status.value.tools = parsedData.tools
+    }
+    if (parsedData.connected !== undefined) {
+      status.value.connected = parsedData.connected
+    }
+    if (parsedData.enable_asr !== undefined) {
+      status.value.enable_asr = parsedData.enable_asr
+    }
+    if (parsedData.enable_tts !== undefined) {
+      status.value.enable_tts = parsedData.enable_tts
+    }
+    if (parsedData._session_state !== undefined) {
+      sessionState.value = parsedData._session_state
     }
   } catch (error) {
     console.error('Failed to parse status data:', error)
@@ -90,8 +111,12 @@ onMounted(() => {
       <!-- Status info -->
       <div class="flex items-center space-x-4">
         <div class="flex items-center space-x-2">
-          <span class="w-3 h-3 rounded-sm" :class="status.connected ? 'bg-green-500' : 'bg-red-500'"></span>
-          <span>{{ status.connected ? 'Connected' : 'Disconnected' }}</span>
+          <span class="w-3 h-3 rounded-sm" :class="{
+            'bg-green-500': status.connected && sessionState !== 'Standby',
+            'bg-yellow-500': sessionState === 'Standby',
+            'bg-red-500': !status.connected
+          }"></span>
+          <span>{{ sessionState }}</span>
         </div>
 
         <div class="flex items-center space-x-2 text-xs">

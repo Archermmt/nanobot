@@ -19,7 +19,7 @@ interface Message {
   metadata?: {
     msg_type?: string
     file_type?: string
-    _task_ref?: string
+    _cmd_ref?: string
     _hide_message?: boolean
     _progress?: boolean
     isPlayingOpus?: boolean
@@ -30,16 +30,15 @@ const props = defineProps<{
   showProgressMessages?: boolean
   isOnlineChatOn?: boolean
   msgHandlers?: string[]
+  senderId?: string
+  chatId?: string
 }>()
 
-const emit = defineEmits(['status-update', 'chat-status-change'])
+const emit = defineEmits(['status-update', 'chat-state-change'])
 const messages = ref<Message[]>([])
-const chatStatus = ref<string>("")
+const chatState = ref<string>("Waiting")
 const sessionId = ref(`session_${Date.now()}`)
-const senderId = ref('web_user')  // Global sender ID
-const chatId = ref('default')  // Global chat ID
 const currentAudio = ref<HTMLAudioElement | null>(null)
-const currentTimeoutId = ref<number | null>(null)
 const chatInputRef = ref<InstanceType<typeof ChatInput> | null>(null)
 const pendingCommandsCount = ref(0)  // Track pending commands during connection
 
@@ -67,9 +66,9 @@ const handleTaskRefCompletion = (taskRef: string) => {
   if (pendingCommandsCount.value > 0) {
     pendingCommandsCount.value--
     console.log('⏳ Pending commands:', pendingCommandsCount.value)
-    // Clear status when all commands are completed
+    // Set to Waiting when all commands are completed
     if (pendingCommandsCount.value === 0) {
-      chatStatus.value = ""
+      chatState.value = "Waiting"
       console.log('✅ All initialization commands completed')
     }
   }
@@ -99,18 +98,18 @@ const handleWebSocketMessage = (event: MessageEvent) => {
       return
     }
 
-    // Clear timeout when receiving any message
-    if (currentTimeoutId.value) {
-      clearTimeout(currentTimeoutId.value)
-      currentTimeoutId.value = null
-    }
-
     if (data.type === 'message') {
       // Handle task completion
-      handleTaskRefCompletion(data.metadata?._task_ref)
+      handleTaskRefCompletion(data.metadata?._cmd_ref)
+
+      // Update session state if present in metadata
+      if (data.metadata?._session_state) {
+        console.log('🔄 Session state updated:', data.metadata._session_state)
+        emit('status-update', { _session_state: data.metadata._session_state })
+      }
 
       // Check if this is a status response
-      if (data.content && data.metadata?._task_ref === 'status') {
+      if (data.content && data.metadata?._cmd_ref === 'status') {
         // This is a status update, emit it for StatusBar and App.vue
         try {
           const statusData = JSON.parse(data.content)
@@ -123,7 +122,7 @@ const handleWebSocketMessage = (event: MessageEvent) => {
       }
 
       // Check if this is a history response (JSON array)
-      if (data.content && data.metadata?._task_ref === 'history') {
+      if (data.content && data.metadata?._cmd_ref === 'history') {
         try {
           const historyData = JSON.parse(data.content)
           if (Array.isArray(historyData)) {
@@ -249,15 +248,15 @@ const handleWebSocketMessage = (event: MessageEvent) => {
       }
 
       // Check if message contains _mode_hint and is not a progress message
-      if (data.metadata?._mode_hint && !data.metadata?._progress) {
-        sendMessage('/inspect', true)
+      if (data.metadata?._trigger_cmd) {
+        sendMessage(data.metadata._trigger_cmd, true)
       }
 
-      // Only set chatStatus based on _progress and _as_input
-      if (data.metadata?._progress) {
-        chatStatus.value = "Thinking"
-      } else if (!data.audioUrl) {
-        chatStatus.value = ""
+      // Only set chatState based on _is_final
+      if (data.metadata?._is_final) {
+        chatState.value = "Waiting"
+      } else if (data.metadata?._as_input) {
+        chatState.value = "Thinking"
       }
     } else if (data.type === 'heartbeat') {
       // Reply to heartbeat
@@ -274,7 +273,6 @@ const handleWebSocketMessage = (event: MessageEvent) => {
         content: `Error: ${data.message || data.data}`,
         timestamp: Date.now()
       })
-      chatStatus.value = ""
     }
   } catch (e) {
     console.error('Failed to parse message:', e)
@@ -364,8 +362,8 @@ const sendMessage = async (
     } = {
       type: "message",
       message_id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      sender_id: senderId.value,
-      chat_id: chatId.value,
+      sender_id: props.senderId || 'web_user',
+      chat_id: props.chatId || 'default',
       content: text,
       media: mediaItems,
       metadata: {
@@ -391,26 +389,8 @@ const sendMessage = async (
     console.log('📤 Sending message:', messageData)
     ws.send(JSON.stringify(messageData))
     if (!isCommand) {
-      chatStatus.value = "Thinking"
+      chatState.value = "Thinking"
     }
-
-    // Set timeout: if no response within 60 seconds, stop loading
-    const timeoutId = setTimeout(() => {
-      if (chatStatus.value === "Thinking") {
-        chatStatus.value = ""
-        console.warn('No response received within 30 seconds')
-      }
-      // Also handle command timeout
-      if (isCommand && pendingCommandsCount.value > 0) {
-        pendingCommandsCount.value = 0
-        console.warn('⏰ Command timed out, remaining:', pendingCommandsCount.value)
-        chatStatus.value = ""
-      }
-    }, 60000)
-
-    // Store timeout ID in a ref so we can clear it on message receive
-    currentTimeoutId.value = timeoutId
-
   } else {
     // Error prompt when WebSocket is not connected
     messages.value.push({
@@ -418,7 +398,7 @@ const sendMessage = async (
       content: 'WebSocket not connected. Please connect first.',
       timestamp: Date.now()
     })
-    chatStatus.value = ""
+    chatState.value = "Waiting"
   }
 }
 
@@ -435,8 +415,11 @@ const handleConnected = () => {
     return
   }
 
+  // Set initial session state to Connected
+  emit('status-update', { _session_state: 'Connected' })
+
   // Set status to Loading at the beginning
-  chatStatus.value = "Loading"
+  chatState.value = "Loading"
 
   // Clear messages on successful connection
   messages.value = []
@@ -466,7 +449,7 @@ const handleConnected = () => {
 }
 
 const handleRecordingStart = () => {
-  chatStatus.value = "Recording"
+  chatState.value = "Recording"
 }
 
 const playAudio = (audioUrl: string) => {
@@ -498,7 +481,7 @@ const stopAudio = () => {
   }
 
   // Stop remote speaking (opus playback)
-  if (chatStatus.value === "Speaking") {
+  if (chatState.value === "Speaking") {
     console.log('Stopping remote speaking (opus playback)')
     // Clear all audio buffers and stop playback
     audioPlayer.clearAllAudio()
@@ -512,20 +495,23 @@ const stopAudio = () => {
       }
     }
   }
-  chatStatus.value = ""
+  chatState.value = "Waiting"
+
+  // Send /stop_audio command to stop audio sending
+  sendMessage('/stop_audio', true)
 }
 
-// Watch for chatStatus changes and emit to parent
-watch(chatStatus, (newStatus) => {
-  emit('chat-status-change', newStatus)
+// Watch for chatState changes and emit to parent
+watch(chatState, (newStatus) => {
+  emit('chat-state-change', newStatus)
 })
 
-// Watch for playingAudioUrl changes and update chatStatus
+// Watch for playingAudioUrl changes and update chatState
 watch(playingAudioUrl, (newUrl) => {
   if (newUrl) {
-    chatStatus.value = "Speaking"
+    chatState.value = "Speaking"
   } else {
-    chatStatus.value = ""
+    chatState.value = "Waiting"
   }
 })
 
@@ -535,10 +521,15 @@ const handleTTSMessage = async (data: any) => {
   if (state === 'start') {
     console.log('语音段开始')
     ttsSentenceCount.value = 0
-    chatStatus.value = "Speaking"
+    chatState.value = "Speaking"
   } else if (state === 'sentence_start') {
     console.debug(`服务器发送语音段：${data.text}`)
     ttsSentenceCount.value++
+    // Update session state if present in metadata
+    if (data.metadata?._session_state) {
+      console.log('🔄 Session state updated:', data.metadata._session_state)
+      emit('status-update', { _session_state: data.metadata._session_state })
+    }
     // Add message to chat immediately
     if (data.text && !data.text.trim().startsWith('/')) {
       messages.value.push({
@@ -559,7 +550,7 @@ const handleTTSMessage = async (data: any) => {
 
 // Handle opus audio frame - enqueue to player
 const handleOpusAudioFrame = async (data: Blob | ArrayBuffer) => {
-  if (chatStatus.value !== "Speaking") {
+  if (chatState.value !== "Speaking") {
     console.warn('⚠️ Received opus frame but not speaking')
     return
   }
@@ -587,10 +578,6 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  // Clear any pending timeout
-  if (currentTimeoutId.value) {
-    clearTimeout(currentTimeoutId.value)
-  }
   stopAudio()
 
   // Clear all audio when component unmounts
@@ -601,7 +588,7 @@ onUnmounted(() => {
 
 // Expose reactive state and methods to parent component
 defineExpose({
-  chatStatus,
+  chatState,
   setWebSocket,
   handleWebSocketMessage,
   handleConnected,
@@ -613,11 +600,11 @@ defineExpose({
 <template>
   <div class="flex flex-col h-full chat-container">
     <!-- Messages -->
-    <MessageList :messages="messages" :chat-status="chatStatus" @play-audio="playAudio" @stop-audio="stopAudio"
+    <MessageList :messages="messages" :chat-state="chatState" @play-audio="playAudio" @stop-audio="stopAudio"
       :show-progress-messages="props.showProgressMessages" :playing-audio-url="playingAudioUrl" />
 
     <!-- Input -->
-    <ChatInput ref="chatInputRef" :chat-status="chatStatus" :disabled="!isConnected"
+    <ChatInput ref="chatInputRef" :chat-state="chatState" :disabled="!isConnected"
       :is-online-chat-on="props.isOnlineChatOn" :msg-handlers="props.msgHandlers" :messages="messages"
       @send="sendMessage" @stop-audio="stopAudio" @recording-start="handleRecordingStart" />
   </div>

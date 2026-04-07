@@ -4,7 +4,7 @@ import MediaUploader from '../Media/MediaUploader.vue'
 import { mdiSend, mdiMessagePlus, mdiDeleteSweep, mdiStopCircle } from '@mdi/js'
 
 interface Props {
-  chatStatus: string
+  chatState: string
   disabled?: boolean
   isOnlineChatOn?: boolean
   msgHandlers?: string[]
@@ -38,7 +38,7 @@ const userHistory = computed(() => {
 
 // Check if input is disabled based on chat status and props
 const isInputDisabled = () => {
-  return props.disabled || props.chatStatus === 'Thinking' || props.chatStatus === 'Loading'
+  return props.disabled || props.chatState === 'Thinking' || props.chatState === 'Loading' || props.chatState === 'Speaking'
 }
 
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
@@ -105,7 +105,7 @@ const handleKeydown = (event: KeyboardEvent) => {
 }
 
 const sendMessage = () => {
-  if ((!input.value.trim() && pendingImages.value.length === 0 && pendingFiles.value.length === 0) || props.chatStatus === "Thinking" || props.disabled) return
+  if ((!input.value.trim() && pendingImages.value.length === 0 && pendingFiles.value.length === 0) || props.chatState === "Thinking" || props.disabled) return
 
   // Send text, images and files together
   emit('send', {
@@ -218,7 +218,7 @@ defineExpose({
   <div class="border-t-4 border-gray-700 bg-gray-800 p-4">
     <div class="flex items-center space-x-3">
       <!-- Media Upload Buttons on the left of input -->
-      <MediaUploader :disabled="props.disabled || chatStatus === 'Thinking'" :is-online-chat-on="props.isOnlineChatOn"
+      <MediaUploader :disabled="isInputDisabled()" :is-online-chat-on="props.isOnlineChatOn"
         :msg-handlers="props.msgHandlers" @upload-image="handleImageUpload" @upload-audio="handleAudioUpload"
         @upload-file="handleFileUpload" @recording-start="handleRecordingStart" />
 
@@ -281,7 +281,7 @@ defineExpose({
         </button>
         <button @click="handleStopChat"
           class="nes-btn is-error p-2 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          :disabled="props.disabled || chatStatus !== 'Thinking'" title="Stop Current Chat">
+          :disabled="props.disabled || chatState !== 'Thinking'" title="Stop Current Chat">
           <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
             <path :d="mdiStopCircle" />
           </svg>
