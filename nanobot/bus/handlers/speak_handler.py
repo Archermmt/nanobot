@@ -207,8 +207,8 @@ class SbrainSpeakHandler(BaseSpeakHandler):
             assert "audio" in voice_entry, f"Voice entry missing 'audio' key: {voice_entry}"
             ref_audio = self.depends_folder / voice_entry["audio"]
             if config.speaker and ref_audio.exists():
-                self.ref_audios.append(str(ref_audio))
-                logger.info(f"Loaded reference speaker audio from {ref_audio}")
+                self.ref_audios.append(voice_entry["audio"])
+        logger.debug(f"Loaded reference speaker audio from {self.ref_audios}")
 
     def _verify_speaker(
         self, audio_bytes: bytes, audio_format: str = "audio/wav", msg: InboundMessage | None = None

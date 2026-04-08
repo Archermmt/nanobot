@@ -118,3 +118,4 @@ Unified tool for image analysis, display, and generation.
 1. **ALWAYS use image tool** - Never attempt direct LLM API calls
 2. **Absolute paths only** - Convert all paths to absolute before calling
 3. **Keep text unchanged in generate mode** - Do not change the text when generating image
+4. **Display generated/edited images** - After calling image tool in generate or edit mode, always use the display mode to show the resulting image
