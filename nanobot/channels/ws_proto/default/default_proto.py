@@ -240,10 +240,7 @@ class DefaultProto(BaseProto):
             info: A dictionary containing information about the sent message.
         """
 
-        if (
-            msg.metadata.get("msg_type", "text") == "audio"
-            and msg.metadata.get("encoder_type", "") == "opus"
-        ):
+        if msg.metadata.get("msg_type", "text") == "audio" and msg.metadata.get("encoder_type"):
             self._stop_audio = False
             frame_duration = msg.metadata.get("frame_duration", 60)
             tts_info = {"type": "tts", "chat_id": msg.chat_id}

@@ -1,6 +1,5 @@
 """ASR (Automatic Speech Recognition) handlers for speech recognition."""
 
-import base64
 import io
 import json
 import os
