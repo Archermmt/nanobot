@@ -80,11 +80,11 @@ class WebSocketChannel(BaseChannel):
 
     def _init_protos(self) -> None:
         """Initialize protocol handlers discovered via ws_proto directory."""
-        from nanobot.channels.ws_proto.registry import discover_all_protos
+        from nanobot.channels.ws_proto.base_proto import BaseProto
 
         # Initialize each discovered protocol handler
         protos: dict[str, Any] = {}
-        for name, cls in discover_all_protos().items():
+        for name, cls in BaseProto.get_all_protos().items():
             try:
                 section = self.config.protos.get(name, {})
                 enabled = (

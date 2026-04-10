@@ -36,6 +36,7 @@ class AuthenticationError(Exception):
     pass
 
 
+@BaseProto.register()
 class XiaoZhiProto(BaseProto):
     """
     XiaoZhi protocol handler for WebSocket message processing.
@@ -47,6 +48,11 @@ class XiaoZhiProto(BaseProto):
     - MCP (Model Context Protocol) support
     - TTS (Text-to-Speech) message handling
     """
+
+    @classmethod
+    def proto_name(cls) -> str:
+        """Return the protocol name for registration."""
+        return "xiaozhi"
 
     def __init__(self, config: XiaoZhiProtoConfig | dict, ws_config: Any):
         """

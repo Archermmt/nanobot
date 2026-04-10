@@ -2,4 +2,7 @@
 
 from nanobot.channels.ws_proto.base_proto import BaseProto
 
-__all__ = ["BaseProto"]
+from .default import DefaultProto
+from .xiaozhi import XiaoZhiProto
+
+__all__ = ["BaseProto", "DefaultProto", "XiaoZhiProto"]

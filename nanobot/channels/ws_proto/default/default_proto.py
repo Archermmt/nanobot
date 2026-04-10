@@ -21,6 +21,7 @@ class DefaultProtoConfig(Base):
     accept_senders: list[str] = ["nanoboard"]  # List of accepted sender IDs
 
 
+@BaseProto.register()
 class DefaultProto(BaseProto):
     """
     Default protocol handler for WebSocket message processing.
@@ -31,6 +32,11 @@ class DefaultProto(BaseProto):
     - Media file handling (images, audio, files)
     - Tool call result management
     """
+
+    @classmethod
+    def proto_name(cls) -> str:
+        """Return the protocol name for registration."""
+        return "default"
 
     def __init__(self, config: DefaultProtoConfig | dict, ws_config: Any):
         """

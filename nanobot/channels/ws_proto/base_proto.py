@@ -1,7 +1,9 @@
 """WebSocket base protocol for handling WebSocket message processing."""
 
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, Dict, Type
+
+from loguru import logger
 
 from nanobot.bus.events import OutboundMessage
 
@@ -20,7 +22,20 @@ class BaseProto(ABC):
     Subclasses should implement:
     - receive_msg(): Process incoming messages
     - send_msg(): Send outgoing messages
+
+    Registration:
+        Use @BaseProto.register() decorator to register a protocol handler.
+        The protocol name is obtained from the subclass's proto_name() class method.
+
+        Usage:
+            @BaseProto.register()
+            class MyProto(BaseProto):
+                @classmethod
+                def proto_name(cls) -> str:
+                    return "my_protocol"
     """
+
+    _registry: Dict[str, Type["BaseProto"]] = {}
 
     def __init__(self, config: Any = None, ws_config: Any = None):
         """
@@ -32,6 +47,55 @@ class BaseProto(ABC):
         """
         self.config = config
         self.ws_config = ws_config
+
+    @classmethod
+    def register(cls):
+        """
+        Decorator to register a protocol handler subclass.
+        The protocol name is obtained from the subclass's proto_name() class method.
+
+        Usage:
+            @BaseProto.register()
+            class MyProto(BaseProto):
+                @classmethod
+                def proto_name(cls) -> str:
+                    return "my_protocol"
+        """
+
+        def decorator(subclass: Type["BaseProto"]) -> Type["BaseProto"]:
+            if not hasattr(subclass, "proto_name") or not callable(subclass.proto_name):
+                raise TypeError(
+                    f"Subclass {subclass.__name__} must define proto_name() class method"
+                )
+            proto_name = subclass.proto_name()
+            cls._registry[proto_name] = subclass
+            logger.debug("Registered protocol handler: {} -> {}", proto_name, subclass.__name__)
+            return subclass
+
+        return decorator
+
+    @classmethod
+    def get_registered_proto(cls, proto_name: str) -> Type["BaseProto"] | None:
+        """
+        Get a registered protocol handler class by protocol name.
+
+        Args:
+            proto_name: The protocol name to look up
+
+        Returns:
+            The registered protocol handler class, or None if not found
+        """
+        return cls._registry.get(proto_name)
+
+    @classmethod
+    def get_all_protos(cls) -> Dict[str, Type["BaseProto"]]:
+        """Get all registered protocol handlers."""
+        return cls._registry.copy()
+
+    @classmethod
+    def clear_registry(cls) -> None:
+        """Clear all registered protocol handlers."""
+        cls._registry.clear()
 
     async def accept(self, websocket) -> dict | None:
         """
