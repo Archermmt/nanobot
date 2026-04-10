@@ -191,11 +191,6 @@ class Session:
         if response:
             metadata.update({"_is_final": True, "_session_state": self._state, "_as_input": False})
 
-        # Update last activity time when in LISTEN state and received a message
-        if self._state == SessionState.READY:
-            self._last_meta = msg.metadata
-            self._last_activity_time = time.time() * 1000
-
         return {"status": self._state, "response": response, "metadata": metadata}
 
     async def check_reply(self, msg: InboundMessage) -> OutboundMessage | None:
@@ -211,6 +206,11 @@ class Session:
 
         self._default_channel = msg.channel
         self._default_chat_id = msg.chat_id
+
+        # Update last activity time when in READY state and received a message
+        if self._state == SessionState.READY:
+            self._last_meta = msg.metadata
+            self._last_activity_time = time.time() * 1000
 
         if "_warning_msg" in msg.metadata:
             msg.metadata.update(
