@@ -382,7 +382,6 @@ class VideoTool(Tool):
                 media=[media_data],
                 metadata={"msg_type": "video", "file_type": self._get_mime_type(video_path)},
             )
-            print(f"[TMINFO] Video displayed msg {msg}", flush=True)
             await self._send_callback(msg)
             return f"Playing video: {video_path}"
 

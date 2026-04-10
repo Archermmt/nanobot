@@ -20,6 +20,7 @@ interface Message {
   timestamp: number
   imageUrl?: string
   audioUrl?: string
+  videoUrl?: string
   media?: MediaData[]
   metadata?: {
     msg_type?: string
@@ -29,6 +30,7 @@ interface Message {
     _mode_hint?: string
     _tool_hint?: string
     isPlayingOpus?: boolean
+    isVideoPlaying?: boolean
     _as_input?: boolean
     _warning_msg?: string
   }
@@ -42,11 +44,12 @@ interface Props {
 }
 
 const props = defineProps<Props>()
-const emit = defineEmits(['play-audio', 'stop-audio'])
+const emit = defineEmits(['play-audio', 'stop-audio', 'play-video', 'stop-video'])
 
 const messageContainer = ref<HTMLElement | null>(null)
 const currentAudio = ref<HTMLAudioElement | null>(null)
 const expandedImages = ref<string[]>([])
+const expandedVideos = ref<string[]>([])
 const currentModeHint = ref<string | null>(null)
 const imageZoomLevels = ref<Record<string, number>>({})
 const imagePositions = ref<Record<string, { x: number; y: number }>>({})
@@ -72,6 +75,37 @@ const getImageUrlFromMessage = (msg: Message): string | null => {
     }
   }
   return null
+}
+
+// Extract video URL from media data
+const getVideoUrlFromMessage = (msg: Message): string | null => {
+  if (msg.videoUrl) {
+    return msg.videoUrl
+  }
+  if (msg.media && msg.media.length > 0) {
+    const msgType = msg.metadata?.msg_type
+    if (msgType === 'video' || msg.metadata?.file_type?.startsWith('video/')) {
+      // Use data or file_path for video
+      if ('file_path' in msg.media[0] && msg.media[0].file_path) {
+        return msg.media[0].file_path as string
+      }
+      return msg.media[0]?.data || null
+    }
+  }
+  return null
+}
+
+const toggleVideoExpand = (videoUrl: string) => {
+  const index = expandedVideos.value.indexOf(videoUrl)
+  if (index > -1) {
+    expandedVideos.value.splice(index, 1)
+    // Stop video when collapsing
+    emit('stop-video')
+  } else {
+    expandedVideos.value.push(videoUrl)
+    // Play video when expanding
+    emit('play-video', videoUrl)
+  }
 }
 
 const toggleImageExpand = (imageUrl: string) => {
@@ -338,6 +372,54 @@ watch(() => props.showProgressMessages, scrollToBottom)
         'bg-gradient-to-br from-red-100 to-red-200 border-red-300 text-red-800 max-w-[80%]': msg.role === 'system',
         'bg-gradient-to-br from-pink-100 to-pink-200 border-pink-300 text-gray-700 max-w-[80%]': msg.metadata?._warning_msg
       }">
+        <!-- Video Display -->
+        <div v-if="getVideoUrlFromMessage(msg)" class="mb-3 w-full">
+          <!-- Collapsed state: thumbnail with play button -->
+          <div v-if="!expandedVideos.includes(getVideoUrlFromMessage(msg)!)" class="relative inline-block max-w-full">
+            <video :src="getVideoUrlFromMessage(msg)!"
+              class="rounded border-2 cursor-pointer hover:opacity-90 transition-opacity max-w-full h-auto bg-black"
+              style="max-width: 400px;" @click="toggleVideoExpand(getVideoUrlFromMessage(msg)!)">
+            </video>
+            <!-- Play overlay -->
+            <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div class="bg-black bg-opacity-50 rounded-full p-4">
+                <svg class="w-12 h-12 text-white" fill="currentColor" viewBox="0 0 20 20">
+                  <path
+                    d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
+                </svg>
+              </div>
+            </div>
+            <!-- Zoom hint -->
+            <div
+              class="absolute top-1 right-1 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded opacity-0 hover:opacity-100 transition-opacity pointer-events-none">
+              点击查看原视频
+            </div>
+          </div>
+          <!-- Expanded state: full screen overlay with video player -->
+          <div v-else class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-90 p-8"
+            @click="toggleVideoExpand(getVideoUrlFromMessage(msg)!)">
+            <div class="relative max-w-full max-h-full">
+              <video :src="getVideoUrlFromMessage(msg)!" controls autoplay class="max-w-full max-h-full rounded"
+                @click.stop />
+              <!-- Close hint -->
+              <div class="absolute top-4 right-4 text-white text-sm bg-black bg-opacity-50 px-3 py-2 rounded">
+                点击背景关闭
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Audio Display -->
+        <div v-if="msg.audioUrl" class="mb-3">
+          <div class="flex items-center space-x-2">
+            <button @click="isPlaying(msg.audioUrl!) ? emit('stop-audio') : emit('play-audio', msg.audioUrl!)"
+              class="nes-btn is-primary">
+              {{ isPlaying(msg.audioUrl!) ? '⏹️' : '▶️' }}
+            </button>
+            <span class="text-xs opacity-70">{{ isPlaying(msg.audioUrl!) ? '播放中...' : '已停止' }}</span>
+          </div>
+        </div>
+
         <!-- Image Display -->
         <div v-if="getImageUrlFromMessage(msg)" class="mb-3 w-full">
           <!-- Collapsed state: display at actual size with max-width constraint -->
@@ -430,7 +512,7 @@ watch(() => props.showProgressMessages, scrollToBottom)
         <div class="flex items-center space-x-2">
           <div class="text-xs text-yellow-900">
             {{ props.chatState }}<span v-if="props.chatState === 'Thinking' && currentModeHint">({{ currentModeHint
-            }})</span>
+              }})</span>
           </div>
           <div class="flex space-x-1">
             <div class="w-2 h-2 bg-blue-500 rounded animate-bounce" style="animation-delay: 0ms"></div>

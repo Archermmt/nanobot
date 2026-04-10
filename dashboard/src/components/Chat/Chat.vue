@@ -11,6 +11,7 @@ interface Message {
   content: string
   timestamp: number
   imageUrl?: string
+  videoUrl?: string
   audioUrl?: string
   media?: Array<{
     data: string
@@ -23,6 +24,7 @@ interface Message {
     _hide_message?: boolean
     _progress?: boolean
     isPlayingOpus?: boolean
+    isVideoPlaying?: boolean
   }
 }
 
@@ -39,11 +41,13 @@ const messages = ref<Message[]>([])
 const chatState = ref<string>("Waiting")
 const sessionId = ref(`session_${Date.now()}`)
 const currentAudio = ref<HTMLAudioElement | null>(null)
+const currentVideo = ref<HTMLVideoElement | null>(null)
 const chatInputRef = ref<InstanceType<typeof ChatInput> | null>(null)
 const pendingCommandsCount = ref(0)  // Track pending commands during connection
 
 // Global audio playing state shared across components
 const playingAudioUrl = ref<string | null>(null)
+const playingVideoUrl = ref<string | null>(null)
 
 // WebSocket instance (managed by App.vue)
 let ws: WebSocket | null = null
@@ -192,8 +196,9 @@ const handleWebSocketMessage = (event: MessageEvent) => {
         return  // Don't create duplicate message entry
       }
 
-      // Handle image and audio messages from media
+      // Handle image, video and audio messages from media
       let imageUrl: string | undefined
+      let videoUrl: string | undefined
       let audioUrl: string | undefined
 
       if (data.media && data.media.length > 0) {
@@ -206,6 +211,15 @@ const handleWebSocketMessage = (event: MessageEvent) => {
           const mediaItem = data.media[0]
           if (mediaItem && typeof mediaItem === 'string') {
             imageUrl = mediaItem
+          }
+        }
+
+        // Check if this is a video message
+        if (msgType === 'video' || (fileType && fileType.startsWith('video/'))) {
+          // Extract video from media data
+          const mediaItem = data.media[0]
+          if (mediaItem && typeof mediaItem === 'string') {
+            videoUrl = mediaItem
           }
         }
 
@@ -238,6 +252,7 @@ const handleWebSocketMessage = (event: MessageEvent) => {
           content: data.content || 'Message received',
           timestamp: Date.now(),
           imageUrl: imageUrl,
+          videoUrl: videoUrl,
           audioUrl: audioUrl,
           media: data.media,
           metadata: data.metadata
@@ -504,6 +519,40 @@ const stopAudio = () => {
   sendMessage('/stop_audio', true)
 }
 
+const playVideo = (videoUrl: string) => {
+  if (currentVideo.value) {
+    if (currentVideo.value.src === videoUrl && !currentVideo.value.paused) {
+      currentVideo.value.pause()
+      playingVideoUrl.value = null
+      chatState.value = "Waiting"
+      return
+    }
+    currentVideo.value.pause()
+  }
+
+  currentVideo.value = document.createElement('video')
+  currentVideo.value.src = videoUrl
+  currentVideo.value.controls = true
+  currentVideo.value.play()
+  playingVideoUrl.value = videoUrl
+  chatState.value = "VideoPlaying"
+
+  currentVideo.value.onended = () => {
+    playingVideoUrl.value = null
+    chatState.value = "Waiting"
+  }
+}
+
+const stopVideo = () => {
+  if (currentVideo.value) {
+    console.log('Stopping video playback')
+    currentVideo.value.pause()
+    playingVideoUrl.value = null
+    currentVideo.value = null
+    chatState.value = "Waiting"
+  }
+}
+
 // Watch for chatState changes and emit to parent
 watch(chatState, (newStatus) => {
   emit('chat-state-change', newStatus)
@@ -513,6 +562,15 @@ watch(chatState, (newStatus) => {
 watch(playingAudioUrl, (newUrl) => {
   if (newUrl) {
     chatState.value = "Speaking"
+  } else {
+    chatState.value = "Waiting"
+  }
+})
+
+// Watch for playingVideoUrl changes and update chatState
+watch(playingVideoUrl, (newUrl) => {
+  if (newUrl) {
+    chatState.value = "VideoPlaying"
   } else {
     chatState.value = "Waiting"
   }
@@ -582,6 +640,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   stopAudio()
+  stopVideo()
 
   // Clear all audio when component unmounts
   if (audioPlayer) {
@@ -604,7 +663,8 @@ defineExpose({
   <div class="flex flex-col h-full chat-container">
     <!-- Messages -->
     <MessageList :messages="messages" :chat-state="chatState" @play-audio="playAudio" @stop-audio="stopAudio"
-      :show-progress-messages="props.showProgressMessages" :playing-audio-url="playingAudioUrl" />
+      @play-video="playVideo" @stop-video="stopVideo" :show-progress-messages="props.showProgressMessages"
+      :playing-audio-url="playingAudioUrl" />
 
     <!-- Input -->
     <ChatInput ref="chatInputRef" :chat-state="chatState" :disabled="!isConnected"
