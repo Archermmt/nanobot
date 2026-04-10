@@ -192,7 +192,7 @@ class MusicTool(Tool):
             )
             # Send the message through the callback
             await self._send_callback(msg)
-            return f"Music playing: {file_path.name}"
+            return f"Music played: {file_path.name}"
 
         except Exception as e:
             return f"Error: {str(e)}"
