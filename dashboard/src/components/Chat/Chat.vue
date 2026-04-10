@@ -211,19 +211,22 @@ const handleWebSocketMessage = (event: MessageEvent) => {
 
         // Check if this is an audio message
         if (msgType === 'audio' || (fileType && fileType.startsWith('audio/'))) {
-          // Extract audio from media data
-          const mediaItem = data.media[0]
-          if (mediaItem && typeof mediaItem === 'string') {
-            // Convert base64 to blob URL for playback
-            const base64Data = mediaItem
-            const byteCharacters = atob(base64Data)
-            const byteNumbers = new Array(byteCharacters.length)
-            for (let i = 0; i < byteCharacters.length; i++) {
-              byteNumbers[i] = byteCharacters.charCodeAt(i)
+          // Only parse audio URL if no audio is currently playing
+          if (!playingAudioUrl.value) {
+            // Extract audio from media data
+            const mediaItem = data.media[0]
+            if (mediaItem && typeof mediaItem === 'string') {
+              // Convert base64 to blob URL for playback
+              const base64Data = mediaItem
+              const byteCharacters = atob(base64Data)
+              const byteNumbers = new Array(byteCharacters.length)
+              for (let i = 0; i < byteCharacters.length; i++) {
+                byteNumbers[i] = byteCharacters.charCodeAt(i)
+              }
+              const byteArray = new Uint8Array(byteNumbers)
+              const blob = new Blob([byteArray], { type: 'audio/mpeg' })
+              audioUrl = URL.createObjectURL(blob)
             }
-            const byteArray = new Uint8Array(byteNumbers)
-            const blob = new Blob([byteArray], { type: 'audio/mpeg' })
-            audioUrl = URL.createObjectURL(blob)
           }
         }
       }
