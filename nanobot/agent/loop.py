@@ -565,9 +565,11 @@ class AgentLoop:
             chat_id=msg.chat_id,
             message_id=msg.metadata.get("message_id"),
         )
+        meta = dict(msg.metadata or {})
 
         if final_content is None:
             final_content = "I've completed processing but have no response to give."
+            meta["_hide_message"] = True
 
         self._save_turn(session, all_msgs, 1 + len(history))
         self.sessions.save(session)
@@ -584,7 +586,6 @@ class AgentLoop:
         preview = final_content[:120] + "..." if len(final_content) > 120 else final_content
         logger.info("Response to {}:{}: {}", msg.channel, msg.sender_id, preview)
 
-        meta = dict(msg.metadata or {})
         if on_stream is not None:
             meta["_streamed"] = True
         meta["_is_final"] = True

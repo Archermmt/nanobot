@@ -373,27 +373,18 @@ class VideoTool(Tool):
             return "Error: Message sending not configured"
 
         try:
-            # Prepare media data for the message
-            media_data = {
-                "data": self._get_video_data(video_path),
-                "file_name": Path(video_path).name,
-            }
+            media_data = {"data": self._get_video_data(video_path), "file_name": video_path}
             # Create outbound message with video as media
             msg = OutboundMessage(
                 channel=self._default_channel,
                 chat_id=self._default_chat_id,
-                content=prompt or "Video display",
+                content="",
                 media=[media_data],
-                metadata={
-                    "_progress": True,
-                    "msg_type": "video",  # Indicate this is a video message
-                    "file_type": self._get_mime_type(video_path),
-                },
+                metadata={"msg_type": "video", "file_type": self._get_mime_type(video_path)},
             )
-
-            # Send the message through the callback
+            print(f"[TMINFO] Video displayed msg {msg}", flush=True)
             await self._send_callback(msg)
-            return f"Video displayed successfully: {Path(video_path).name}"
+            return f"Playing video: {video_path}"
 
         except FileNotFoundError as e:
             return f"Error: {str(e)}"

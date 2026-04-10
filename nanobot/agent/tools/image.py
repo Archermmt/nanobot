@@ -358,18 +358,12 @@ class ImageTool(Tool):
             msg = OutboundMessage(
                 channel=self._default_channel,
                 chat_id=self._default_chat_id,
-                content=text or "Image display",
+                content="",
                 media=[media_data],
-                metadata={
-                    "_progress": True,
-                    "msg_type": "image",  # Indicate this is an image message
-                    "file_type": self._get_mime_type(image_path),
-                },
+                metadata={"msg_type": "image", "file_type": self._get_mime_type(image_path)},
             )
-
-            # Send the message through the callback
             await self._send_callback(msg)
-            return f"Image displayed successfully: {Path(image_path).name}"
+            return f"Displayed image: {image_path}"
 
         except FileNotFoundError as e:
             return f"Error: {str(e)}"

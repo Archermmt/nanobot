@@ -29,19 +29,6 @@ class BaseTTSHandler(BaseHandler):
             config: TTSHandlerConfig containing TTS settings
         """
 
-        """
-        try:
-            import opuslib_next
-            import pydub
-        except ImportError:
-            error_msg = "Init BaseTTSHandler failed. Install: pip install opuslib_next pydub"
-            raise ImportError(error_msg)
-        self.voice, self.encoder = config.voice, None
-        if config.audio_format == "opus":
-            self.audio_format, self.encoder_type = "mp3", "opus"
-        else:
-            self.audio_format, self.encoder_type = config.audio_format, ""
-        """
         self.voice, self.audio_format = config.voice, config.audio_format
         self.sample_rate = config.sample_rate
         # get voice config
@@ -50,10 +37,6 @@ class BaseTTSHandler(BaseHandler):
         assert voice_path.exists(), f"Voice configuration not found: {voice_path}"
         with open(voice_path, "r", encoding="utf-8") as f:
             self.voice_config = json.load(f).get(self.voice, {})
-        """
-        if self.encoder_type == "opus":
-            self.encoder = opuslib_next.Encoder(self.sample_rate, 1, opuslib_next.APPLICATION_AUDIO)
-        """
 
     def can_handle_output(self, msg: OutboundMessage) -> bool:
         """
@@ -71,6 +54,7 @@ class BaseTTSHandler(BaseHandler):
             msg_type == "text"
             and msg.metadata.get("need_tts", False)
             and not msg.metadata.get("_progress", False)
+            and not msg.metadata.get("_hide_message", False)
             and "_warning_msg" not in msg.metadata
         )
 
@@ -96,11 +80,6 @@ class BaseTTSHandler(BaseHandler):
                 msg.metadata.update(
                     {"msg_type": "audio", "audio_format": "audio/" + str(self.audio_format)}
                 )
-                """
-                msg.metadata.update({"msg_type": "audio", "encoder_type": self.encoder_type})
-                if self.encoder_type == "opus":
-                    msg.metadata.update({"frame_duration": 60})
-                """
             else:
                 msg.content = "Failed to convert to speech"
                 msg.metadata["_warning_msg"] = "tts_failed"
@@ -125,7 +104,6 @@ class BaseTTSHandler(BaseHandler):
         text = clean_markdown(text)
         text = check_emoji(text)
         max_repeat_time, audio_bytes = 5, None
-
         while max_repeat_time > 0:
             try:
                 # Get raw audio bytes from TTS
@@ -133,18 +111,6 @@ class BaseTTSHandler(BaseHandler):
                 if not audio_bytes:
                     max_repeat_time -= 1
                     continue
-                """
-                if self.encoder_type == "opus":
-                    audio_datas = []
-                    audio_bytes_to_data_stream(
-                        audio_bytes,
-                        file_type=self.audio_format,
-                        is_opus=True,
-                        callback=lambda data: audio_datas.append(data),
-                        sample_rate=self.sample_rate,
-                    )
-                    return audio_datas
-                """
                 return [audio_bytes]
             except Exception as e:
                 logger.error(f"TTS conversion error: {e}")

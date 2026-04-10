@@ -186,13 +186,12 @@ class MusicTool(Tool):
             msg = OutboundMessage(
                 channel=self._default_channel,
                 chat_id=self._default_chat_id,
-                content=f"Playing: {file_path.name}",
+                content="",
                 media=[audio_bytes],
                 metadata={"msg_type": "audio", "audio_format": mime_type},
             )
-            # Send the message through the callback
             await self._send_callback(msg)
-            return f"Music played: {file_path.name}"
+            return f"Playing: {file_path.name}"
 
         except Exception as e:
             return f"Error: {str(e)}"
