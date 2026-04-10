@@ -4,12 +4,10 @@ import asyncio
 import base64
 import json
 import os
-import time
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 import httpx
-import requests
 from loguru import logger
 
 from nanobot.agent.tools.base import Tool
@@ -250,7 +248,7 @@ class VideoTool(Tool):
         video_path: str = "",
         resolution: str = "1080P",
         ratio: str = "16:9",
-        duration: int = 5,
+        duration: int = 10,
         negative_prompt: str = "",
         audio_url: str = "",
         prompt_extend: bool = True,
@@ -410,7 +408,7 @@ class VideoTool(Tool):
         video_path: str,
         resolution: str = "1080P",
         ratio: str = "16:9",
-        duration: int = 5,
+        duration: int = 10,
         negative_prompt: str = "",
         audio_url: str = "",
         prompt_extend: bool = True,
@@ -492,7 +490,6 @@ class VideoTool(Tool):
 
         try:
             # Step 1: Create task
-            logger.info(f"Creating video generation task with prompt: {prompt[:100]}...")
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.post(create_endpoint, headers=headers, json=payload)
                 response.raise_for_status()
@@ -502,8 +499,7 @@ class VideoTool(Tool):
             task_id = result.get("output", {}).get("task_id")
             if not task_id:
                 return f"Error: No task_id in response. Response: {json.dumps(result, ensure_ascii=False)}"
-
-            logger.info(f"Video generation task created: {task_id}")
+            logger.debug(f"Video generation task({duration} s) created: {task_id}")
 
             # Step 2: Poll for task completion
             # Determine query endpoint based on region
@@ -530,9 +526,7 @@ class VideoTool(Tool):
                     query_response.raise_for_status()
                     task_result = query_response.json()
 
-                print(f"[TMINFO] task_result pos 1 {task_result}", flush=True)
                 task_status = task_result.get("output", {}).get("task_status", "")
-
                 if task_status == "SUCCEEDED":
                     # Task completed successfully
                     video_url = task_result.get("output", {}).get("video_url", "")
@@ -543,8 +537,6 @@ class VideoTool(Tool):
                     media_dir = get_media_dir()
                     save_path = media_dir / video_path
                     save_path.parent.mkdir(parents=True, exist_ok=True)
-
-                    logger.info(f"Downloading video from: {video_url}")
                     async with httpx.AsyncClient(timeout=120.0) as download_client:
                         video_response = await download_client.get(video_url)
                         video_response.raise_for_status()
@@ -552,7 +544,7 @@ class VideoTool(Tool):
                         with open(save_path, "wb") as f:
                             f.write(video_response.content)
 
-                    logger.info(f"Video generated successfully: {save_path}")
+                    logger.info(f"Video generated successfully: {save_path}, duration {duration} s")
                     return f"Video generated successfully, saved to {save_path}"
 
                 elif task_status == "FAILED":
@@ -563,7 +555,7 @@ class VideoTool(Tool):
 
                 elif task_status in ["RUNNING", "PENDING"]:
                     # Still processing
-                    logger.info(f"Task {task_id} status: {task_status}, elapsed: {elapsed_time}s")
+                    logger.debug(f"Task {task_id} status: {task_status}, elapsed: {elapsed_time}s")
                     continue
 
                 else:
