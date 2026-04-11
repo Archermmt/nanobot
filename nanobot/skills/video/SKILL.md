@@ -1,97 +1,107 @@
 ---
 name: video
-description: Unified tool for analyzing and displaying videos (vision analysis, video display, video generation from text prompts, and editing videos with reference videos).
+description: Unified tool for analyzing and displaying videos. Supports four modes: vision for video analysis, display for showing videos to users, generate for creating videos from text prompts, and edit for modifying existing videos based on reference videos.
 metadata: {"nanobot":{"emoji":"🎬"}}
 ---
 
-# Video Tool
+# Video Skill
 
-Unified tool for analyzing and displaying videos. Supports four modes: vision analysis using multimodal LLM models, displaying videos to users through the frontend, generating videos from text prompts, and editing videos based on reference videos.
+Unified tool for analyzing and displaying videos using the `media` tool with `media_type="video"`. Supports four modes: vision analysis, video display, video generation from text prompts, and editing videos with reference videos.
 
 ## Features
 
-- Generate videos from text descriptions using AI
-- Support for multi-shot narrative with timestamp control
-- Customizable resolution (720P, 1080P) and aspect ratios
-- Optional audio integration
-- Automatic background music generation
-- Negative prompts to exclude unwanted elements
-- Watermark option
+- Analyze videos using multimodal LLM models (description, visual QA)
+- Display videos to users by sending them to the frontend
+- Generate videos from text prompts using AI models
+- Edit videos based on reference videos and text prompts
+- Support multiple video formats: MP4, AVI, MOV, MKV, WEBM
+- Base64 encoding for video processing and transmission
 
-## Tools
+## Tool Parameters
 
-This skill provides the following tool:
+The video skill uses the `media` tool. When using this tool, the `media_type` parameter **must** be set to `"video"`.
 
-### `video`
+### Required Parameters
+- `media_type` (string): Must be `"video"` for all video operations.
+- `mode` (string): The operation mode.
+  - `list`: List all available video files in the media directory.
+  - `vision`: Analyze a video using a multimodal model.
+  - `display`: Show a video to the user.
+  - `generate`: Create a video from a text prompt.
+  - `edit`: Modify an existing video based on a text prompt and a reference video.
+- `media_path` (string):
+  - In `vision`/`display`/`edit` mode: Absolute path to the video file.
+  - In `generate` mode: File name where the generated video will be saved.
 
-Generate videos from text prompts using DashScope Wanxiang API.
+### Optional Parameters
+- `prompt` (string):
+  - In `vision` mode: User's request or question about the video (e.g., "Describe this video").
+  - In `display` mode: Caption to display with the video.
+  - In `generate` mode: Text prompt describing the desired video content (max 5000 characters). Can include multi-shot narratives with timestamps (e.g., "Shot 1 [0-3s] Wide shot: Rainy street. Shot 2 [3-6s] Medium shot: Person enters building.").
+  - In `edit` mode: Description of how to modify the reference video (e.g., "Change the color of the car to red").
+- `ref_media` (string):
+  - In `edit` mode: Absolute path to the reference video file that will be modified. Must exist locally.
+  - In `generate` mode: URL or path of audio file to use as background music for the video. Supports HTTP/HTTPS URLs or local file paths. Formats: wav, mp3. Duration: 2-30 seconds. File size: max 15MB.
+- `resolution` (string): [Generate mode] Output video resolution. Options: "720P", "1080P" (default). Note: Resolution directly affects cost.
+- `ratio` (string): [Generate mode] Aspect ratio of the video. Options: "16:9" (default, landscape), "9:16" (portrait), "1:1" (square), "4:3" (standard), "3:4" (vertical).
+- `duration` (integer): [Generate mode] Duration of the video in seconds. For wan2.7-t2v: integer between 2 and 15 (inclusive). Default is 5.
+- `negative_prompt` (string): [Generate mode] Negative prompt describing what should NOT appear in the video. Max 500 characters. Example: "low resolution, poor quality, deformed limbs, blurry".
+- `prompt_extend` (boolean): [Generate mode] Enable AI-powered prompt enhancement. When enabled, uses LLM to optimize the prompt. Improves results for short prompts but increases processing time. Default is true.
+- `watermark` (boolean): [Generate mode] Add 'AI生成' watermark to bottom-right corner of the video. Default is false.
+- `seed` (integer): [Generate mode] Random seed for reproducible results. Range: [0, 2147483647]. If not specified, a random seed is generated. Note: Same seed doesn't guarantee identical results.
 
-**Parameters**:
-- `prompt` (string, required): Text prompt describing the desired video content, style, and composition. Supports Chinese and English. For wan2.7-t2v model: max 5000 characters. Can include multi-shot narratives with timestamps (e.g., "Shot 1 [0-3s] Wide shot: Rainy street. Shot 2 [3-6s] Medium shot: Person enters building.").
-- `video_path` (string, required): File name where the generated video will be saved in the media directory (~/.nanobot/media/). Will automatically add .mp4 extension if not present. Example: "cat_running.mp4"
-- `resolution` (string, optional): Output video resolution. Options: "720P", "1080P" (default). Note: Resolution directly affects cost.
-- `ratio` (string, optional): Aspect ratio of the video. Options: "16:9" (default, landscape), "9:16" (portrait), "1:1" (square), "4:3" (standard), "3:4" (vertical).
-- `duration` (integer, optional): Duration of the video in seconds. For wan2.7-t2v: integer between 2 and 15 (inclusive). Default is 5.
-- `negative_prompt` (string, optional): Negative prompt describing what should NOT appear in the video. Max 500 characters. Example: "low resolution, poor quality, deformed limbs, blurry".
-- `audio_url` (string, optional): URL of audio file to use for the video. Supports HTTP/HTTPS URLs or OSS temporary URLs. Formats: wav, mp3. Duration: 2-30 seconds. File size: max 15MB. If not provided, the model will auto-generate matching background music.
-- `prompt_extend` (boolean, optional): Enable AI-powered prompt enhancement. When enabled, uses LLM to optimize the prompt. Improves results for short prompts but increases processing time. Default is true.
-- `watermark` (boolean, optional): Add 'AI生成' watermark to bottom-right corner of the video. Default is false.
-- `seed` (integer, optional): Random seed for reproducible results. Range: [0, 2147483647]. If not specified, a random seed is generated. Note: Same seed doesn't guarantee identical results.
-- `ref_image` (string, required in edit mode):
-  - In edit mode: Absolute path to the reference video file that will be modified according to the text prompt. Must exist locally.
+## Usage Examples
 
-## Examples
-
-**Example for vision - Describe an video at video.mp4**:
-```
-<tool>video</tool>
-<parameter name="mode">vision</parameter>
-<parameter name="prompt">Describe this videos</parameter>
-<parameter name="video_path">video.mp4</parameter>
-```
-
-**Example for vision - How many birds appears in video.mp4**:
-```
-<tool>video</tool>
-<parameter name="mode">vision</parameter>
-<parameter name="prompt">How many birds appears in video?</parameter>
-<parameter name="video_path">video.mp4</parameter>
-```
-
-**Example for display - Display video at video.mp4 with title "The video"**:
-```
-<tool>video</tool>
-<parameter name="mode">display</parameter>
-<parameter name="prompt">The video</parameter>
-<parameter name="video_path">video.mp4</parameter>
+### List Mode
+List all available videos:
+```json
+{"name": "media", "arguments": {"media_type": "video", "mode": "list"}}
 ```
 
-**Example for display - Display video at video.mp4**:
-```
-<tool>video</tool>
-<parameter name="mode">display</parameter>
-<parameter name="video_path">video.mp4</parameter>
-```
-
-**Example for generate - Create an video of a cute orange cat**:
-```
-<tool>video</tool>
-<parameter name="mode">generate</parameter>
-<parameter name="prompt">A sitting orange cat with happy expression</parameter>
-<parameter name="video_path">sitting_orange_cat.mp4</parameter>
+### Vision Mode
+Analyze a video at `/path/to/video.mp4`:
+```json
+{"name": "media", "arguments": {"media_type": "video", "mode": "vision", "prompt": "Describe this video", "media_path": "/path/to/video.mp4"}}
 ```
 
-**Example for edit - Change the color of the cat in video.mp4 to yellow**:
+Count objects in `video.mp4`:
+```json
+{"name": "media", "arguments": {"media_type": "video", "mode": "vision", "prompt": "How many birds appears in video?", "media_path": "/path/to/video.mp4"}}
 ```
-<tool>video</tool>
-<parameter name="mode">generate</parameter>
-<parameter name="prompt">Change the color of the cat in video to yellow</parameter>
-<parameter name="video_path">cat_edit_to_yellow.png</parameter>
-<parameter name="ref_video">video.mp4</parameter>
+
+### Display Mode
+Display a video:
+```json
+{"name": "media", "arguments": {"media_type": "video", "mode": "display", "media_path": "/path/to/video.mp4"}}
 ```
+
+Display a video with caption:
+```json
+{"name": "media", "arguments": {"media_type": "video", "mode": "display", "prompt": "The video", "media_path": "/path/to/video.mp4"}}
+```
+
+### Generate Mode
+Create a video of a cute orange cat:
+```json
+{"name": "media", "arguments": {"media_type": "video", "mode": "generate", "prompt": "A sitting orange cat with happy expression", "media_path": "sitting_orange_cat.mp4"}}
+```
+
+Create a landscape video:
+```json
+{"name": "media", "arguments": {"media_type": "video", "mode": "generate", "prompt": "A beautiful sunset over mountains in cinematic style", "media_path": "sunset_cinematic.mp4", "resolution": "1080P", "ratio": "16:9", "duration": 10}}
+```
+
+Create a video with background music:
+```json
+{"name": "media", "arguments": {"media_type": "video", "mode": "generate", "prompt": "A dancing robot in a futuristic city", "media_path": "dancing_robot.mp4", "ref_media": "background_music.mp3"}}
+```
+
+### Edit Mode
+Note: Video editing is currently not supported. Please use generate mode to create new videos.
 
 ## Important Rules
 
-1. **ALWAYS use video tool** - Never attempt direct LLM API calls
-2. **Absolute paths only** - Convert all paths to absolute before calling
-3. **Display generated/edited video** - After calling video tool in generate or edit mode, always use the display mode to show the resulting video
+1. **ALWAYS use the `media` tool** with `media_type="video"` for all video operations. Never attempt direct LLM API calls.
+2. **Absolute paths only** - Convert all paths to absolute before calling the tool in `vision`, `display`, or `edit` modes.
+3. **Keep text unchanged in generate mode** - Do not change the `prompt` when generating a video.
+4. **Display generated/edited videos** - After calling the `media` tool in `generate` or `edit` mode, always call the `media` tool in `display` mode to display the video.

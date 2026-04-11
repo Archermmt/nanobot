@@ -961,7 +961,15 @@ class MediaTool(Tool):
                     return f"Error: Video generation failed - [{error_code}] {error_message}"
 
                 elif task_status in ["RUNNING", "PENDING"]:
-                    logger.debug(f"Task {task_id} status: {task_status}, elapsed: {elapsed_time}s")
+                    info = f"Task {task_id} status: {task_status}, elapsed: {elapsed_time}s"
+                    logger.debug(info)
+                    msg = OutboundMessage(
+                        channel=self._default_channel,
+                        chat_id=self._default_chat_id,
+                        content=info,
+                        metadata={"msg_type": "text", "_tool_hint": "media", "_progress": True},
+                    )
+                    await self._send_callback(msg)
                     continue
 
                 else:
