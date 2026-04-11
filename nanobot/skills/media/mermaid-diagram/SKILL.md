@@ -32,7 +32,7 @@ Generate Mermaid diagrams and render them to PNG/SVG/PDF images using mermaid-cl
 
 All generated diagrams are saved to: `{Media-Folder}/diagrams/`
 
-Default: `/Users/tongmeng/.nanobot/media/diagrams/`
+Default: ~/.nanobot/media/diagrams/`
 
 ## Usage Workflow
 
@@ -85,9 +85,9 @@ flowchart TD
 
 **Render command**:
 ```bash
-mkdir -p /Users/tongmeng/.nanobot/media/diagrams
-mmdc -i /Users/tongmeng/.nanobot/media/diagrams/workflow.mmd \
-     -o /Users/tongmeng/.nanobot/media/diagrams/workflow.png \
+mkdir -p ~/.nanobot/media/diagrams
+mmdc -i ~/.nanobot/media/diagrams/workflow.mmd \
+     -o ~/.nanobot/media/diagrams/workflow.png \
      -b white -w 3200 -H 2400
 ```
 
