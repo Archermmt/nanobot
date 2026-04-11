@@ -238,11 +238,12 @@ class MediaTool(Tool):
             return await self._execute_display(media_path=media_path, media_type=media_type)
         # Calculate media_dir based on media_type
         media_dir = get_media_dir() / media_type
+        media_path = self._get_media_path(media_path, media_type)
         if media_type == "image":
             return await self._execute_image(
                 mode=mode,
-                prompt=prompt,
                 image_path=media_path,
+                prompt=prompt,
                 media_dir=media_dir,
                 size=size,
                 negative_prompt=negative_prompt,
@@ -326,13 +327,18 @@ class MediaTool(Tool):
 
         return result.strip()
 
+    def _get_media_path(self, media_path: str, media_type: str) -> Path:
+        """Get the absolute path for a media file."""
+        path = Path(media_path)
+        if not path.is_absolute():
+            path = get_media_dir() / media_type / path
+        return path
+
     async def _execute_display(self, media_path: str, media_type: str) -> str:
         """Execute media display."""
         if not self._send_callback:
             return "Error: Message sending not configured"
-        media_path = Path(media_path)
-        if not media_path.is_absolute():
-            media_path = get_media_dir() / media_path
+        media_path = self._get_media_path(media_path, media_type)
         if not media_path.exists():
             return f"Error: Media file not found: {media_path}"
         media_path = str(media_path)
@@ -357,8 +363,8 @@ class MediaTool(Tool):
     async def _execute_image(
         self,
         mode: str,
+        image_path: Path,
         prompt: str = "",
-        image_path: str = "",
         media_dir: Path | None = None,
         size: str = "1024*1024",
         negative_prompt: str = "",
@@ -373,8 +379,8 @@ class MediaTool(Tool):
         if mode == "vision":
             return await self._execute_image_vision(prompt=prompt, image_path=image_path, **kwargs)
         elif mode == "generate":
-            if not image_path:
-                image_path = str(media_dir / "generated.png")
+            if not image_path.exists():
+                image_path = media_dir / "generated.png"
             return await self._execute_image_generate(
                 prompt=prompt,
                 image_path=image_path,
@@ -388,8 +394,8 @@ class MediaTool(Tool):
         elif mode == "edit":
             if not ref_media or not os.path.exists(ref_media):
                 return f"Error: Ref media {ref_media} path is invalid."
-            if not image_path:
-                image_path = str(media_dir / "generated.png")
+            if not image_path.exists():
+                image_path = media_dir / "generated.png"
             return await self._execute_image_generate(
                 prompt=prompt,
                 image_path=image_path,
@@ -404,15 +410,15 @@ class MediaTool(Tool):
         else:
             return f"Error: Invalid mode '{mode}' for image. Must be 'list', 'vision', 'display', 'generate', or 'edit'."
 
-    async def _execute_image_vision(self, prompt: str, image_path: str, **kwargs: Any) -> str:
+    async def _execute_image_vision(self, prompt: str, image_path: Path) -> str:
         """Execute image vision analysis."""
-        if not image_path:
+        if not image_path.exists():
             return "Error: No image provided. Please provide at least one image path."
 
         content: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
 
         try:
-            image_data = self._get_media_data(image_path)
+            image_data = self._get_media_data(str(image_path))
             content.append({"type": "image_url", "image_url": {"url": image_data}})
         except FileNotFoundError as e:
             return f"Error: {str(e)}"
@@ -436,7 +442,7 @@ class MediaTool(Tool):
     async def _execute_image_generate(
         self,
         prompt: str,
-        image_path: str,
+        image_path: Path,
         size: str = "1024*1024",
         negative_prompt: str = "",
         n: int = 1,
@@ -449,36 +455,22 @@ class MediaTool(Tool):
         if not prompt:
             return "Error: Text prompt is required for image generation."
 
-        if not image_path:
-            return "Error: Image save path is required."
-
         provider = os.getenv("IMAGE_GEN_PROVIDER", "dashscope")
         image_paths, error = [], ""
-
+        gen_kwargs = {
+            "prompt": prompt,
+            "image_path": str(image_path),
+            "size": size,
+            "negative_prompt": negative_prompt,
+            "n": n,
+            "prompt_extend": prompt_extend,
+            "watermark": watermark,
+            "ref_image": ref_image,
+        }
         if provider == "dashscope":
-            image_paths, error = await self._dashscope_image_generate(
-                prompt=prompt,
-                image_path=image_path,
-                size=size,
-                negative_prompt=negative_prompt,
-                n=n,
-                prompt_extend=prompt_extend,
-                watermark=watermark,
-                ref_image=ref_image,
-                **kwargs,
-            )
+            image_paths, error = await self._dashscope_image_generate(**gen_kwargs, **kwargs)
         elif provider == "modelscope":
-            image_paths, error = await self._modelscope_image_generate(
-                prompt=prompt,
-                image_path=image_path,
-                size=size,
-                negative_prompt=negative_prompt,
-                n=n,
-                prompt_extend=prompt_extend,
-                watermark=watermark,
-                ref_image=ref_image,
-                **kwargs,
-            )
+            image_paths, error = await self._modelscope_image_generate(**gen_kwargs, **kwargs)
         else:
             raise ValueError(f"Invalid IMAGE_GEN_PROVIDER: {provider}")
 
@@ -507,8 +499,8 @@ class MediaTool(Tool):
         if mode == "vision":
             return await self._execute_video_vision(prompt=prompt, video_path=video_path, **kwargs)
         elif mode == "generate":
-            if not video_path:
-                video_path = str(media_dir / "generated.mp4")
+            if not video_path.exists():
+                video_path = media_dir / "generated.mp4"
             return await self._dashscope_video_generate(
                 prompt=prompt,
                 video_path=video_path,
@@ -861,7 +853,7 @@ class MediaTool(Tool):
     async def _dashscope_video_generate(
         self,
         prompt: str,
-        video_path: str,
+        video_path: Path,
         resolution: str = "1080P",
         ratio: str = "16:9",
         duration: int = 5,
@@ -956,14 +948,10 @@ class MediaTool(Tool):
                     if not video_url:
                         return f"Error: No video_url in response. Response: {json.dumps(task_result, ensure_ascii=False)}"
 
-                    media_dir = get_media_dir()
-                    save_path = media_dir / video_path
-                    save_path.parent.mkdir(parents=True, exist_ok=True)
-
+                    save_path = str(video_path)
                     async with httpx.AsyncClient(timeout=120.0) as download_client:
                         video_response = await download_client.get(video_url)
                         video_response.raise_for_status()
-
                         with open(save_path, "wb") as f:
                             f.write(video_response.content)
 
