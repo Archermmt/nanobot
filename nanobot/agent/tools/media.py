@@ -346,12 +346,12 @@ class MediaTool(Tool):
             msg = OutboundMessage(
                 channel=self._default_channel,
                 chat_id=self._default_chat_id,
-                content="",
+                content=f"Display {media_type}: {media_path}",
                 media=[media_data],
                 metadata={"msg_type": media_type, "file_type": self._get_mime_type(media_type)},
             )
             await self._send_callback(msg)
-            return f"Displayed {media_type}: {media_path}"
+            return ""
         except FileNotFoundError as e:
             return f"Error: {str(e)}"
         except ValueError as e:
