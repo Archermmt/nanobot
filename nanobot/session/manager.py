@@ -68,12 +68,16 @@ class Session:
         # Start background timeout checking task
         if self.wakeup_words:
             self._state = SessionState.STANDBY
-            self._stop_timeout_check = False
-            self._timeout_task = asyncio.create_task(
-                self._check_timeout_loop(
-                    timeout_seconds=config.timeout_seconds, check_interval=config.check_interval
+            if config.timeout_seconds > 0:
+                self._stop_timeout_check = False
+                self._timeout_task = asyncio.create_task(
+                    self._check_timeout_loop(
+                        timeout_seconds=config.timeout_seconds, check_interval=config.check_interval
+                    )
                 )
-            )
+            else:
+                self._stop_timeout_check = True
+                self._timeout_task = None
         else:
             self._state = SessionState.READY
             self._stop_timeout_check = True
