@@ -238,7 +238,6 @@ class MediaTool(Tool):
             return await self._execute_display(media_path=media_path, media_type=media_type)
         # Calculate media_dir based on media_type
         media_dir = get_media_dir() / media_type
-        media_path = self._get_media_path(media_path, media_type)
         if media_type == "image":
             return await self._execute_image(
                 mode=mode,
@@ -363,7 +362,7 @@ class MediaTool(Tool):
     async def _execute_image(
         self,
         mode: str,
-        image_path: Path,
+        image_path: str,
         prompt: str = "",
         media_dir: Path | None = None,
         size: str = "1024*1024",
@@ -376,11 +375,10 @@ class MediaTool(Tool):
     ) -> str:
         """Execute image operations."""
 
+        image_path = self._get_media_path(image_path or "generated.png", "image")
         if mode == "vision":
             return await self._execute_image_vision(prompt=prompt, image_path=image_path, **kwargs)
         elif mode == "generate":
-            if not image_path.exists():
-                image_path = media_dir / "generated.png"
             return await self._execute_image_generate(
                 prompt=prompt,
                 image_path=image_path,
@@ -394,8 +392,6 @@ class MediaTool(Tool):
         elif mode == "edit":
             if not ref_media or not os.path.exists(ref_media):
                 return f"Error: Ref media {ref_media} path is invalid."
-            if not image_path.exists():
-                image_path = media_dir / "generated.png"
             return await self._execute_image_generate(
                 prompt=prompt,
                 image_path=image_path,
@@ -496,6 +492,7 @@ class MediaTool(Tool):
     ) -> str:
         """Execute video operations."""
 
+        video_path = self._get_media_path(video_path or "generated.mp4", "video")
         if mode == "vision":
             return await self._execute_video_vision(prompt=prompt, video_path=video_path, **kwargs)
         elif mode == "generate":

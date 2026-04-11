@@ -24,10 +24,14 @@ The image skill uses the `media` tool. When using this tool, the `media_type` pa
 ### Required Parameters
 - `media_type` (string): Must be `"image"` for all image operations.
 - `mode` (string): The operation mode.
+  - `list`: List all available image files in the media directory.
   - `vision`: Analyze an image using a multimodal model.
   - `display`: Show an image to the user.
   - `generate`: Create an image from a text prompt.
   - `edit`: Modify an existing image based on a text prompt and a reference image.
+- `media_path` (string):
+  - In `vision`/`display`/`edit` mode: Absolute path to the image file.
+  - In `generate` mode: File name where the generated image will be saved.
 
 ### Optional Parameters
 - `prompt` (string):
@@ -35,9 +39,6 @@ The image skill uses the `media` tool. When using this tool, the `media_type` pa
   - In `display` mode: Caption to display with the image.
   - In `generate` mode: Text prompt describing the desired image content (max 800 characters).
   - In `edit` mode: Description of how to modify the reference image (e.g., "Add a hat to the cat").
-- `media_path` (string):
-  - In `vision`/`display`/`edit` mode: Absolute path to the image file.
-  - In `generate` mode: File name where the generated image will be saved.
 - `ref_media` (string):
   - In `edit` mode: Absolute path to the reference image file that will be modified. Must exist locally.
 - `size` (string): [Generate mode] Output resolution, e.g., "1024*1024". Default is "1024*1024".
@@ -47,6 +48,12 @@ The image skill uses the `media` tool. When using this tool, the `media_type` pa
 - `watermark` (boolean): [Generate mode] Add watermark. Default is false.
 
 ## Usage Examples
+
+### List Mode
+List all available images:
+```json
+{"name": "media", "arguments": {"media_type": "image", "mode": "list"}}
+```
 
 ### Vision Mode
 Analyze an image at `/path/to/image.png`:
@@ -92,4 +99,4 @@ Put a hat on the cat in `cat.png`:
 1. **ALWAYS use the `media` tool** with `media_type="image"` for all image operations. Never attempt direct LLM API calls.
 2. **Absolute paths only** - Convert all paths to absolute before calling the tool in `vision`, `display`, or `edit` modes.
 3. **Keep text unchanged in generate mode** - Do not change the `prompt` when generating an image.
-4. **Display generated/edited images** - After calling the `media` tool in `generate` or `edit` mode, always use the `display` mode to show the resulting image to the user.
+4. **Display generated/edited images** - After calling the `media` tool in `generate` or `edit` mode, always call the `media` tool in `display` mode to display the image.
