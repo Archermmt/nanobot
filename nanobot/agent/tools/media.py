@@ -346,11 +346,11 @@ class MediaTool(Tool):
                 chat_id=self._default_chat_id,
                 content=f"Display {media_type}: {media_path_str}",
                 media=[media_data],
-                metadata={"msg_type": media_type, "file_type": self._get_mime_type(media_type)},
+                metadata={"msg_type": media_type, "file_type": self._get_mime_type(media_path)},
             )
             print(f"[TMINFO] send msg {msg}", flush=True)
             await self._send_callback(msg)
-            return ""
+            return f"Displayed {media_type}: {media_path_str}"
         except FileNotFoundError as e:
             return f"Error: {str(e)}"
         except ValueError as e:
@@ -560,10 +560,10 @@ class MediaTool(Tool):
         mime_type = self._get_mime_type(media_path)
         if mime_type.startswith("text"):
             with open(path, "r") as media_file:
-                encoded = media_file.read()
-        else:
-            with open(path, "rb") as media_file:
-                encoded = base64.b64encode(media_file.read()).decode("utf-8")
+                data = media_file.read()
+            return data
+        with open(path, "rb") as media_file:
+            encoded = base64.b64encode(media_file.read()).decode("utf-8")
         return f"data:{mime_type};base64,{encoded}"
 
     def _get_mime_type(self, file_path: str) -> str:
