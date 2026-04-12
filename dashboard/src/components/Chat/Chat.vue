@@ -13,6 +13,7 @@ interface Message {
   imageUrl?: string
   videoUrl?: string
   audioUrl?: string
+  htmlContent?: string
   media?: Array<{
     data: string
     file_name: string
@@ -44,10 +45,13 @@ const currentAudio = ref<HTMLAudioElement | null>(null)
 const currentVideo = ref<HTMLVideoElement | null>(null)
 const chatInputRef = ref<InstanceType<typeof ChatInput> | null>(null)
 const pendingCommandsCount = ref(0)  // Track pending commands during connection
+const showHtmlDialog = ref(false)
+const currentHtmlContent = ref('')
 
 // Global audio playing state shared across components
 const playingAudioUrl = ref<string | null>(null)
 const playingVideoUrl = ref<string | null>(null)
+const playingHtmlUrl = ref<string | null>(null)
 
 // WebSocket instance (managed by App.vue)
 let ws: WebSocket | null = null
@@ -196,10 +200,11 @@ const handleWebSocketMessage = (event: MessageEvent) => {
         return  // Don't create duplicate message entry
       }
 
-      // Handle image, video and audio messages from media
+      // Handle image, video, audio and html messages from media
       let imageUrl: string | undefined
       let videoUrl: string | undefined
       let audioUrl: string | undefined
+      let htmlContent: string | undefined
 
       if (data.media && data.media.length > 0) {
         const msgType = data.metadata?.msg_type
@@ -243,6 +248,15 @@ const handleWebSocketMessage = (event: MessageEvent) => {
             }
           }
         }
+
+        // Check if this is an HTML message
+        if (msgType === 'html' || (fileType && fileType === 'text/html')) {
+          // Extract HTML content from media data
+          const mediaItem = data.media[0]
+          if (mediaItem && typeof mediaItem === 'string') {
+            htmlContent = mediaItem
+          }
+        }
       }
 
       // Don't display messages marked as hidden (like /history command)
@@ -254,6 +268,7 @@ const handleWebSocketMessage = (event: MessageEvent) => {
           imageUrl: imageUrl,
           videoUrl: videoUrl,
           audioUrl: audioUrl,
+          htmlContent: htmlContent,
           media: data.media,
           metadata: data.metadata
         }
@@ -262,6 +277,11 @@ const handleWebSocketMessage = (event: MessageEvent) => {
         // Auto-play audio if it's an audio message and TTS is enabled
         if (audioUrl) {
           playAudio(audioUrl)
+        }
+
+        // Auto-show HTML if it's an HTML message
+        if (htmlContent) {
+          showHtml(htmlContent)
         }
       }
 
@@ -553,6 +573,20 @@ const stopVideo = () => {
   }
 }
 
+const showHtml = (htmlContent: string) => {
+  currentHtmlContent.value = htmlContent
+  showHtmlDialog.value = true
+  playingHtmlUrl.value = htmlContent
+  chatState.value = "HtmlDisplaying"
+}
+
+const closeHtmlDialog = () => {
+  showHtmlDialog.value = false
+  playingHtmlUrl.value = null
+  currentHtmlContent.value = ''
+  chatState.value = "Waiting"
+}
+
 // Watch for chatState changes and emit to parent
 watch(chatState, (newStatus) => {
   emit('chat-state-change', newStatus)
@@ -571,6 +605,15 @@ watch(playingAudioUrl, (newUrl) => {
 watch(playingVideoUrl, (newUrl) => {
   if (newUrl) {
     chatState.value = "VideoPlaying"
+  } else {
+    chatState.value = "Waiting"
+  }
+})
+
+// Watch for playingHtmlUrl changes and update chatState
+watch(playingHtmlUrl, (newUrl) => {
+  if (newUrl) {
+    chatState.value = "HtmlDisplaying"
   } else {
     chatState.value = "Waiting"
   }
@@ -670,5 +713,107 @@ defineExpose({
     <ChatInput ref="chatInputRef" :chat-state="chatState" :disabled="!isConnected"
       :is-online-chat-on="props.isOnlineChatOn" :msg-handlers="props.msgHandlers" :messages="messages"
       @send="sendMessage" @stop-audio="stopAudio" @recording-start="handleRecordingStart" />
+
+    <!-- HTML Dialog Overlay -->
+    <div v-if="showHtmlDialog" class="html-dialog-overlay" @click="closeHtmlDialog">
+      <div class="html-dialog-content" @click.stop>
+        <div class="html-dialog-header">
+          <span class="html-dialog-title">🌐 HTML Preview</span>
+          <button class="html-dialog-close" @click="closeHtmlDialog" title="Close">✕</button>
+        </div>
+        <div class="html-dialog-body">
+          <iframe :srcdoc="currentHtmlContent" class="html-dialog-iframe"
+            sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
+
+<style scoped>
+/* HTML Dialog Styles */
+.html-dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  backdrop-filter: blur(4px);
+}
+
+.html-dialog-content {
+  background: white;
+  border-radius: 12px;
+  width: 90vw;
+  height: 90vh;
+  max-width: 1600px;
+  max-height: 900px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  animation: dialogSlideIn 0.3s ease-out;
+}
+
+@keyframes dialogSlideIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9) translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.html-dialog-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e5e7eb;
+  background: linear-gradient(to right, #f9fafb, #ffffff);
+  border-radius: 12px 12px 0 0;
+}
+
+.html-dialog-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.html-dialog-close {
+  background: transparent;
+  border: none;
+  font-size: 24px;
+  color: #6b7280;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: all 0.2s;
+  line-height: 1;
+}
+
+.html-dialog-close:hover {
+  background: #f3f4f6;
+  color: #1f2937;
+}
+
+.html-dialog-body {
+  flex: 1;
+  overflow: hidden;
+  border-radius: 0 0 12px 12px;
+}
+
+.html-dialog-iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: white;
+}
+</style>

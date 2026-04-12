@@ -51,8 +51,8 @@ class MediaTool(Tool):
     @property
     def description(self) -> str:
         return (
-            "Unified tool for handling different types of media (images, videos, audio). "
-            "Supports three media types:\n"
+            "Unified tool for handling different types of media (images, videos, audio, html). "
+            "Supports four media types:\n"
             "- image: List, analyze (vision), display, generate, or edit images\n"
             "  * list: List all available image files in the media directory\n"
             "  * vision: Analyze images using multimodal LLM models (OCR, description, visual QA)\n"
@@ -67,6 +67,9 @@ class MediaTool(Tool):
             "- audio: List or display audio files\n"
             "  * list: List all available audio files in the media directory\n"
             "  * display: Play an audio file by sending it as media\n"
+            "- html: List or display HTML content\n"
+            "  * list: List all available HTML files in the media directory\n"
+            "  * display: Render HTML content in a dialog window\n"
             "The media_type parameter determines which type of media to process."
         )
 
@@ -77,10 +80,11 @@ class MediaTool(Tool):
             "properties": {
                 "media_type": {
                     "type": "string",
-                    "enum": ["image", "video", "audio"],
+                    "enum": ["image", "video", "audio", "html"],
                     "description": (
                         "The type of media to process: 'image' for image operations, "
-                        "'video' for video operations, 'audio' for audio/music operations."
+                        "'video' for video operations, 'audio' for audio/music operations, "
+                        "'html' for HTML content display."
                     ),
                 },
                 "mode": {
@@ -88,7 +92,8 @@ class MediaTool(Tool):
                     "description": (
                         "The operation mode. For image: 'list', 'vision', 'display', 'generate', 'edit'. "
                         "For video: 'list', 'vision', 'display', 'generate'. "
-                        "For audio: 'list', 'display'."
+                        "For audio: 'list', 'display'. "
+                        "For html: 'list', 'display'."
                     ),
                 },
                 "prompt": {
@@ -213,10 +218,10 @@ class MediaTool(Tool):
         Execute media tool based on media_type and mode.
 
         Args:
-            media_type: Type of media - 'image', 'video', or 'audio'.
+            media_type: Type of media - 'image', 'video', 'audio', or 'html'.
             mode: Operation mode depending on media_type.
             prompt: Text prompt or caption depending on mode.
-            media_path: Path to media file or save location.
+            media_path: Path to media file or save location. For HTML, this is the HTML content string.
             size: [Image generate] Output resolution.
             negative_prompt: [Image/Video generate] Negative prompt.
             n: [Image generate] Number of images.
@@ -268,17 +273,8 @@ class MediaTool(Tool):
                 ref_media=ref_media,
                 **kwargs,
             )
-        elif media_type == "audio":
-            return await self._execute_audio(
-                mode=mode,
-                music_path=media_path,
-                media_dir=media_dir,
-                **kwargs,
-            )
         else:
-            return (
-                f"Error: Invalid media_type '{media_type}'. Must be 'image', 'video', or 'audio'."
-            )
+            return f"Error: Invalid media_type '{media_type}'. Must be 'image', 'video', 'audio', or 'html'."
 
     async def _execute_list(self, media_type: str) -> str:
         """List all available media files based on media type."""
@@ -287,11 +283,10 @@ class MediaTool(Tool):
             "image": {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg"},
             "video": {".mp4", ".avi", ".mov", ".mkv", ".webm"},
             "audio": {".mp3", ".wav", ".ogg", ".aac", ".flac", ".m4a", ".wma"},
+            "html": {".html", ".htm"},
         }
         if media_type not in extensions:
-            return (
-                f"Error: Invalid media_type '{media_type}'. Must be 'image', 'video', or 'audio'."
-            )
+            return f"Error: Invalid media_type '{media_type}'. Must be 'image', 'video', 'audio', or 'html'."
 
         # Check if directory exists
         media_dir = get_media_dir() / media_type
@@ -337,19 +332,23 @@ class MediaTool(Tool):
         """Execute media display."""
         if not self._send_callback:
             return "Error: Message sending not configured"
-        media_path = self._get_media_path(media_path, media_type)
-        if not media_path.exists():
-            return f"Error: Media file not found: {media_path}"
-        media_path = str(media_path)
+
         try:
-            media_data = {"data": self._get_media_data(media_path), "file_name": media_path}
+            # For other media types, treat media_path as file path
+            media_path_obj = self._get_media_path(media_path, media_type)
+            if not media_path_obj.exists():
+                return f"Error: Media file not found: {media_path_obj}"
+            media_path_str = str(media_path_obj)
+
+            media_data = {"data": self._get_media_data(media_path_str), "file_name": media_path_str}
             msg = OutboundMessage(
                 channel=self._default_channel,
                 chat_id=self._default_chat_id,
-                content=f"Display {media_type}: {media_path}",
+                content=f"Display {media_type}: {media_path_str}",
                 media=[media_data],
                 metadata={"msg_type": media_type, "file_type": self._get_mime_type(media_type)},
             )
+            print(f"[TMINFO] send msg {msg}", flush=True)
             await self._send_callback(msg)
             return ""
         except FileNotFoundError as e:
@@ -553,60 +552,19 @@ class MediaTool(Tool):
         except Exception as e:
             return f"Error calling vision model: {str(e)}"
 
-    async def _execute_audio(
-        self, mode: str, music_path: str = "", media_dir: Path | None = None, **kwargs: Any
-    ) -> str:
-        """Execute audio operations."""
-        return f"Error: Invalid mode '{mode}' for audio. Must be 'list' or 'display'."
-
-    def _encode_media(self, media_path: str) -> str:
-        """Encode a media file (image/video/audio) to base64 string."""
+    def _get_media_data(self, media_path: str) -> str:
+        """Get media data as base64 encoded string with MIME type."""
         path = Path(media_path)
         if not path.exists():
             raise FileNotFoundError(f"Media file not found: {media_path}")
-
-        # All supported media extensions
-        valid_extensions = {
-            # Image formats
-            ".png",
-            ".jpg",
-            ".jpeg",
-            ".gif",
-            ".webp",
-            ".bmp",
-            ".svg",
-            # Video formats
-            ".mp4",
-            ".avi",
-            ".mov",
-            ".mkv",
-            ".webm",
-            # Audio formats
-            ".mp3",
-            ".wav",
-            ".ogg",
-            ".aac",
-            ".flac",
-            ".m4a",
-            ".wma",
-        }
-
-        if path.suffix.lower() not in valid_extensions:
-            raise ValueError(
-                f"Unsupported media format: {path.suffix}. "
-                f"Supported formats: {', '.join(sorted(valid_extensions))}"
-            )
-
-        with open(path, "rb") as media_file:
-            encoded = base64.b64encode(media_file.read()).decode("utf-8")
-
-        return encoded
-
-    def _get_media_data(self, media_path: str) -> str:
-        """Get media data as base64 encoded string with MIME type."""
-        encoded_media = self._encode_media(media_path)
         mime_type = self._get_mime_type(media_path)
-        return f"data:{mime_type};base64,{encoded_media}"
+        if mime_type.startswith("text"):
+            with open(path, "r") as media_file:
+                encoded = media_file.read()
+        else:
+            with open(path, "rb") as media_file:
+                encoded = base64.b64encode(media_file.read()).decode("utf-8")
+        return f"data:{mime_type};base64,{encoded}"
 
     def _get_mime_type(self, file_path: str) -> str:
         """Get MIME type based on file extension (generic)."""
@@ -643,7 +601,13 @@ class MediaTool(Tool):
             ".wma": "audio/x-ms-wma",
         }
 
-        all_types = {**image_types, **video_types, **audio_types}
+        # HTML type
+        html_types = {
+            ".html": "text/html",
+            ".htm": "text/html",
+        }
+
+        all_types = {**image_types, **video_types, **audio_types, **html_types}
         return all_types.get(ext, "application/octet-stream")
 
     # Image generation methods
