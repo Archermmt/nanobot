@@ -294,6 +294,19 @@ class DefaultProto(BaseProto):
             await websocket.send(json.dumps({**tts_info, "state": "stop"}))
             await _sync_audio(False)
             return {"success": True}
+
+        # Handle mesh type messages
+        if msg.metadata.get("msg_type") == "mesh":
+            try:
+                for media_item in msg.media:
+                    if isinstance(media_item, dict):
+                        await websocket.send(json.dumps(media_item, ensure_ascii=False))
+                        await asyncio.sleep(0.1)  # Small delay to avoid sending too fast
+                return {"success": True}
+            except Exception as e:
+                logger.error("Error sending mesh data: {}", e)
+                return {"success": False}
+
         # Send common messages
         try:
             media_items = []

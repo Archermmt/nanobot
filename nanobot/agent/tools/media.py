@@ -51,8 +51,8 @@ class MediaTool(Tool):
     @property
     def description(self) -> str:
         return (
-            "Unified tool for handling different types of media (images, videos, audio, html). "
-            "Supports four media types:\n"
+            "Unified tool for handling different types of media (images, videos, audio, html, mesh). "
+            "Supports five media types:\n"
             "- image: List, analyze (vision), display, generate, or edit images\n"
             "  * list: List all available image files in the media directory\n"
             "  * vision: Analyze images using multimodal LLM models (OCR, description, visual QA)\n"
@@ -70,6 +70,9 @@ class MediaTool(Tool):
             "- html: List or display HTML content\n"
             "  * list: List all available HTML files in the media directory\n"
             "  * display: Render HTML content in a dialog window\n"
+            "- mesh: List or display 3D mesh files (STL, 3MF, etc.)\n"
+            "  * list: List all available mesh files in the media directory\n"
+            "  * display: Display 3D mesh models through WebSocket channel with texture support\n"
             "The media_type parameter determines which type of media to process."
         )
 
@@ -80,11 +83,11 @@ class MediaTool(Tool):
             "properties": {
                 "media_type": {
                     "type": "string",
-                    "enum": ["image", "video", "audio", "html"],
+                    "enum": ["image", "video", "audio", "html", "mesh"],
                     "description": (
                         "The type of media to process: 'image' for image operations, "
                         "'video' for video operations, 'audio' for audio/music operations, "
-                        "'html' for HTML content display."
+                        "'html' for HTML content display, 'mesh' for 3D mesh model display."
                     ),
                 },
                 "mode": {
@@ -93,7 +96,8 @@ class MediaTool(Tool):
                         "The operation mode. For image: 'list', 'vision', 'display', 'generate', 'edit'. "
                         "For video: 'list', 'vision', 'display', 'generate'. "
                         "For audio: 'list', 'display'. "
-                        "For html: 'list', 'display'."
+                        "For html: 'list', 'display'. "
+                        "For mesh: 'list', 'display'."
                     ),
                 },
                 "prompt": {
@@ -239,7 +243,7 @@ class MediaTool(Tool):
         """
         if mode == "list":
             return await self._execute_list(media_type=media_type)
-        if mode == "display":
+        if mode == "display" and media_type != "mesh":
             return await self._execute_display(media_path=media_path, media_type=media_type)
         # Calculate media_dir based on media_type
         media_dir = get_media_dir() / media_type
@@ -273,8 +277,10 @@ class MediaTool(Tool):
                 ref_media=ref_media,
                 **kwargs,
             )
+        elif media_type == "mesh":
+            return await self._execute_mesh(mode=mode, mesh_path=media_path, **kwargs)
         else:
-            return f"Error: Invalid media_type '{media_type}'. Must be 'image', 'video', 'audio', or 'html'."
+            return f"Error: Invalid media_type '{media_type}'. Must be 'image', 'video', 'audio', 'html', or 'mesh'."
 
     async def _execute_list(self, media_type: str) -> str:
         """List all available media files based on media type."""
@@ -284,9 +290,10 @@ class MediaTool(Tool):
             "video": {".mp4", ".avi", ".mov", ".mkv", ".webm"},
             "audio": {".mp3", ".wav", ".ogg", ".aac", ".flac", ".m4a", ".wma"},
             "html": {".html", ".htm"},
+            "mesh": {".stl", ".3mf", ".obj", ".fbx", ".gltf", ".glb"},
         }
         if media_type not in extensions:
-            return f"Error: Invalid media_type '{media_type}'. Must be 'image', 'video', 'audio', or 'html'."
+            return f"Error: Invalid media_type '{media_type}'. Must be 'image', 'video', 'audio', 'html', or 'mesh'."
 
         # Check if directory exists
         media_dir = get_media_dir() / media_type
@@ -347,6 +354,108 @@ class MediaTool(Tool):
         )
         await self._send_callback(msg)
         return f"Success displayed {media_type}: {media_path_str}"
+
+    async def _execute_mesh(self, mode: str, mesh_path: str = "", **kwargs: Any) -> str:
+        """Execute mesh operations."""
+        if mode == "display":
+            return await self._execute_mesh_display(mesh_path=mesh_path)
+        else:
+            return f"Error: Invalid mode '{mode}' for mesh. Must be 'list' or 'display'."
+
+    async def _execute_mesh_display(self, mesh_path: str) -> str:
+        """Execute mesh model display with texture support.
+
+        This method prepares mesh data and textures for WebSocket transmission.
+        The actual sending happens in default_proto.py's send_msg method.
+        """
+        if not self._send_callback:
+            return "Error: Message sending not configured"
+
+        media_path_obj = self._get_media_path(mesh_path, "mesh")
+        if not media_path_obj.exists():
+            return f"Error: Mesh file not found: {media_path_obj}"
+
+        media_path_str = str(media_path_obj)
+        file_ext = media_path_obj.suffix.lower()
+
+        # Read mesh file content as base64
+        try:
+            with open(media_path_obj, "rb") as f:
+                mesh_content = base64.b64encode(f.read()).decode("utf-8")
+        except Exception as e:
+            return f"Error reading mesh file: {str(e)}"
+
+        # Look for textures directory (same name as mesh file without extension)
+        textures_dir = media_path_obj.parent / f"{media_path_obj.stem}_textures"
+        textures = {}
+
+        if textures_dir.exists() and textures_dir.is_dir():
+            supported_extensions = (".png", ".jpg", ".jpeg", ".bmp", ".tga")
+            try:
+                for filename in textures_dir.iterdir():
+                    if filename.is_file() and filename.suffix.lower() in supported_extensions:
+                        with open(filename, "rb") as f:
+                            texture_content = base64.b64encode(f.read()).decode("utf-8")
+
+                        # Determine MIME type
+                        if filename.suffix.lower() == ".png":
+                            mime_type = "image/png"
+                        elif filename.suffix.lower() in (".jpg", ".jpeg"):
+                            mime_type = "image/jpeg"
+                        elif filename.suffix.lower() == ".bmp":
+                            mime_type = "image/bmp"
+                        else:
+                            mime_type = "image/png"
+
+                        textures[filename.name] = {"data": texture_content, "mime_type": mime_type}
+                logger.info(f"Loaded {len(textures)} texture files from {textures_dir}")
+            except Exception as e:
+                logger.error(f"Error reading texture files: {e}")
+
+        # Prepare mesh info
+        mesh_info = {
+            "type": "mesh_info",
+            "file": media_path_obj.name,
+            "format": file_ext.lstrip("."),
+            "size": len(mesh_content),
+            "texture_count": len(textures),
+            "ready": True,
+        }
+
+        # Build media list with mesh info, textures, and content
+        media_items = [
+            {"type": "mesh_info", "data": json.dumps(mesh_info)},
+        ]
+
+        # Add textures if available
+        if textures:
+            for filename, texture_data in textures.items():
+                media_items.append(
+                    {
+                        "type": "texture_data",
+                        "filename": filename,
+                        "data": texture_data["data"],
+                        "mime_type": texture_data["mime_type"],
+                    }
+                )
+            media_items.append({"type": "textures_complete", "count": len(textures)})
+
+        # Add mesh content
+        media_items.append(
+            {"type": "mesh_content", "file": media_path_obj.name, "data": mesh_content}
+        )
+
+        # Send message with mesh data
+        msg = OutboundMessage(
+            channel=self._default_channel,
+            chat_id=self._default_chat_id,
+            content=f"Display 3D mesh: {media_path_obj.name}",
+            media=media_items,
+            metadata={"msg_type": "mesh", "file_type": self._get_mime_type(media_path_str)},
+        )
+        await self._send_callback(msg)
+        texture_info = f", {len(textures)} texture(s)" if textures else ""
+        return f"Success displayed mesh: {media_path_str}{texture_info}"
 
     async def _execute_image(
         self,
@@ -594,10 +703,18 @@ class MediaTool(Tool):
         # HTML type
         html_types = {
             ".html": "text/html",
-            ".htm": "text/html",
+            ".htm": "text/htm",
         }
 
-        all_types = {**image_types, **video_types, **audio_types, **html_types}
+        # Mesh types
+        mesh_types = {
+            ".stl": "mesh/stl",
+            ".3mf": "mesh/3mf",
+            ".obj": "mesh/obj",
+            ".fbx": "mesh/fbx",
+        }
+
+        all_types = {**image_types, **video_types, **audio_types, **html_types, **mesh_types}
         return all_types.get(ext, "application/octet-stream")
 
     # Image generation methods

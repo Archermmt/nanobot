@@ -10,17 +10,19 @@ This is the master guide for all media-related operations in nanobot. It provide
 
 ## Overview
 
-The media system supports four types of media:
+The media system supports five types of media:
 - **Images** 🖼️ - Analysis, display, generation, and editing
 - **Audio** 🎵 - Listing and playback
 - **Videos** 🎬 - Analysis, display, generation, and editing
 - **HTML** 🌐 - Listing and rendering HTML content
+- **3D Mesh** 🧊 - Listing and displaying 3D mesh models
 
 All media operations use the same `media` tool but with different `media_type` parameters:
 - `"image"` for image operations
 - `"audio"` for audio operations
 - `"video"` for video operations
 - `"html"` for HTML content rendering
+- `"mesh"` for 3D mesh model display
 
 ## Quick Decision Guide
 
@@ -31,6 +33,7 @@ When you need to work with media, follow this decision tree:
 - **Audio** → Use `media_type="audio"`, see [Music Skill](../music/SKILL.md)
 - **Video** → Use `media_type="video"`, see [Video Skill](../video/SKILL.md)
 - **HTML** → Use `media_type="html"`, see details below
+- **3D Mesh** → Use `media_type="mesh"`, see details below
 
 ### 2. What operation?
 
@@ -55,6 +58,10 @@ When you need to work with media, follow this decision tree:
 #### For HTML (`media_type="html"`):
 - **List available HTML files**: `mode="list"`
 - **Render HTML content**: `mode="display"`
+
+#### For 3D Mesh (`media_type="mesh"`):
+- **List available mesh files**: `mode="list"`
+- **Display 3D mesh model**: `mode="display"` (supports STL, 3MF, OBJ, FBX, GLTF, GLB formats with textures)
 
 ## Common Workflow Patterns
 
@@ -105,6 +112,7 @@ When you need to work with media, follow this decision tree:
    - Audio: MP3, WAV, OGG, AAC, FLAC, M4A, WMA
    - Videos: MP4, AVI, MOV, MKV, WEBM
    - HTML: HTML, HTM
+   - 3D Mesh: STL, 3MF, OBJ, FBX, GLTF, GLB (with texture support via companion directories)
 
 ## Examples by Use Case
 
@@ -143,6 +151,16 @@ When you need to work with media, follow this decision tree:
 // After selection:
 {"name": "media", "arguments": {"media_type": "html", "mode": "display", "media_path": "/path/to/page.html"}}
 ```
+
+### "Show me a 3D model"
+→ List available mesh files, then display selected
+```json
+{"name": "media", "arguments": {"media_type": "mesh", "mode": "list"}}
+// After selection:
+{"name": "media", "arguments": {"media_type": "mesh", "mode": "display", "media_path": "/path/to/model.stl"}}
+```
+
+**Note**: For mesh files with textures, place texture images in a directory named `{filename}_textures/` next to the mesh file.
 
 ## When to Read Detailed Documentation
 
