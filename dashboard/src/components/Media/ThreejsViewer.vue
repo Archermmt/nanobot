@@ -111,8 +111,9 @@ const loadModel = async (data: any) => {
       currentModel = null
     }
 
-    // Get base64 data
-    const mediaItem = data.media[0]
+    // For streaming mesh data, use the last media item (most recent frame)
+    // or combine all frames if needed
+    const mediaItem = data.media[data.media.length - 1]
     let base64Data = ''
 
     if (typeof mediaItem === 'object' && mediaItem.data) {
@@ -241,7 +242,7 @@ watch(() => props.messageData, (newData) => {
   if (props.visible && newData) {
     loadModel(newData)
   }
-})
+}, { deep: true })
 
 onMounted(() => {
   window.addEventListener('resize', handleResize)

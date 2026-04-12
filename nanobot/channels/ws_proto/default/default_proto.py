@@ -298,10 +298,15 @@ class DefaultProto(BaseProto):
         # Handle mesh type messages
         if msg.metadata.get("msg_type") == "mesh":
             try:
+                mesh_info = {"type": "mesh", "chat_id": msg.chat_id}
+                await websocket.send(json.dumps({**mesh_info, "state": "start"}))
+
                 for media_item in msg.media:
                     if isinstance(media_item, dict):
                         await websocket.send(json.dumps(media_item, ensure_ascii=False))
                         await asyncio.sleep(0.1)  # Small delay to avoid sending too fast
+
+                await websocket.send(json.dumps({**mesh_info, "state": "stop"}))
                 return {"success": True}
             except Exception as e:
                 logger.error("Error sending mesh data: {}", e)

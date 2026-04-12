@@ -103,6 +103,12 @@ const handleWebSocketMessage = (event: MessageEvent) => {
       return
     }
 
+    // Handle Mesh messages for 3D model streaming
+    if (data.type === 'mesh') {
+      handleMeshMessage(data)
+      return
+    }
+
     // Handle MCP messages
     if (data.type === 'tool_call') {
       handleToolCallMessage(data, ws)
@@ -264,12 +270,6 @@ const handleWebSocketMessage = (event: MessageEvent) => {
               htmlContent = mediaItem
             }
           }
-        }
-
-        // Check if this is a 3D mesh message
-        if (msgType === 'mesh' || (fileType && fileType.startsWith('mesh/'))) {
-          currentMeshData.value = data
-          showThreejsViewer.value = true
         }
       }
 
@@ -650,6 +650,31 @@ const handleTTSMessage = async (data: any) => {
     console.log(`语音段结束`)
   } else if (state === 'stop') {
     stopAudio()
+  }
+}
+
+// Handle Mesh message - streaming 3D model data
+const handleMeshMessage = async (data: any) => {
+  const state = data.state
+  if (state === 'start') {
+    console.log('🎨 3D Model streaming start')
+    showThreejsViewer.value = true
+    // Initialize with empty media array
+    currentMeshData.value = {
+      type: 'mesh',
+      chat_id: data.chat_id,
+      media: [],
+      metadata: {}
+    }
+  } else if (state === 'stop') {
+    console.log('🎨 3D Model streaming complete')
+    // Viewer will automatically render when currentMeshData changes
+  } else {
+    // This is a mesh frame/data chunk
+    console.debug('📦 Received mesh frame')
+    if (currentMeshData.value && Array.isArray(currentMeshData.value.media)) {
+      currentMeshData.value.media.push(data)
+    }
   }
 }
 
