@@ -283,11 +283,6 @@ const handleWebSocketMessage = (event: MessageEvent) => {
         if (audioUrl) {
           playAudio(audioUrl)
         }
-
-        // Auto-show HTML if it's an HTML message
-        if (htmlContent) {
-          showHtml(htmlContent)
-        }
       }
 
       // Check if message contains _mode_hint and is not a progress message
@@ -711,8 +706,8 @@ defineExpose({
   <div class="flex flex-col h-full chat-container">
     <!-- Messages -->
     <MessageList :messages="messages" :chat-state="chatState" @play-audio="playAudio" @stop-audio="stopAudio"
-      @play-video="playVideo" @stop-video="stopVideo" :show-progress-messages="props.showProgressMessages"
-      :playing-audio-url="playingAudioUrl" />
+      @play-video="playVideo" @stop-video="stopVideo" @show-html="showHtml"
+      :show-progress-messages="props.showProgressMessages" :playing-audio-url="playingAudioUrl" />
 
     <!-- Input -->
     <ChatInput ref="chatInputRef" :chat-state="chatState" :disabled="!isConnected"

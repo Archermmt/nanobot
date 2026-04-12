@@ -21,6 +21,7 @@ interface Message {
   imageUrl?: string
   audioUrl?: string
   videoUrl?: string
+  htmlContent?: string
   media?: MediaData[]
   metadata?: {
     msg_type?: string
@@ -44,7 +45,7 @@ interface Props {
 }
 
 const props = defineProps<Props>()
-const emit = defineEmits(['play-audio', 'stop-audio', 'play-video', 'stop-video'])
+const emit = defineEmits(['play-audio', 'stop-audio', 'play-video', 'stop-video', 'show-html'])
 
 const messageContainer = ref<HTMLElement | null>(null)
 const currentAudio = ref<HTMLAudioElement | null>(null)
@@ -495,6 +496,15 @@ watch(() => props.showProgressMessages, scrollToBottom)
           </div>
         </div>
 
+        <!-- HTML Link Display -->
+        <div v-if="msg.htmlContent" class="mb-3">
+          <div class="flex items-center space-x-2">
+            <button @click="emit('show-html', msg.htmlContent)" class="nes-btn is-primary">
+              🌐 点击预览
+            </button>
+          </div>
+        </div>
+
         <!-- Message Content -->
         <div class="prose prose-xs markdown-content zh" v-html="renderMarkdown(msg.content)"></div>
 
@@ -512,7 +522,7 @@ watch(() => props.showProgressMessages, scrollToBottom)
         <div class="flex items-center space-x-2">
           <div class="text-xs text-yellow-900">
             {{ props.chatState }}<span v-if="props.chatState === 'Thinking' && currentModeHint">({{ currentModeHint
-              }})</span>
+            }})</span>
           </div>
           <div class="flex space-x-1">
             <div class="w-2 h-2 bg-blue-500 rounded animate-bounce" style="animation-delay: 0ms"></div>
