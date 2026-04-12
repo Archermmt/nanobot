@@ -2,6 +2,7 @@
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 import MessageList from './MessageList.vue'
 import ChatInput from './ChatInput.vue'
+import ThreejsViewer from '../Media/ThreejsViewer.vue'
 import { getAudioPlayer } from '../../js/audio/player.js'
 import { handleToolCallMessage } from '../../js/tools/tools.js'
 import WebsocketTools from '../../js/tools/websocket_tools.json'
@@ -35,6 +36,7 @@ const props = defineProps<{
   msgHandlers?: string[]
   senderId?: string
   chatId?: string
+  interruptable?: boolean
 }>()
 
 const emit = defineEmits(['status-update', 'chat-state-change'])
@@ -47,6 +49,8 @@ const chatInputRef = ref<InstanceType<typeof ChatInput> | null>(null)
 const pendingCommandsCount = ref(0)  // Track pending commands during connection
 const showHtmlDialog = ref(false)
 const currentHtmlContent = ref('')
+const showThreejsViewer = ref(false)
+const currentMeshData = ref<any>(null)
 
 // Global audio playing state shared across components
 const playingAudioUrl = ref<string | null>(null)
@@ -261,6 +265,13 @@ const handleWebSocketMessage = (event: MessageEvent) => {
               htmlContent = mediaItem
             }
           }
+        }
+
+        // Check if this is a 3D mesh message
+        if (msgType === 'mesh' || (fileType && (fileType.includes('stl') || fileType.includes('obj')))) {
+          currentMeshData.value = data
+          showThreejsViewer.value = true
+          chatState.value = "Viewing3D"
         }
       }
 
@@ -585,6 +596,12 @@ const closeHtmlDialog = () => {
   currentHtmlContent.value = ''
 }
 
+const closeThreejsViewer = () => {
+  showThreejsViewer.value = false
+  currentMeshData.value = null
+  chatState.value = "Waiting"
+}
+
 // Watch for chatState changes and emit to parent
 watch(chatState, (newStatus) => {
   emit('chat-state-change', newStatus)
@@ -710,7 +727,8 @@ defineExpose({
     <!-- Input -->
     <ChatInput ref="chatInputRef" :chat-state="chatState" :disabled="!isConnected"
       :is-online-chat-on="props.isOnlineChatOn" :msg-handlers="props.msgHandlers" :messages="messages"
-      @send="sendMessage" @stop-audio="stopAudio" @recording-start="handleRecordingStart" />
+      :interruptable="props.interruptable" @send="sendMessage" @stop-audio="stopAudio"
+      @recording-start="handleRecordingStart" />
 
     <!-- HTML Dialog Overlay -->
     <div v-if="showHtmlDialog" class="html-dialog-overlay" @click="closeHtmlDialog">
@@ -725,6 +743,9 @@ defineExpose({
         </div>
       </div>
     </div>
+
+    <!-- Three.js Viewer -->
+    <ThreejsViewer :visible="showThreejsViewer" :message-data="currentMeshData" @close="closeThreejsViewer" />
   </div>
 </template>
 

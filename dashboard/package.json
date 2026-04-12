@@ -10,10 +10,12 @@
   },
   "dependencies": {
     "@mdi/js": "^7.4.47",
+    "@types/three": "^0.160.0",
     "@vueuse/core": "^11.0.0",
     "marked": "^12.0.0",
     "opus-decoder": "^0.7.0",
     "pinia": "^2.1.7",
+    "three": "^0.160.1",
     "vue": "^3.4.0",
     "vue-router": "^4.3.0"
   },

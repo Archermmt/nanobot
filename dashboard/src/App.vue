@@ -37,6 +37,7 @@ const hideProgress = ref(false)
 const isCameraOn = ref(false)
 const isOnlineChatOn = ref(false)
 const enableSpeak = ref(false) // Track if speech output is enabled
+const interruptable = ref(true) // Track if can interrupt speaking state
 const msgHandlers = ref<string[]>([]) // Track available msgHandlers from backend
 const videoStream = ref<MediaStream | null>(null)
 const videoElement = ref<HTMLVideoElement | null>(null)
@@ -372,11 +373,15 @@ const startOnlineChat = async () => {
         audioRecorder.setShouldSendAudioCallback(() => {
           // Only check chatState, allow recording if status is not Thinking, Speaking, or Listening
           const chatState = chatComponentRef.value?.chatState || "Waiting"
-          const canRecord = !["Thinking", "Loading"].includes(chatState)
-          // add "Speaking" if not interrupting
+          let canRecord = !["Thinking", "Loading"].includes(chatState)
+
+          // If interruptable is false, also block recording during Speaking state
+          if (!interruptable.value && chatState === "Speaking") {
+            canRecord = false
+          }
 
           if (!canRecord) {
-            console.debug('⏸️ 暂停发送音频，当前状态:', chatState)
+            console.debug('⏸️ 暂停发送音频，当前状态:', chatState, '可打断:', interruptable.value)
           } else {
             // If can record and currently in Waiting state, set it to Listening
             if (chatComponentRef.value && chatState === "Waiting") {
@@ -505,7 +510,7 @@ document.addEventListener('mouseup', stopDragCamera)
         <Chat ref="chatComponentRef" v-show="currentSection === 'chat'" @status-update="handleStatusUpdate"
           @ws-status-change="handleWsStatusChange" @chat-state-change="handlechatStateChange"
           :show-progress-messages="!hideProgress" :is-online-chat-on="isOnlineChatOn" :msg-handlers="msgHandlers"
-          :sender-id="senderId" :chat-id="chatId" />
+          :sender-id="senderId" :chat-id="chatId" :interruptable="interruptable" />
         <div v-show="currentSection !== 'chat'" class="p-6 text-gray-500 text-center">
           <p class="text-lg">Section under construction</p>
           <p class="text-sm mt-2">{{ currentSection }} view coming soon...</p>
