@@ -6,7 +6,7 @@ from typing import Any
 from loguru import logger
 
 from nanobot.agent.context import ContextBuilder
-from nanobot.bus.events import OutboundMessage
+from nanobot.bus.events import InboundMessage, OutboundMessage
 from nanobot.config.schema import Config
 from nanobot.providers.base import LLMProvider, LLMResponse
 
@@ -101,12 +101,12 @@ class ProvidersManager:
             raise ValueError(f"Unknown mode: {mode} and no fallback available")
         return self._current_mode
 
-    async def check_fast_reply(self, content: str, features: dict) -> str:
+    async def check_fast_reply(self, msg: InboundMessage, features: dict) -> OutboundMessage | None:
         """Check if the content is a fast reply and return the corresponding message"""
         if features.get("audio_playing", False):
             decider = self.get_provider("main")
             system_prompt = "You are an audio playback controller. Determine if the user's message indicates they want to stop the current audio playback. Answer only with 'yes' or 'no'."
-            user_prompt = f"User message: `{content}`\n\nShould we stop the audio playback? Answer yes or no only."
+            user_prompt = f"User message: `{msg.content}`\n\nShould we stop the audio playback? Answer yes or no only."
             decider_messages = [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
@@ -118,8 +118,13 @@ class ProvidersManager:
             )
             if decision == "yes":
                 logger.debug("Audio playback stopped by user request")
-                return "/stop_audio"
-        return ""
+                return OutboundMessage(
+                    channel=msg.channel,
+                    chat_id=msg.chat_id,
+                    content="/stop_audio",
+                    metadata={"_is_final": True, "_hide_message": True},
+                )
+        return None
 
     async def chat_stream_with_retry(
         self,
