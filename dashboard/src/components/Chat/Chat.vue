@@ -253,8 +253,13 @@ const handleWebSocketMessage = (event: MessageEvent) => {
         if (msgType === 'html' || (fileType && fileType === 'text/html')) {
           // Extract HTML content from media data
           const mediaItem = data.media[0]
-          if (mediaItem && typeof mediaItem === 'string') {
-            htmlContent = mediaItem
+          if (mediaItem) {
+            // HTML content can be in 'data' field of media object
+            if (typeof mediaItem === 'object' && mediaItem.data) {
+              htmlContent = mediaItem.data
+            } else if (typeof mediaItem === 'string') {
+              htmlContent = mediaItem
+            }
           }
         }
       }

@@ -348,7 +348,6 @@ class MediaTool(Tool):
                 media=[media_data],
                 metadata={"msg_type": media_type, "file_type": self._get_mime_type(media_path)},
             )
-            print(f"[TMINFO] send msg {msg}", flush=True)
             await self._send_callback(msg)
             return f"Displayed {media_type}: {media_path_str}"
         except FileNotFoundError as e:

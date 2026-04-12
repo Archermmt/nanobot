@@ -286,7 +286,6 @@ class DefaultProto(BaseProto):
                 "metadata": msg.metadata,
                 "timestamp": asyncio.get_event_loop().time(),
             }
-            print(f"[TMINFO] send message_data to frontend {message_data}", flush=True)
             await websocket.send(json.dumps(message_data, ensure_ascii=False))
         except Exception as e:
             logger.error("Error sending WebSocket message: {}", e)
