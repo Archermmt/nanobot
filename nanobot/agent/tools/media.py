@@ -346,7 +346,7 @@ class MediaTool(Tool):
             metadata={"msg_type": media_type, "file_type": self._get_mime_type(media_path_str)},
         )
         await self._send_callback(msg)
-        return f"Displayed {media_type}: {media_path_str}"
+        return f"Success displayed {media_type}: {media_path_str}"
 
     async def _execute_image(
         self,

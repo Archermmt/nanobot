@@ -47,3 +47,4 @@ Play an audio file:
 2. **Music playback must ONLY use the `media` tool** - Do NOT call system music players or use the `exec` tool for playing music.
 3. **Absolute paths only** - Convert all paths to absolute before calling the tool in `display` mode.
 4. **Supported formats** - Only supported audio formats can be played: MP3, WAV, OGG, AAC, FLAC, M4A, WMA.
+5. **Single Display Call Per Conversation**: During a single conversation turn, you can call the `display` mode AT MOST ONCE to send media content to the user
