@@ -505,6 +505,11 @@ class AgentLoop:
         if result := await session.check_reply(msg):
             return result
 
+        # check special cases
+        if isinstance(self.provider, ProvidersManager):
+            if result := await self.provider.check_fast_reply(msg.content, self.features):
+                return result
+
         # Handle _as_input flag
         if msg.metadata.get("_as_input", False):
             msg.metadata.pop("_as_input")

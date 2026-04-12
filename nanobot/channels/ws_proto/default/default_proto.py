@@ -142,7 +142,12 @@ class DefaultProto(BaseProto):
 
         if content == "/stop_audio":
             self._stop_audio = True
-            return None
+            return {
+                "sender_id": sender_id,
+                "chat_id": chat_id,
+                "content": "/update_features",
+                "metadata": {"features": {"audio_playing": False}},
+            }
 
         if content == "/register_extern_tools":
             mcp_tools, tools_data = [], metadata["tools"]
@@ -234,20 +239,40 @@ class DefaultProto(BaseProto):
             "metadata": metadata,
         }
 
-    async def send_msg(self, msg: OutboundMessage, websocket: Any) -> dict:
+    async def send_msg(
+        self, msg: OutboundMessage, client_info: dict, websocket: Any, callback=None
+    ) -> dict:
         """
         Send a message through WebSocket.
 
         Args:
             msg: Outbound message to send.
+            client_info: Client connection information (sender_id, chat_id, etc.).
             websocket: The WebSocket connection object.
+            callback: Optional callback function for sending messages (e.g., self._handle_message).
 
         Returns:
             info: A dictionary containing information about the sent message.
         """
 
+        async def _sync_audio(audio_playing: bool):
+            if callback:
+                await callback(
+                    sender_id=client_info["sender_id"],
+                    chat_id=msg.chat_id,
+                    content="/update_features",
+                    metadata={"features": {"audio_playing": audio_playing}},
+                )
+
+        if msg.content == "/stop_audio":
+            print("[TMINFO] should stop audio playing", flush=True)
+            self._stop_audio = True
+            await _sync_audio(False)
+            return {"success": True}
+
         if msg.metadata.get("msg_type", "text") == "audio" and msg.metadata.get("encoder_type"):
             self._stop_audio = False
+            await _sync_audio(True)
             frame_duration = msg.metadata.get("frame_duration", 60)
             tts_info = {"type": "tts", "chat_id": msg.chat_id}
             await websocket.send(json.dumps({**tts_info, "state": "start"}))
@@ -268,6 +293,7 @@ class DefaultProto(BaseProto):
                 await asyncio.sleep(frame_duration / 1000.0)
             await websocket.send(json.dumps({**tts_info, "state": "sentence_end"}))
             await websocket.send(json.dumps({**tts_info, "state": "stop"}))
+            await _sync_audio(False)
             return {"success": True}
         # Send common messages
         try:

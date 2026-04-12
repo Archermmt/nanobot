@@ -7,7 +7,6 @@ from enum import Enum
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
-from aiohttp import web
 from loguru import logger
 
 from nanobot.bus.events import OutboundMessage
@@ -69,6 +68,7 @@ class XiaoZhiProto(BaseProto):
         self.session_id = str(uuid.uuid4())[:8]
         self._mcp_result_queue: asyncio.Queue = asyncio.Queue()
         self._ota_task: asyncio.Task | None = None
+        self._stop_audio = False
 
     async def start(self) -> None:
         """
@@ -416,13 +416,17 @@ class XiaoZhiProto(BaseProto):
             message["text"] = check_emoji(text)
         await websocket.send(json.dumps(message))
 
-    async def send_msg(self, msg: OutboundMessage, websocket: Any) -> dict:
+    async def send_msg(
+        self, msg: OutboundMessage, client_info: dict, websocket: Any, callback=None
+    ) -> dict:
         """
         Send a message through WebSocket.
 
         Args:
             msg: Outbound message to send.
+            client_info: Client connection information (sender_id, chat_id, etc.).
             websocket: The WebSocket connection object.
+            callback: Optional callback function for sending messages (e.g., self._handle_message).
 
         Returns:
             info: A dictionary containing information about the sent message.
@@ -436,14 +440,28 @@ class XiaoZhiProto(BaseProto):
 
         msg_type = msg.metadata.get("msg_type", "audio")
         if msg_type == "audio":
+            self._stop_audio = False
+            cb_info = {
+                "sender_id": client_info["sender_id"],
+                "chat_id": msg.chat_id,
+                "content": "/update_features",
+                "metadata": {"features": {"audio_playing": True}},
+            }
+            if callback:
+                await callback(**cb_info)
             frame_duration = msg.metadata.get("frame_duration", 60)
             await self._send_tts_message(websocket, "start")
             await self._send_tts_message(websocket, "sentence_start", msg.content)
             for media in msg.media:
+                if self._stop_audio:
+                    break
                 await websocket.send(media)
                 await asyncio.sleep(frame_duration / 1000.0)
             await self._send_tts_message(websocket, "sentence_end")
             await self._send_tts_message(websocket, "stop")
+            cb_info["metadata"]["features"]["audio_playing"] = False
+            if callback:
+                await callback(**cb_info)
         else:
             await websocket.send(
                 json.dumps({"type": "stt", "text": msg.content, "session_id": self.session_id})

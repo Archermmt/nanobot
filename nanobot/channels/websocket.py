@@ -11,7 +11,6 @@ from nanobot.bus.events import OutboundMessage
 from nanobot.bus.queue import MessageBus
 from nanobot.channels.base import BaseChannel
 from nanobot.config.schema import Base
-from nanobot.utils.connect import get_local_ip
 
 
 class WebSocketConfig(Base):
@@ -273,12 +272,15 @@ class WebSocketChannel(BaseChannel):
         if not proto or not target_ws:
             logger.warning("No proto or ws found for sender_id: {}", msg.chat_id)
             return
-        info = await proto.send_msg(msg, target_ws)
+
+        info = await proto.send_msg(msg, client_info, target_ws, self._handle_message)
         if info.get("broadcast_msg"):
             for ws, client_info in self._clients.items():
                 if ws == target_ws:
                     continue
-                await client_info["proto"].send_msg(info["broadcast_msg"], ws)
+                await client_info["proto"].send_msg(
+                    info["broadcast_msg"], client_info, ws, self._handle_message
+                )
 
     async def _get_client_info(self, websocket) -> dict | None:
         """

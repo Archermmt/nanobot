@@ -372,7 +372,8 @@ const startOnlineChat = async () => {
         audioRecorder.setShouldSendAudioCallback(() => {
           // Only check chatState, allow recording if status is not Thinking, Speaking, or Listening
           const chatState = chatComponentRef.value?.chatState || "Waiting"
-          const canRecord = !["Thinking", "Speaking", "Loading"].includes(chatState)
+          const canRecord = !["Thinking", "Loading"].includes(chatState)
+          // add "Speaking" if not interrupting
 
           if (!canRecord) {
             console.debug('⏸️ 暂停发送音频，当前状态:', chatState)

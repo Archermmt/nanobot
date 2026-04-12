@@ -101,6 +101,26 @@ class ProvidersManager:
             raise ValueError(f"Unknown mode: {mode} and no fallback available")
         return self._current_mode
 
+    async def check_fast_reply(self, content: str, features: dict) -> str:
+        """Check if the content is a fast reply and return the corresponding message"""
+        if features.get("audio_playing", False):
+            decider = self.get_provider("main")
+            system_prompt = "You are an audio playback controller. Determine if the user's message indicates they want to stop the current audio playback. Answer only with 'yes' or 'no'."
+            user_prompt = f"User message: `{content}`\n\nShould we stop the audio playback? Answer yes or no only."
+            decider_messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ]
+            # Get decider's response - it should return only yes or no
+            decider_response = await decider.chat_with_retry(messages=decider_messages)
+            decision = (
+                decider_response.content.strip().lower() if decider_response.content else "no"
+            )
+            if decision == "yes":
+                logger.debug("Audio playback stopped by user request")
+                return "/stop_audio"
+        return ""
+
     async def chat_stream_with_retry(
         self,
         messages: list[dict[str, Any]],
