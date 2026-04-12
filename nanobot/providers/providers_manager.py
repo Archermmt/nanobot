@@ -116,8 +116,12 @@ class ProvidersManager:
             decision = (
                 decider_response.content.strip().lower() if decider_response.content else "no"
             )
+            logger.debug(
+                "Audio playback {} by user request".format(
+                    "stopped" if decision == "yes" else "continued"
+                )
+            )
             if decision == "yes":
-                logger.debug("Audio playback stopped by user request")
                 return OutboundMessage(
                     channel=msg.channel,
                     chat_id=msg.chat_id,

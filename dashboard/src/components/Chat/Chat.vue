@@ -55,7 +55,6 @@ const currentMeshData = ref<any>(null)
 // Global audio playing state shared across components
 const playingAudioUrl = ref<string | null>(null)
 const playingVideoUrl = ref<string | null>(null)
-const playingHtmlUrl = ref<string | null>(null)
 
 // WebSocket instance (managed by App.vue)
 let ws: WebSocket | null = null
@@ -268,10 +267,9 @@ const handleWebSocketMessage = (event: MessageEvent) => {
         }
 
         // Check if this is a 3D mesh message
-        if (msgType === 'mesh' || (fileType && (fileType.includes('stl') || fileType.includes('obj')))) {
+        if (msgType === 'mesh' || (fileType && fileType.startsWith('mesh/'))) {
           currentMeshData.value = data
           showThreejsViewer.value = true
-          chatState.value = "Viewing3D"
         }
       }
 
@@ -587,19 +585,16 @@ const stopVideo = () => {
 const showHtml = (htmlContent: string) => {
   currentHtmlContent.value = htmlContent
   showHtmlDialog.value = true
-  playingHtmlUrl.value = htmlContent
 }
 
 const closeHtmlDialog = () => {
   showHtmlDialog.value = false
-  playingHtmlUrl.value = null
   currentHtmlContent.value = ''
 }
 
 const closeThreejsViewer = () => {
   showThreejsViewer.value = false
   currentMeshData.value = null
-  chatState.value = "Waiting"
 }
 
 // Watch for chatState changes and emit to parent
@@ -620,15 +615,6 @@ watch(playingAudioUrl, (newUrl) => {
 watch(playingVideoUrl, (newUrl) => {
   if (newUrl) {
     chatState.value = "VideoPlaying"
-  } else {
-    chatState.value = "Waiting"
-  }
-})
-
-// Watch for playingHtmlUrl changes and update chatState
-watch(playingHtmlUrl, (newUrl) => {
-  if (newUrl) {
-    chatState.value = "HtmlDisplaying"
   } else {
     chatState.value = "Waiting"
   }

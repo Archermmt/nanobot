@@ -438,17 +438,23 @@ class XiaoZhiProto(BaseProto):
         if msg.metadata.get("_progress", False) or msg.metadata.get("_hide_message", False):
             return {"success": True, "broadcast_msg": msg}
 
+        async def _sync_audio(audio_playing: bool):
+            if callback:
+                await callback(
+                    sender_id=client_info["sender_id"],
+                    chat_id=msg.chat_id,
+                    content="/update_features",
+                    metadata={"features": {"audio_playing": audio_playing}},
+                )
+
+        if msg.content == "/stop_audio":
+            self._stop_audio = True
+            await _sync_audio(False)
+            return {"success": True}
         msg_type = msg.metadata.get("msg_type", "audio")
         if msg_type == "audio":
             self._stop_audio = False
-            cb_info = {
-                "sender_id": client_info["sender_id"],
-                "chat_id": msg.chat_id,
-                "content": "/update_features",
-                "metadata": {"features": {"audio_playing": True}},
-            }
-            if callback:
-                await callback(**cb_info)
+            await _sync_audio(True)
             frame_duration = msg.metadata.get("frame_duration", 60)
             await self._send_tts_message(websocket, "start")
             await self._send_tts_message(websocket, "sentence_start", msg.content)
@@ -459,9 +465,7 @@ class XiaoZhiProto(BaseProto):
                 await asyncio.sleep(frame_duration / 1000.0)
             await self._send_tts_message(websocket, "sentence_end")
             await self._send_tts_message(websocket, "stop")
-            cb_info["metadata"]["features"]["audio_playing"] = False
-            if callback:
-                await callback(**cb_info)
+            await _sync_audio(False)
         else:
             await websocket.send(
                 json.dumps({"type": "stt", "text": msg.content, "session_id": self.session_id})

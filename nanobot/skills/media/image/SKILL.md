@@ -100,3 +100,4 @@ Put a hat on the cat in `cat.png`:
 2. **Absolute paths only** - Convert all paths to absolute before calling the tool in `vision`, `display`, or `edit` modes.
 3. **Keep text unchanged in generate mode** - Do not change the `prompt` when generating an image.
 4. **Display generated/edited images** - After calling the `media` tool in `generate` or `edit` mode, always call the `media` tool in `display` mode to display the image.
+5. **Single Display Call Per Conversation**: During a single conversation turn, you can call the `display` mode AT MOST ONCE to send media content to the user

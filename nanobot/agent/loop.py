@@ -506,8 +506,8 @@ class AgentLoop:
             return result
 
         # check special cases
-        if isinstance(self.provider, ProvidersManager):
-            if result := await self.provider.check_fast_reply(msg.content, self.features):
+        if isinstance(self.provider, ProvidersManager) and msg.sender_id in self.features:
+            if result := await self.provider.check_fast_reply(msg, self.features[msg.sender_id]):
                 return result
 
         # Handle _as_input flag

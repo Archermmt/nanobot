@@ -265,7 +265,6 @@ class DefaultProto(BaseProto):
                 )
 
         if msg.content == "/stop_audio":
-            print("[TMINFO] should stop audio playing", flush=True)
             self._stop_audio = True
             await _sync_audio(False)
             return {"success": True}

@@ -105,3 +105,4 @@ Note: Video editing is currently not supported. Please use generate mode to crea
 2. **Absolute paths only** - Convert all paths to absolute before calling the tool in `vision`, `display`, or `edit` modes.
 3. **Keep text unchanged in generate mode** - Do not change the `prompt` when generating a video.
 4. **Display generated/edited videos** - After calling the `media` tool in `generate` or `edit` mode, always call the `media` tool in `display` mode to display the video.
+5. **Single Display Call Per Conversation**: During a single conversation turn, you can call the `display` mode AT MOST ONCE to send media content to the user
