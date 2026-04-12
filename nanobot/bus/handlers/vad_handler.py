@@ -121,7 +121,7 @@ class BaseVADHandler(BaseHandler, ABC):
             msg.content, msg.media = "", [{"data": b"".join(pcm_data)}]
             self._waiting_id = str(uuid.uuid4())[:8]
             msg.metadata.update(
-                {"msg_type": "audio", "audio_format": "audio/pcm", "vad_id": self._waiting_id}
+                {"msg_type": "audio", "file_type": "audio/pcm", "vad_id": self._waiting_id}
             )
             self._reset_audio()
             return msg

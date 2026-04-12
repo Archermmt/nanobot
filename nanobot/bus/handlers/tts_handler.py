@@ -78,7 +78,7 @@ class BaseTTSHandler(BaseHandler):
                 # Add audio data to message
                 msg.media.extend(audio_datas)
                 msg.metadata.update(
-                    {"msg_type": "audio", "audio_format": "audio/" + str(self.audio_format)}
+                    {"msg_type": "audio", "file_type": "audio/" + str(self.audio_format)}
                 )
             else:
                 msg.content = "Failed to convert to speech"

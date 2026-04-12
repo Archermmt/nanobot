@@ -44,5 +44,6 @@ Play an audio file:
 ## Important Rules
 
 1. **ALWAYS use the `media` tool** with `media_type="audio"` for all audio operations. Never attempt direct LLM API calls.
-2. **Absolute paths only** - Convert all paths to absolute before calling the tool in `display` mode.
-3. **Supported formats** - Only supported audio formats can be played: MP3, WAV, OGG, AAC, FLAC, M4A, WMA.
+2. **Music playback must ONLY use the `media` tool** - Do NOT call system music players or use the `exec` tool for playing music.
+3. **Absolute paths only** - Convert all paths to absolute before calling the tool in `display` mode.
+4. **Supported formats** - Only supported audio formats can be played: MP3, WAV, OGG, AAC, FLAC, M4A, WMA.

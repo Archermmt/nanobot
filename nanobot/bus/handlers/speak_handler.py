@@ -70,7 +70,7 @@ class BaseSpeakHandler(BaseHandler, ABC):
 
         if self.threshold == 0.0:
             return msg
-        audio_format = msg.metadata.get("audio_format", "audio/wav")
+        audio_format = msg.metadata.get("file_type", "audio/wav")
         audio_bytes, audio_format = get_audio_bytes(msg.media[0], audio_format)
 
         def _mark_failed(msg, err):
@@ -280,7 +280,7 @@ class SbrainSpeakHandler(BaseSpeakHandler):
                 f"data:audio/wav;base64,{base64.b64encode(best_audio_data).decode('utf-8')}"
             )
             msg.media = [audio_data_url]
-            msg.metadata["audio_format"] = "audio/wav"
+            msg.metadata["file_type"] = "audio/wav"
             logger.debug(f"Selected source {best_source_idx} with score {max_score:.2f}")
         if speaker_file.exists():
             speaker_file.unlink()

@@ -333,29 +333,20 @@ class MediaTool(Tool):
         if not self._send_callback:
             return "Error: Message sending not configured"
 
-        try:
-            # For other media types, treat media_path as file path
-            media_path_obj = self._get_media_path(media_path, media_type)
-            if not media_path_obj.exists():
-                return f"Error: Media file not found: {media_path_obj}"
-            media_path_str = str(media_path_obj)
-
-            media_data = {"data": self._get_media_data(media_path_str), "file_name": media_path_str}
-            msg = OutboundMessage(
-                channel=self._default_channel,
-                chat_id=self._default_chat_id,
-                content=f"Display {media_type}: {media_path_str}",
-                media=[media_data],
-                metadata={"msg_type": media_type, "file_type": self._get_mime_type(media_path)},
-            )
-            await self._send_callback(msg)
-            return f"Displayed {media_type}: {media_path_str}"
-        except FileNotFoundError as e:
-            return f"Error: {str(e)}"
-        except ValueError as e:
-            return f"Error: {str(e)}"
-        except Exception as e:
-            return f"Error: {str(e)}"
+        media_path_obj = self._get_media_path(media_path, media_type)
+        if not media_path_obj.exists():
+            return f"Error: Media file not found: {media_path_obj}"
+        media_path_str = str(media_path_obj)
+        media_data = {"data": self._get_media_data(media_path_str), "file_name": media_path_str}
+        msg = OutboundMessage(
+            channel=self._default_channel,
+            chat_id=self._default_chat_id,
+            content=f"Display {media_type}: {media_path_str}",
+            media=[media_data],
+            metadata={"msg_type": media_type, "file_type": self._get_mime_type(media_path_str)},
+        )
+        await self._send_callback(msg)
+        return f"Displayed {media_type}: {media_path_str}"
 
     async def _execute_image(
         self,

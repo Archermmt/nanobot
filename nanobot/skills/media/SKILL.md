@@ -153,3 +153,7 @@ Read the specific skill documentation when you need:
 - Mode-specific constraints and best practices
 
 **Remember**: This master guide helps you choose the right tool and mode. For detailed implementation, always refer to the specific skill documentation.
+
+## Important Rules
+
+1. **Single Display Call Per Conversation**: During a single conversation turn, you can call the `display` mode AT MOST ONCE to send media content to the user

@@ -577,14 +577,12 @@ const showHtml = (htmlContent: string) => {
   currentHtmlContent.value = htmlContent
   showHtmlDialog.value = true
   playingHtmlUrl.value = htmlContent
-  chatState.value = "HtmlDisplaying"
 }
 
 const closeHtmlDialog = () => {
   showHtmlDialog.value = false
   playingHtmlUrl.value = null
   currentHtmlContent.value = ''
-  chatState.value = "Waiting"
 }
 
 // Watch for chatState changes and emit to parent

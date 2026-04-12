@@ -97,7 +97,7 @@ class BaseASRHandler(BaseHandler):
             return msg
 
         try:
-            audio_format = msg.metadata.get("audio_format", "audio/wav")
+            audio_format = msg.metadata.get("file_type", "audio/wav")
             audio_bytes, audio_format = get_audio_bytes(msg.media[0], audio_format)
             msg.media = []
             msg.metadata.update({"msg_type": "text"})
