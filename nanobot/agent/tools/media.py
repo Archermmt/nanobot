@@ -4,6 +4,8 @@ import asyncio
 import base64
 import json
 import os
+import re
+import shutil
 import time
 from io import BytesIO
 from pathlib import Path
@@ -70,9 +72,8 @@ class MediaTool(Tool):
             "- html: List or display HTML content\n"
             "  * list: List all available HTML files in the media directory\n"
             "  * display: Render HTML content in a dialog window\n"
-            "- mesh: List or display 3D mesh files (STL, 3MF, etc.)\n"
+            "- mesh: List 3D mesh files (STL, 3MF, etc.)\n"
             "  * list: List all available mesh files in the media directory\n"
-            "  * display: Display 3D mesh models through WebSocket channel with texture support\n"
             "The media_type parameter determines which type of media to process."
         )
 
@@ -97,7 +98,7 @@ class MediaTool(Tool):
                         "For video: 'list', 'vision', 'display', 'generate'. "
                         "For audio: 'list', 'display'. "
                         "For html: 'list', 'display'. "
-                        "For mesh: 'list', 'display'."
+                        "For mesh: 'list' only."
                     ),
                 },
                 "prompt": {
@@ -277,8 +278,8 @@ class MediaTool(Tool):
                 ref_media=ref_media,
                 **kwargs,
             )
-        elif media_type == "mesh":
-            return await self._execute_mesh(mode=mode, mesh_path=media_path, **kwargs)
+        elif media_type == "html":
+            return await self._execute_html(mode=mode, html_path=media_path, **kwargs)
         else:
             return f"Error: Invalid media_type '{media_type}'. Must be 'image', 'video', 'audio', 'html', or 'mesh'."
 
@@ -344,7 +345,11 @@ class MediaTool(Tool):
         if not media_path_obj.exists():
             return f"Error: Media file not found: {media_path_obj}"
         media_path_str = str(media_path_obj)
-        media_data = {"data": self._get_media_data(media_path_str), "file_name": media_path_str}
+        file_content = self._get_media_data(media_path_str)
+        # Process special type
+        if media_type == "html":
+            file_content = self._process_html_content(file_content)
+        media_data = {"data": file_content, "file_name": media_path_str}
         msg = OutboundMessage(
             channel=self._default_channel,
             chat_id=self._default_chat_id,
@@ -355,107 +360,102 @@ class MediaTool(Tool):
         await self._send_callback(msg)
         return f"Success displayed {media_type}: {media_path_str}"
 
-    async def _execute_mesh(self, mode: str, mesh_path: str = "", **kwargs: Any) -> str:
-        """Execute mesh operations."""
-        if mode == "display":
-            return await self._execute_mesh_display(mesh_path=mesh_path)
-        else:
-            return f"Error: Invalid mode '{mode}' for mesh. Must be 'list' or 'display'."
+    def _process_html_content(self, html_content: str) -> str:
+        """Process file paths in HTML content.
 
-    async def _execute_mesh_display(self, mesh_path: str) -> str:
-        """Execute mesh model display with texture support.
+        Replaces absolute paths with relative paths and copies files to public directory.
+        Maintains a maximum of 20 files in the public directory.
 
-        This method prepares mesh data and textures for WebSocket transmission.
-        The actual sending happens in default_proto.py's send_msg method.
+        Args:
+            html_content: The HTML content to process
+            html_dir: The directory containing the HTML file
+
+        Returns:
+            Processed HTML content with updated file paths
         """
-        if not self._send_callback:
-            return "Error: Message sending not configured"
 
-        media_path_obj = self._get_media_path(mesh_path, "mesh")
-        if not media_path_obj.exists():
-            return f"Error: Mesh file not found: {media_path_obj}"
+        # Get public directory path (dashboard/public)
+        project_root = Path(__file__).parent.parent.parent.parent
+        public_dir = project_root / "dashboard" / "public"
 
-        media_path_str = str(media_path_obj)
-        file_ext = media_path_obj.suffix.lower()
+        # Ensure public directory exists
+        public_dir.mkdir(parents=True, exist_ok=True)
 
-        # Read mesh file content as base64
+        # Common file extensions to look for
+        file_extensions = r"\.(stl|3mf|obj|fbx|gltf|glb|png|jpg|jpeg|gif|webp|bmp|svg|mp4|avi|mov|mkv|webm|mp3|wav|ogg|aac|flac|m4a|wma|html|htm|css|js|json|txt)"
+
+        # Pattern to match file paths (both quoted and unquoted)
+        # Matches paths like: /path/to/file.ext, "path/to/file.ext", 'path/to/file.ext'
+        path_pattern = re.compile(
+            r'["\']?([A-Za-z]:)?(/[A-Za-z0-9_./-]+)' + file_extensions + r'["\']?', re.IGNORECASE
+        )
+
+        def _cleanup_public_directory(public_dir: Path) -> None:
+            """Clean up public directory to maintain maximum of 20 files.
+
+            Removes oldest files when the directory exceeds the limit.
+
+            Args:
+                public_dir: The public directory to clean up
+            """
+            max_files = 20
+
+            # Get all files in public directory
+            files = [f for f in public_dir.iterdir() if f.is_file()]
+            if len(files) <= max_files:
+                return
+            # Remove oldest files
+            files.sort(key=lambda f: f.stat().st_mtime)
+            files_to_remove = len(files) - max_files
+            for file in files[:files_to_remove]:
+                try:
+                    file.unlink()
+                    logger.info(f"Removed old file from public directory: {file.name}")
+                except Exception as e:
+                    logger.error(f"Failed to remove {file.name}: {e}")
+
+        def _replace_path(match):
+            """Replace a file path with relative path and copy file to public directory."""
+            original_path = match.group(0)
+            file_path = match.group(1) or "" + match.group(2) + "." + match.group(3)
+            file_path = file_path.strip('"').strip("'")
+            path_obj = Path(file_path)
+            # Skip if not an absolute path or doesn't exist
+            if not path_obj.is_absolute() or not path_obj.exists():
+                return original_path
+
+            # Get file name
+            file_name = path_obj.name
+            _cleanup_public_directory(public_dir)
+
+            # Copy file to public directory if it doesn't exist
+            dest_path = public_dir / file_name
+            if not dest_path.exists():
+                try:
+                    shutil.copy2(path_obj, dest_path)
+                    logger.debug(f"Copied {file_name} to public directory")
+                except Exception as e:
+                    logger.error(f"Failed to copy {file_name}: {e}")
+                    return original_path
+
+            # Return relative path
+            return f"'/{file_name}'"
+
+        # Replace all file paths in HTML content
+        processed_content = path_pattern.sub(_replace_path, html_content)
+
+        # Save to temp.html for testing
         try:
-            with open(media_path_obj, "rb") as f:
-                mesh_content = base64.b64encode(f.read()).decode("utf-8")
+            media_dir = get_media_dir() / "html"
+            media_dir.mkdir(parents=True, exist_ok=True)
+            temp_file = media_dir / "temp.html"
+            with open(temp_file, "w", encoding="utf-8") as f:
+                f.write(processed_content)
+            logger.info(f"Saved processed HTML to {temp_file}")
         except Exception as e:
-            return f"Error reading mesh file: {str(e)}"
+            logger.error(f"Failed to save temp.html: {e}")
 
-        # Look for textures directory (same name as mesh file without extension)
-        textures_dir = media_path_obj.parent / f"{media_path_obj.stem}_textures"
-        textures = {}
-
-        if textures_dir.exists() and textures_dir.is_dir():
-            supported_extensions = (".png", ".jpg", ".jpeg", ".bmp", ".tga")
-            try:
-                for filename in textures_dir.iterdir():
-                    if filename.is_file() and filename.suffix.lower() in supported_extensions:
-                        with open(filename, "rb") as f:
-                            texture_content = base64.b64encode(f.read()).decode("utf-8")
-
-                        # Determine MIME type
-                        if filename.suffix.lower() == ".png":
-                            mime_type = "image/png"
-                        elif filename.suffix.lower() in (".jpg", ".jpeg"):
-                            mime_type = "image/jpeg"
-                        elif filename.suffix.lower() == ".bmp":
-                            mime_type = "image/bmp"
-                        else:
-                            mime_type = "image/png"
-
-                        textures[filename.name] = {"data": texture_content, "mime_type": mime_type}
-                logger.info(f"Loaded {len(textures)} texture files from {textures_dir}")
-            except Exception as e:
-                logger.error(f"Error reading texture files: {e}")
-
-        # Prepare mesh info
-        mesh_info = {
-            "type": "mesh_info",
-            "file": media_path_obj.name,
-            "format": file_ext.lstrip("."),
-            "size": len(mesh_content),
-            "texture_count": len(textures),
-            "ready": True,
-        }
-
-        # Build media list with mesh info, textures, and content
-        media_items = [
-            {"type": "mesh_info", "data": json.dumps(mesh_info)},
-        ]
-
-        # Add textures if available
-        if textures:
-            for filename, texture_data in textures.items():
-                media_items.append(
-                    {
-                        "type": "texture_data",
-                        "filename": filename,
-                        "data": texture_data["data"],
-                        "mime_type": texture_data["mime_type"],
-                    }
-                )
-            media_items.append({"type": "textures_complete", "count": len(textures)})
-
-        # Add mesh content
-        media_items.append(
-            {"type": "mesh_content", "file": media_path_obj.name, "data": mesh_content}
-        )
-
-        # Send message with mesh data
-        msg = OutboundMessage(
-            channel=self._default_channel,
-            chat_id=self._default_chat_id,
-            content=f"Display 3D mesh: {media_path_obj.name}",
-            media=media_items,
-            metadata={"msg_type": "mesh", "file_type": self._get_mime_type(media_path_str)},
-        )
-        await self._send_callback(msg)
-        texture_info = f", {len(textures)} texture(s)" if textures else ""
-        return f"Success displayed mesh: {media_path_str}{texture_info}"
+        return processed_content
 
     async def _execute_image(
         self,
