@@ -15,7 +15,7 @@ The media system supports five types of media:
 - **Audio** 🎵 - Listing and playback
 - **Videos** 🎬 - Analysis, display, generation, and editing
 - **HTML** 🌐 - Listing and rendering HTML content
-- **3D Mesh** 🧊 - Listing and displaying 3D mesh models
+- **3D Mesh** 🧊 - Listing 3D mesh model files
 
 All media operations use the same `media` tool but with different `media_type` parameters:
 - `"image"` for image operations
@@ -61,7 +61,6 @@ When you need to work with media, follow this decision tree:
 
 #### For 3D Mesh (`media_type="mesh"`):
 - **List available mesh files**: `mode="list"`
-- **Display 3D mesh model**: `mode="display"` (supports STL, 3MF, OBJ, FBX, GLTF, GLB formats with textures)
 
 ## Common Workflow Patterns
 
@@ -153,14 +152,12 @@ When you need to work with media, follow this decision tree:
 ```
 
 ### "Show me a 3D model"
-→ List available mesh files, then display selected
+→ List available mesh files
 ```json
 {"name": "media", "arguments": {"media_type": "mesh", "mode": "list"}}
-// After selection:
-{"name": "media", "arguments": {"media_type": "mesh", "mode": "display", "media_path": "/path/to/model.stl"}}
 ```
 
-**Note**: For mesh files with textures, place texture images in a directory named `{filename}_textures/` next to the mesh file.
+**Note**: Currently only listing mesh files is supported. Display functionality is not yet implemented.
 
 ## When to Read Detailed Documentation
 
