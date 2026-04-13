@@ -484,6 +484,26 @@ class AgentLoop:
                 content=final_content or "Background task completed.",
             )
 
+        # parse content
+        if msg.content.startswith("["):
+            # Parse agent specification: [agent1,agent2]:message content
+            try:
+                end_bracket = msg.content.index("]")
+                agents_str = msg.content[1:end_bracket]
+                agents = [ch.strip() for ch in agents_str.split(",") if ch.strip()]
+                remaining_content = msg.content[end_bracket + 1 :].strip()
+
+                # Remove leading colon if present
+                if remaining_content.startswith(":"):
+                    remaining_content = remaining_content[1:].strip()
+
+                # Update message content and add channels to metadata
+                msg.content = remaining_content
+                msg.metadata.update({"agents": agents, "ret_type": RetType.PASSBY})
+                logger.debug(f"Extracted agents {agents} from message")
+            except (ValueError, IndexError) as e:
+                logger.warning(f"Failed to parse channel specification: {e}")
+
         preview = msg.content[:80] + "..." if len(msg.content) > 80 else msg.content
         if msg.content and msg.metadata.get("ret_type", RetType.NORMAL) == RetType.NORMAL:
             logger.info("Processing message from {}:{}: {}", msg.channel, msg.sender_id, preview)

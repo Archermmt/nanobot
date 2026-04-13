@@ -58,6 +58,7 @@ class CapProto(BaseProto):
             config = CapProtoConfig.model_validate(config)
         super().__init__(config=config, ws_config=ws_config)
         self._result_queue: asyncio.Queue = asyncio.Queue()
+        self._mcp_result_queue: asyncio.Queue = asyncio.Queue()
         self._connected = False
 
     async def accept(self, websocket) -> dict | None:
@@ -122,6 +123,7 @@ class CapProto(BaseProto):
         Receive and process incoming message from WebSocket.
 
         Handles different message types from the agent server:
+        - agent_start: Register extern tools
         - code_response: Generated code from agent
         - decision_response: Multi-turn decision from agent
         - status: Status updates
@@ -138,8 +140,59 @@ class CapProto(BaseProto):
         msg_type = msg_data.get("type", "")
         agent_id = msg_data.get("agent_id", client_info.get("agent_id"))
         chat_id = client_info.get("chat_id", agent_id)
+        content = msg_data.get("content", "")
+        metadata = msg_data.get("metadata", {})
 
         try:
+            if content == "/register_extern_tools":
+                # Register extern tools from agent
+                mcp_tools, tools_data = [], metadata.get("tools", [])
+                for i, tool in enumerate(tools_data):
+                    if not isinstance(tool, dict):
+                        continue
+                    name = tool.get("name", "")
+                    description = tool.get("description", "")
+                    input_schema = {"type": "object", "properties": {}, "required": []}
+                    if "inputSchema" in tool and isinstance(tool["inputSchema"], dict):
+                        schema = tool["inputSchema"]
+                        input_schema["type"] = schema.get("type", "object")
+                        input_schema["properties"] = schema.get("properties", {})
+                        input_schema["required"] = [
+                            s for s in schema.get("required", []) if isinstance(s, str)
+                        ]
+                    new_tool = {
+                        "name": name,
+                        "description": description,
+                        "inputSchema": input_schema,
+                    }
+                    mcp_tools.append(new_tool)
+                return {
+                    "sender_id": agent_id,
+                    "chat_id": chat_id,
+                    "content": "/register_extern_tools",
+                    "metadata": {
+                        "type": "cap",
+                        "kwargs": {
+                            "websocket": websocket,
+                            "timeout": 30,
+                            "result_queue": self._mcp_result_queue,
+                        },
+                        "tools": mcp_tools,
+                    },
+                }
+
+            if msg_type == "tool_call":
+                # Put result into queue for tool to fetch
+                try:
+                    tool_name = msg_data.get("name") or metadata.get("tool_name")
+                    await self._mcp_result_queue.put(
+                        {"msg_id": tool_name, "result": msg_data.get("result", {})}
+                    )
+                    logger.debug(f"Put tool call result into queue, tool_name={tool_name}")
+                except Exception as e:
+                    logger.error(f"Failed to put tool call result into queue: {e}")
+                return None
+
             if msg_type == "code_response":
                 # Agent responded with generated code
                 content = msg_data.get("content", "")

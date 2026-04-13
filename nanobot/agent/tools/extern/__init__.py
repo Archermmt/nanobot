@@ -1,7 +1,8 @@
 """External tools module."""
 
+from .cap_tool import CapTool
 from .extern_tool import ExternTool
 from .nanoboard_tool import NanoboardTool
 from .xiaozhi_tool import XiaozhiTool
 
-__all__ = ["ExternTool", "XiaozhiTool", "NanoboardTool"]
+__all__ = ["ExternTool", "XiaozhiTool", "NanoboardTool", "CapTool"]
