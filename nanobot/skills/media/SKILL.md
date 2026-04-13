@@ -172,3 +172,5 @@ Read the specific skill documentation when you need:
 ## Important Rules
 
 1. **Single Display Call Per Conversation**: During a single conversation turn, you can call the `display` mode AT MOST ONCE to send media content to the user
+
+2. **Mesh Model File Selection**: When you need to use 3D mesh model files, ALWAYS use the media tool with `media_type="mesh"` and `mode="list"` to find available mesh files first. The media tool will list all available mesh files (STL, 3MF, OBJ, FBX, GLTF, GLB formats) that can be used for 3D rendering

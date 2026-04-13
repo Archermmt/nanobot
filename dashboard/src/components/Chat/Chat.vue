@@ -292,6 +292,11 @@ const handleWebSocketMessage = (event: MessageEvent) => {
         if (audioUrl) {
           playAudio(audioUrl)
         }
+
+        // Auto-show HTML dialog if it's an HTML message
+        if (htmlContent) {
+          showHtml(htmlContent)
+        }
       }
 
       // Check if message contains _mode_hint and is not a progress message
