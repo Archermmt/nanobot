@@ -229,6 +229,15 @@ class XiaoZhiProto(BaseProto):
         if msg_type == TextMessageType.MCP.value:
             return await self._handle_mcp_message(msg_data, client_info, websocket)
 
+        if msg_type == TextMessageType.ABORT.value:
+            self._stop_audio = True
+            return {
+                "sender_id": client_info["sender_id"],
+                "chat_id": client_info["chat_id"],
+                "content": "/update_features",
+                "metadata": {"features": {"audio_playing": False}},
+            }
+
         # Handle unknown message types
         if msg_type != TextMessageType.LISTEN.value:
             logger.warning(f"Received unknown message({msg_type}): {msg_data}")
