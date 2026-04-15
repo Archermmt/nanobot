@@ -29,10 +29,10 @@ class ExternTool(Tool):
                 raise ValueError(f"Missing required key in spec: {key}")
         self._name = config["name"]
         self._chat_id = config["chatId"]
-        # Add prefix to description indicating this tool is exclusive to the specific chat_id
-        chat_specific_prefix = f"[CHAT_ID: {self._chat_id}] "
-        original_description = config["description"]
-        self._description = f"{chat_specific_prefix}{original_description}\n\n**IMPORTANT**: This tool is exclusively bound to chat session '{self._chat_id}'. Only invoke this tool when you need to perform actions specifically related to this chat session. Do not use this tool for other chat sessions or general purposes."
+        if config.get("bound_session", False):
+            self._description = f"[CHAT_ID: {self._chat_id}] {config['description']}\n\n**IMPORTANT**: This tool is exclusively bound to chat session '{self._chat_id}'. Only invoke this tool when you need to perform actions specifically related to this chat session. Do not use this tool for other chat sessions or general purposes."
+        else:
+            self._description = config["description"]
         self._parameters = config["inputSchema"]
         self.setup(config)
 
