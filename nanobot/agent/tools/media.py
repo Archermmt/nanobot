@@ -248,6 +248,7 @@ class MediaTool(Tool):
             return await self._execute_display(media_path=media_path, media_type=media_type)
         # Calculate media_dir based on media_type
         media_dir = get_media_dir() / media_type
+        media_dir.mkdir(parents=True, exist_ok=True)
         if media_type == "image":
             return await self._execute_image(
                 mode=mode,
@@ -278,8 +279,6 @@ class MediaTool(Tool):
                 ref_media=ref_media,
                 **kwargs,
             )
-        elif media_type == "html":
-            return await self._execute_html(mode=mode, html_path=media_path, **kwargs)
         else:
             return f"Error: Invalid media_type '{media_type}'. Must be 'image', 'video', 'audio', 'html', or 'mesh'."
 

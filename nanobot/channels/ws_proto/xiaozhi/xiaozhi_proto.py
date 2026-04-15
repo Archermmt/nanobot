@@ -345,7 +345,7 @@ class XiaoZhiProto(BaseProto):
                     mcp_tools.append(new_tool)
             return {
                 "sender_id": client_info["sender_id"],
-                "chat_id": client_info["chat_id"],
+                "chat_id": "xiaozhi",
                 "content": "/register_extern_tools",
                 "metadata": {
                     "type": "xiaozhi",
