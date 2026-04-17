@@ -442,9 +442,12 @@ class XiaoZhiProto(BaseProto):
         """
 
         # filter messages
+        msg_type = msg.metadata.get("msg_type", "audio")
         if msg.metadata.get("_cmd_ref", "") == "register_extern_tools":
             return {"success": True, "broadcast_msg": msg}
         if msg.metadata.get("_progress", False) or msg.metadata.get("_hide_message", False):
+            return {"success": True, "broadcast_msg": msg}
+        if msg.media and msg_type != "audio":
             return {"success": True, "broadcast_msg": msg}
 
         async def _sync_audio(audio_playing: bool):
@@ -460,7 +463,6 @@ class XiaoZhiProto(BaseProto):
             self._stop_audio = True
             await _sync_audio(False)
             return {"success": True}
-        msg_type = msg.metadata.get("msg_type", "audio")
         if msg_type == "audio":
             self._stop_audio = False
             await _sync_audio(True)

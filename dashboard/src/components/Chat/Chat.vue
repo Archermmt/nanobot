@@ -46,6 +46,7 @@ const sessionId = ref(`session_${Date.now()}`)
 const currentAudio = ref<HTMLAudioElement | null>(null)
 const currentVideo = ref<HTMLVideoElement | null>(null)
 const chatInputRef = ref<InstanceType<typeof ChatInput> | null>(null)
+const messageListRef = ref<InstanceType<typeof MessageList> | null>(null)
 const pendingCommandsCount = ref(0)  // Track pending commands during connection
 const showHtmlDialog = ref(false)
 const currentHtmlContent = ref('')
@@ -223,8 +224,8 @@ const handleWebSocketMessage = (event: MessageEvent) => {
         if (msgType === 'image' || (fileType && fileType.startsWith('image/'))) {
           // Extract image from media data
           const mediaItem = data.media[0]
-          if (mediaItem && typeof mediaItem === 'string') {
-            imageUrl = mediaItem
+          if (mediaItem && typeof mediaItem === 'object' && mediaItem.data) {
+            imageUrl = mediaItem.data
           }
         }
 
@@ -232,8 +233,17 @@ const handleWebSocketMessage = (event: MessageEvent) => {
         if (msgType === 'video' || (fileType && fileType.startsWith('video/'))) {
           // Extract video from media data
           const mediaItem = data.media[0]
-          if (mediaItem && typeof mediaItem === 'string') {
-            videoUrl = mediaItem
+          if (mediaItem && typeof mediaItem === 'object' && mediaItem.data) {
+            videoUrl = mediaItem.data
+          }
+        }
+
+        // Check if this is an HTML message
+        if (msgType === 'html' || (fileType && fileType === 'text/html')) {
+          // Extract HTML content from media data
+          const mediaItem = data.media[0]
+          if (mediaItem && typeof mediaItem === 'object' && mediaItem.data) {
+            htmlContent = mediaItem.data
           }
         }
 
@@ -257,20 +267,6 @@ const handleWebSocketMessage = (event: MessageEvent) => {
             }
           }
         }
-
-        // Check if this is an HTML message
-        if (msgType === 'html' || (fileType && fileType === 'text/html')) {
-          // Extract HTML content from media data
-          const mediaItem = data.media[0]
-          if (mediaItem) {
-            // HTML content can be in 'data' field of media object
-            if (typeof mediaItem === 'object' && mediaItem.data) {
-              htmlContent = mediaItem.data
-            } else if (typeof mediaItem === 'string') {
-              htmlContent = mediaItem
-            }
-          }
-        }
       }
 
       // Don't display messages marked as hidden (like /history command)
@@ -291,6 +287,17 @@ const handleWebSocketMessage = (event: MessageEvent) => {
         // Auto-play audio if it's an audio message and TTS is enabled
         if (audioUrl) {
           playAudio(audioUrl)
+        }
+
+        // Auto-play video if it's a video message
+        if (videoUrl) {
+          playVideo(videoUrl)
+        }
+
+        // Auto-expand image if it's an image message
+        if (imageUrl && messageListRef.value) {
+          // Call MessageList's expandImage method to auto-expand the image
+          messageListRef.value.expandImage(imageUrl)
         }
 
         // Auto-show HTML dialog if it's an HTML message
@@ -736,8 +743,8 @@ defineExpose({
 <template>
   <div class="flex flex-col h-full chat-container">
     <!-- Messages -->
-    <MessageList :messages="messages" :chat-state="chatState" @play-audio="playAudio" @stop-audio="stopAudio"
-      @play-video="playVideo" @stop-video="stopVideo" @show-html="showHtml"
+    <MessageList ref="messageListRef" :messages="messages" :chat-state="chatState" @play-audio="playAudio"
+      @stop-audio="stopAudio" @play-video="playVideo" @stop-video="stopVideo" @show-html="showHtml"
       :show-progress-messages="props.showProgressMessages" :playing-audio-url="playingAudioUrl" />
 
     <!-- Input -->
