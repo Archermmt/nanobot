@@ -56,9 +56,19 @@ const expandImage = (imageUrl: string) => {
   }
 }
 
+// Expose method to expand video programmatically
+const expandVideo = (videoUrl: string) => {
+  if (!expandedVideos.value.includes(videoUrl)) {
+    expandedVideos.value.push(videoUrl)
+    // Emit play-video event to parent
+    emit('play-video', videoUrl)
+  }
+}
+
 // Expose methods to parent component
 defineExpose({
-  expandImage
+  expandImage,
+  expandVideo
 })
 
 const messageContainer = ref<HTMLElement | null>(null)
@@ -77,18 +87,6 @@ const getImageUrlFromMessage = (msg: Message): string | null => {
   if (msg.imageUrl) {
     return msg.imageUrl
   }
-  if (msg.media && msg.media.length > 0) {
-    // Check if this is an image message based on metadata
-    const msgType = msg.metadata?.msg_type
-    if (msgType === 'image' || msg.metadata?.file_type?.startsWith('image/')) {
-      // For SVG files, use file_path directly
-      if ('file_path' in msg.media[0] && msg.media[0].file_path) {
-        return msg.media[0].file_path as string
-      }
-      // For other images, use data
-      return msg.media[0]?.data || null
-    }
-  }
   return null
 }
 
@@ -96,16 +94,6 @@ const getImageUrlFromMessage = (msg: Message): string | null => {
 const getVideoUrlFromMessage = (msg: Message): string | null => {
   if (msg.videoUrl) {
     return msg.videoUrl
-  }
-  if (msg.media && msg.media.length > 0) {
-    const msgType = msg.metadata?.msg_type
-    if (msgType === 'video' || msg.metadata?.file_type?.startsWith('video/')) {
-      // Use data or file_path for video
-      if ('file_path' in msg.media[0] && msg.media[0].file_path) {
-        return msg.media[0].file_path as string
-      }
-      return msg.media[0]?.data || null
-    }
   }
   return null
 }
@@ -536,7 +524,7 @@ watch(() => props.showProgressMessages, scrollToBottom)
         <div class="flex items-center space-x-2">
           <div class="text-xs text-yellow-900">
             {{ props.chatState }}<span v-if="props.chatState === 'Thinking' && currentModeHint">({{ currentModeHint
-              }})</span>
+            }})</span>
           </div>
           <div class="flex space-x-1">
             <div class="w-2 h-2 bg-blue-500 rounded animate-bounce" style="animation-delay: 0ms"></div>

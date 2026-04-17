@@ -290,8 +290,9 @@ const handleWebSocketMessage = (event: MessageEvent) => {
         }
 
         // Auto-play video if it's a video message
-        if (videoUrl) {
-          playVideo(videoUrl)
+        if (videoUrl && messageListRef.value) {
+          // Call MessageList's expandVideo method to auto-expand and play the video
+          messageListRef.value.expandVideo(videoUrl)
         }
 
         // Auto-expand image if it's an image message
