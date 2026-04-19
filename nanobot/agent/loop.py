@@ -484,26 +484,6 @@ class AgentLoop:
                 content=final_content or "Background task completed.",
             )
 
-        # parse content
-        if msg.content.startswith("["):
-            # Parse agent specification: [agent1,agent2]:message content
-            try:
-                end_bracket = msg.content.index("]")
-                agents_str = msg.content[1:end_bracket]
-                agents = [ch.strip() for ch in agents_str.split(",") if ch.strip()]
-                remaining_content = msg.content[end_bracket + 1 :].strip()
-
-                # Remove leading colon if present
-                if remaining_content.startswith(":"):
-                    remaining_content = remaining_content[1:].strip()
-
-                # Update message content and add channels to metadata
-                msg.content = remaining_content
-                msg.metadata.update({"agents": agents, "ret_type": RetType.PASSBY})
-                logger.debug(f"Extracted agents {agents} from message")
-            except (ValueError, IndexError) as e:
-                logger.warning(f"Failed to parse channel specification: {e}")
-
         preview = msg.content[:80] + "..." if len(msg.content) > 80 else msg.content
         if msg.content and msg.metadata.get("ret_type", RetType.NORMAL) == RetType.NORMAL:
             logger.info("Processing message from {}:{}: {}", msg.channel, msg.sender_id, preview)
@@ -555,14 +535,17 @@ class AgentLoop:
         if isinstance(self.provider, ProvidersManager):
             msg.metadata["_mode_hint"] = await self.provider.choose_mode(msg.content)
         history = session.get_history(max_messages=0)
-        initial_messages = self.context.build_messages(
-            history=history,
-            current_message=msg.content,
-            media=msg.media if msg.media else None,
-            channel=msg.channel,
-            chat_id=msg.chat_id,
-            features=self.features.get(msg.sender_id, {}),
-        )
+        if msg.metadata.get("type", "text") == "promt":
+            initial_messages = json.loads(msg.content)
+        else:
+            initial_messages = self.context.build_messages(
+                history=history,
+                current_message=msg.content,
+                media=msg.media if msg.media else None,
+                channel=msg.channel,
+                chat_id=msg.chat_id,
+                features=self.features.get(msg.sender_id, {}),
+            )
 
         async def _bus_progress(content: str, *, tool_hint: bool = False) -> None:
             meta = dict(msg.metadata or {})

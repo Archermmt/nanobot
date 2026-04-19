@@ -44,62 +44,11 @@ class CapTool(ExternTool):
         """
         if not self._websocket:
             raise RuntimeError("WebSocket not initialized")
-
-        # Process arguments
-        query_type = kwargs.pop("query_type", "code")
-        prompt = kwargs.pop("prompt", [])
-        task_description = kwargs.pop("task_description", "")
-
-        # Send tool call request
-        payload = {
-            "jsonrpc": "2.0",
-            "id": self._tool_id,
-            "method": "tools/call",
-            "params": {
-                "name": self.name,
-                "arguments": {
-                    "query_type": query_type,
-                    "prompt": prompt,
-                    "task_description": task_description,
-                    **kwargs,
-                },
-            },
-        }
-        message = json.dumps({"type": "mcp", "payload": payload})
-        await self._websocket.send(message)
-
-        try:
-            raw_result = None
-            while True:
-                # Get result from queue
-                result_data = await asyncio.wait_for(
-                    self._result_queue.get(), timeout=self._timeout
-                )
-                # Check if msg_id matches
-                if result_data["msg_id"] == self._tool_id:
-                    raw_result = result_data["result"]
-                    break
-                else:
-                    # Put back to queue if not matching
-                    await self._result_queue.put(result_data)
-                    await asyncio.sleep(0.1)
-
-            if isinstance(raw_result, dict):
-                if raw_result.get("isError") is True:
-                    error_msg = raw_result.get("error", "工具调用返回错误，但未提供具体错误信息")
-                    raise RuntimeError(f"工具调用错误：{error_msg}")
-
-                content = raw_result.get("content")
-                if isinstance(content, list) and len(content) > 0:
-                    if isinstance(content[0], dict) and "text" in content[0]:
-                        return content[0]["text"]
-
-            return str(raw_result)
-
-        except asyncio.TimeoutError:
-            raise TimeoutError("工具调用请求超时")
-        except Exception as e:
-            raise e
+        if self.name == "send_task_to_capworker":
+            task = kwargs["task"]
+            await self._websocket.send(json.dumps({"type": "cap_task", "content": task}))
+        else:
+            raise TypeError(f"Unsupported tool {self.name}")
 
 
 # Automatically register with type 'cap'

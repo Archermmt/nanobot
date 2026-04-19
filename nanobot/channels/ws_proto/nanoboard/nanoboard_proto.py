@@ -1,4 +1,4 @@
-"""Default protocol handler for generic WebSocket communication."""
+"""Nanoboard protocol handler for generic WebSocket communication."""
 
 import asyncio
 import base64
@@ -13,18 +13,17 @@ from nanobot.config.schema import Base
 from nanobot.utils.media import save_media
 
 
-class DefaultProtoConfig(Base):
-    """Default protocol handler configuration."""
+class NanoboardProtoConfig(Base):
+    """Nanoboard protocol handler configuration."""
 
     enabled: bool = True  # Whether this protocol is enabled
-    auth_token: str = ""  # Authentication token for WebSocket connection
     accept_senders: list[str] = ["nanoboard"]  # List of accepted sender IDs
 
 
 @BaseProto.register()
-class DefaultProto(BaseProto):
+class NanoboardProto(BaseProto):
     """
-    Default protocol handler for WebSocket message processing.
+    Nanoboard protocol handler for WebSocket message processing.
 
     This protocol handles:
     - Incoming message parsing and routing
@@ -36,19 +35,19 @@ class DefaultProto(BaseProto):
     @classmethod
     def proto_name(cls) -> str:
         """Return the protocol name for registration."""
-        return "default"
+        return "nanoboard"
 
-    def __init__(self, config: DefaultProtoConfig | dict, ws_config: Any):
+    def __init__(self, config: NanoboardProtoConfig | dict, ws_config: Any):
         """
-        Initialize the default protocol handler.
+        Initialize the nanoboard protocol handler.
 
         Args:
-            config: Protocol-specific configuration (dict or DefaultProtoConfig).
+            config: Protocol-specific configuration (dict or NanoboardProtoConfig).
             ws_config: WebSocket channel configuration (for host, port, etc.).
         """
         # Convert dict to config object if needed
         if isinstance(config, dict):
-            config = DefaultProtoConfig.model_validate(config)
+            config = NanoboardProtoConfig.model_validate(config)
         super().__init__(config=config, ws_config=ws_config)
         self._mcp_result_queue: asyncio.Queue = asyncio.Queue()
         self._stop_audio = False
@@ -57,9 +56,8 @@ class DefaultProto(BaseProto):
         """
         Check if the current websocket can be accepted by this proto.
 
-        The default proto accepts all connections and extracts client info from
-        URL query parameters or uses default values. If auth_token is configured,
-        it will perform authentication.
+        The nanoboard proto accepts all connections and extracts client info from
+        URL query parameters or uses default values.
 
         Args:
             websocket: The WebSocket connection object.
@@ -82,34 +80,10 @@ class DefaultProto(BaseProto):
                     sender_id = query_params["sender_id"][0]
                 if "chat_id" in query_params:
                     chat_id = query_params["chat_id"][0]
-
             # Check if sender_id is in the list of accepted senders
             if sender_id not in self.config.accept_senders:
                 logger.warning(f"Sender {sender_id} not accepted from {websocket.remote_address}")
                 return None
-
-            # Handle authentication if token is configured
-            if self.config.auth_token:
-                try:
-                    auth_msg = await asyncio.wait_for(websocket.recv(), timeout=10.0)
-                    auth_data = json.loads(auth_msg)
-                    if (
-                        auth_data.get("type") == "auth"
-                        and auth_data.get("token") == self.config.auth_token
-                    ):
-                        logger.debug("Client authenticated successfully")
-                        sender_id = auth_data.get("sender_id", sender_id)
-                        chat_id = auth_data.get("chat_id", chat_id)
-                    else:
-                        logger.warning("Authentication failed")
-                        return None
-                except asyncio.TimeoutError:
-                    logger.warning("Authentication timeout")
-                    return None
-                except json.JSONDecodeError:
-                    logger.warning("Invalid authentication message")
-                    return None
-
             return {"sender_id": sender_id, "chat_id": chat_id}
         except Exception as e:
             logger.warning("Failed to extract client info from websocket: {}", e)

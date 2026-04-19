@@ -48,3 +48,4 @@ Play an audio file:
 3. **Absolute paths only** - Convert all paths to absolute before calling the tool in `display` mode.
 4. **Supported formats** - Only supported audio formats can be played: MP3, WAV, OGG, AAC, FLAC, M4A, WMA.
 5. **Single Display Call Per Conversation**: During a single conversation turn, you can call the `display` mode AT MOST ONCE to send media content to the user
+6. **Play Only First Audio from List**: When using `mode="list"` and multiple audio files are available, play ONLY the first audio file. Do not play multiple audio files in a single conversation turn
