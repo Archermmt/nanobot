@@ -126,12 +126,11 @@ class CapProto(BaseProto):
         """
 
         msg_type = msg_data.get("type", "")
-
         try:
             if msg_type == "extern_tools":
                 # Register extern tools from agent
                 ex_tools, tools_data = [], msg_data.get("tools", [])
-                for i, tool in enumerate(tools_data):
+                for tool in tools_data:
                     if not isinstance(tool, dict):
                         continue
                     name = tool.get("name", "")
@@ -166,6 +165,7 @@ class CapProto(BaseProto):
                     "sender_id": client_info["sender_id"],
                     "chat_id": client_info["chat_id"],
                     "content": json.dumps(msg_data["prompt"]),
+                    "metadata": {"src_type": msg_type},
                 }
             else:
                 # Unknown message type

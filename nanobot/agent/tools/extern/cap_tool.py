@@ -1,6 +1,5 @@
 """CapWorker tool implementation using ExternTool."""
 
-import asyncio
 import json
 from typing import Any
 
@@ -24,29 +23,11 @@ class CapTool(ExternTool):
         self._tool_id = config.get("tool_id", 1)
 
     async def execute(self, **kwargs: Any) -> str:
-        """
-        Execute the CapWorker tool by calling remote agent via MCP.
-
-        Args:
-            **kwargs: Tool parameters including:
-                - query_type: Type of query ('code' or 'decision')
-                - prompt: Prompt messages for the agent
-                - task_description: Description of the task
-                - timeout: Timeout in seconds (default: 30)
-
-        Returns:
-            String result from the tool execution.
-
-        Raises:
-            RuntimeError: If WebSocket not initialized or tool call fails.
-            TimeoutError: If tool call times out.
-            ValueError: If parameters are invalid.
-        """
+        """Execute the CapWorker tool."""
         if not self._websocket:
             raise RuntimeError("WebSocket not initialized")
         if self.name == "send_task_to_capworker":
-            task = kwargs["task"]
-            await self._websocket.send(json.dumps({"type": "cap_task", "content": task}))
+            await self._websocket.send(json.dumps({"type": "cap_task", "content": kwargs["task"]}))
         else:
             raise TypeError(f"Unsupported tool {self.name}")
 
