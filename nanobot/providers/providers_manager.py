@@ -106,7 +106,18 @@ class ProvidersManager:
         if msg.metadata.get("msg_type", "text") == "prompt":
             provider = self.get_provider(msg.metadata.get("llm_mode", "main"))
             response = await provider.chat_with_retry(messages=msg.content)
-            return OutboundMessage(channel=msg.channel, chat_id=msg.chat_id, content=response)
+            metadata = {"finish_reason": response.finish_reason}
+            if response.content:
+                return OutboundMessage(
+                    channel=msg.channel,
+                    chat_id=msg.chat_id,
+                    content=response.content.strip(),
+                    metadata=metadata,
+                )
+            metadata["error"] = "Failed to call llm"
+            return OutboundMessage(
+                channel=msg.channel, chat_id=msg.chat_id, content="", metadata=metadata
+            )
         return None
 
     async def chat_stream_with_retry(

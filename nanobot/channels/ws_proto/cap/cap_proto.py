@@ -57,14 +57,20 @@ class CapProto(BaseProto):
         super().__init__(config, ws_config, message_sender)
         self._result_queue: asyncio.Queue = asyncio.Queue()
         self._http_server, self._server_url = None, None
+        self._task_response = None
 
     @classmethod
     def proto_name(cls) -> str:
         """Return the protocol name for registration."""
         return "cap"
 
-    def _create_http_app(self):
-        """Create FastAPI application for LLM requests."""
+    def _create_http_app(self, sender_id: str = "cap_worker", chat_id: str = ""):
+        """Create FastAPI application for LLM requests.
+
+        Args:
+            sender_id: The sender identifier for message routing.
+            chat_id: The chat identifier for message routing.
+        """
         try:
             from capx.serving.openrouter_server import (
                 ChatCompletionRequest,
@@ -89,30 +95,36 @@ class CapProto(BaseProto):
                 """Handle chat completion requests."""
                 try:
                     # Put request into inbound queue
+                    self._task_response = None
                     client_kwargs = request.model_dump(exclude_none=True)
-                    model = client_kwargs.get("model", "")
-                    if model.startswith("openrouter/"):
-                        client_kwargs["model"] = model[len("openrouter/") :]
-                    client_kwargs["stream"] = False
+                    self.message_sender(
+                        sender_id=sender_id,
+                        chat_id=chat_id,
+                        content=client_kwargs["prompt"],
+                        metadata={
+                            "msg_type": "prompt",
+                            "llm_mode": client_kwargs.get("llm_mode", "main"),
+                        },
+                    )
 
                     print(f"[TMINFO] get client_kwargs {client_kwargs}", flush=True)
-                    raise Exception("stop here!!")
-                    response_data = {}
+                    while not self._task_response:
+                        await asyncio.sleep(0.5)
 
-                    if response_data.get("error"):
-                        raise HTTPException(status_code=500, detail=response_data["error"])
+                    if self._task_response.get("error"):
+                        raise HTTPException(status_code=500, detail=self._task_response["error"])
 
                     # Build response
                     choice = ChatCompletionResponseChoice(
                         index=0,
-                        message=Message(role="assistant", content=response_data["content"]),
-                        finish_reason=response_data.get("finish_reason", "stop"),
+                        message=Message(role="assistant", content=self._task_response["content"]),
+                        finish_reason=self._task_response.get("finish_reason", "stop"),
                     )
 
                     return ChatCompletionResponse(
-                        id=response_data.get("id", f"chatcmpl-{int(time.time())}"),
-                        created=response_data.get("created", int(time.time())),
-                        model=response_data.get("model", self.config.llm_model),
+                        id=f"chatcmpl-{int(time.time())}",
+                        created=int(time.time()),
+                        model="nanobot",
                         choices=[choice],
                     )
 
@@ -184,7 +196,7 @@ class CapProto(BaseProto):
                     return None
 
             # start llm server
-            http_app = self._create_http_app()
+            http_app = self._create_http_app(sender_id=client_type, chat_id=agent_id)
             config = uvicorn.Config(
                 http_app, host="localhost", port=self.config.http_port, log_level="info"
             )
@@ -297,12 +309,5 @@ class CapProto(BaseProto):
         """
         msg_type = msg.metadata.get("msg_type", "text")
         if msg_type == "text":
-            try:
-                await websocket.send(
-                    json.dumps({"type": "query_model_response", "content": msg.content})
-                )
-                return {"success": True}
-            except Exception as e:
-                logger.error(f"Failed to send message: {e}")
-                return {"success": False, "error": str(e)}
+            self._task_response = {"content": msg.content, **msg.metadata}
         return {"success": False}
