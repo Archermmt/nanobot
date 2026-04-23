@@ -103,31 +103,10 @@ class ProvidersManager:
 
     async def check_fast_reply(self, msg: InboundMessage, features: dict) -> OutboundMessage | None:
         """Check if the content is a fast reply and return the corresponding message"""
-        if features.get("audio_playing", False):
-            decider = self.get_provider("main")
-            system_prompt = "You are an audio playback controller. Determine if the user's message indicates they want to stop the current audio playback. Answer only with 'yes' or 'no'."
-            user_prompt = f"User message: `{msg.content}`\n\nShould we stop the audio playback? Answer yes or no only."
-            decider_messages = [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ]
-            # Get decider's response - it should return only yes or no
-            decider_response = await decider.chat_with_retry(messages=decider_messages)
-            decision = (
-                decider_response.content.strip().lower() if decider_response.content else "no"
-            )
-            logger.debug(
-                "Audio playback {} by user request".format(
-                    "stopped" if decision == "yes" else "continued"
-                )
-            )
-            if decision == "yes":
-                return OutboundMessage(
-                    channel=msg.channel,
-                    chat_id=msg.chat_id,
-                    content="/stop_audio",
-                    metadata={"_is_final": True, "_hide_message": True},
-                )
+        if msg.metadata.get("msg_type", "text") == "prompt":
+            provider = self.get_provider(msg.metadata.get("llm_mode", "main"))
+            response = await provider.chat_with_retry(messages=msg.content)
+            return OutboundMessage(channel=msg.channel, chat_id=msg.chat_id, content=response)
         return None
 
     async def chat_stream_with_retry(

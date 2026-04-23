@@ -7,6 +7,7 @@ multi-turn decisions, and trial execution results.
 
 import asyncio
 import json
+import time
 from typing import Any
 
 from loguru import logger
@@ -24,6 +25,7 @@ class CapProtoConfig(Base):
     max_retries: int = 3  # Maximum number of retry attempts for failed operations
     retry_delay: float = 1.0  # Delay between retries in seconds
     timeout: float = 300.0  # Timeout for WebSocket operations in seconds
+    http_port: int = 8110  # HTTP server port for LLM requests
 
 
 @BaseProto.register()
@@ -37,25 +39,105 @@ class CapProto(BaseProto):
     - Multi-turn decision query/response
     - Trial status updates
     - Error handling and retries
+    - HTTP server for LLM request processing
     """
 
-    @classmethod
-    def proto_name(cls) -> str:
-        """Return the protocol name for registration."""
-        return "cap"
-
-    def __init__(self, config: CapProtoConfig | dict, ws_config: Any):
+    def __init__(self, config: CapProtoConfig | dict, ws_config: Any, message_sender: Any):
         """
         Initialize the CapWorker protocol handler.
 
         Args:
             config: Protocol-specific configuration (dict or CapProtoConfig).
             ws_config: WebSocket channel configuration (for host, port, etc.).
+            message_sender: Callback function for sending messages.
         """
         # Convert dict to config object if needed
         if isinstance(config, dict):
             config = CapProtoConfig.model_validate(config)
-        super().__init__(config=config, ws_config=ws_config)
+        super().__init__(config, ws_config, message_sender)
+        self._result_queue: asyncio.Queue = asyncio.Queue()
+        self._http_server, self._server_url = None, None
+
+    @classmethod
+    def proto_name(cls) -> str:
+        """Return the protocol name for registration."""
+        return "cap"
+
+    def _create_http_app(self):
+        """Create FastAPI application for LLM requests."""
+        try:
+            from capx.serving.openrouter_server import (
+                ChatCompletionRequest,
+                ChatCompletionResponse,
+                ChatCompletionResponseChoice,
+                Message,
+            )
+            from fastapi import FastAPI, HTTPException
+            from fastapi.middleware.cors import CORSMiddleware
+
+            app = FastAPI(title="CapProto LLM Proxy", version="1.0.0")
+            app.add_middleware(
+                CORSMiddleware,
+                allow_origins=["*"],
+                allow_credentials=True,
+                allow_methods=["*"],
+                allow_headers=["*"],
+            )
+
+            @app.post("/chat/completions")
+            async def chat_completions(request: ChatCompletionRequest):
+                """Handle chat completion requests."""
+                try:
+                    # Put request into inbound queue
+                    client_kwargs = request.model_dump(exclude_none=True)
+                    model = client_kwargs.get("model", "")
+                    if model.startswith("openrouter/"):
+                        client_kwargs["model"] = model[len("openrouter/") :]
+                    client_kwargs["stream"] = False
+
+                    print(f"[TMINFO] get client_kwargs {client_kwargs}", flush=True)
+                    raise Exception("stop here!!")
+                    response_data = {}
+
+                    if response_data.get("error"):
+                        raise HTTPException(status_code=500, detail=response_data["error"])
+
+                    # Build response
+                    choice = ChatCompletionResponseChoice(
+                        index=0,
+                        message=Message(role="assistant", content=response_data["content"]),
+                        finish_reason=response_data.get("finish_reason", "stop"),
+                    )
+
+                    return ChatCompletionResponse(
+                        id=response_data.get("id", f"chatcmpl-{int(time.time())}"),
+                        created=response_data.get("created", int(time.time())),
+                        model=response_data.get("model", self.config.llm_model),
+                        choices=[choice],
+                    )
+
+                except HTTPException:
+                    raise
+                except asyncio.TimeoutError:
+                    logger.error("Timeout waiting for LLM response")
+                    raise HTTPException(status_code=504, detail="Timeout waiting for LLM response")
+                except Exception as e:
+                    logger.error(f"Error in chat_completions: {e}")
+                    import traceback
+
+                    traceback.print_exc()
+                    raise HTTPException(status_code=500, detail=str(e))
+
+            @app.get("/health")
+            async def health():
+                return {"status": "ok"}
+
+            return app
+
+        except ImportError as e:
+            logger.error(f"FastAPI dependencies not installed: {e}")
+            logger.info("Install with: pip install fastapi uvicorn pydantic openai")
+            raise
 
     async def accept(self, websocket) -> dict | None:
         """
@@ -70,6 +152,8 @@ class CapProto(BaseProto):
         Returns:
             A dictionary containing client information if accepted, None otherwise.
         """
+
+        import uvicorn
 
         try:
             headers = dict(websocket.request.headers) if hasattr(websocket, "request") else {}
@@ -99,13 +183,22 @@ class CapProto(BaseProto):
                     logger.warning("Invalid authentication message")
                     return None
 
+            # start llm server
+            http_app = self._create_http_app()
+            config = uvicorn.Config(
+                http_app, host="localhost", port=self.config.http_port, log_level="info"
+            )
+            self._http_server = uvicorn.Server(config)
+            self._server_url = f"http://localhost:{self.config.http_port}"
+            asyncio.create_task(self._http_server.serve())
+            logger.info(f"Client {agent_id} registered. HTTP server started on {self._server_url}")
             return {"sender_id": client_type, "chat_id": agent_id}
 
         except Exception as e:
             logger.warning(f"Failed to extract client info from websocket: {e}")
             return None
 
-    async def receive_msg(self, msg_data: dict, client_info: dict, websocket) -> dict | None:
+    async def receive_msg(self, msg_data: dict, client_info: dict, websocket) -> None:
         """
         Receive and process incoming message from WebSocket.
 
@@ -120,12 +213,10 @@ class CapProto(BaseProto):
             msg_data: Parsed message data dictionary.
             client_info: Client connection information (agent_id, etc.).
             websocket: The WebSocket connection object.
-
-        Returns:
-            Processed message dictionary or None if ignored.
         """
 
         msg_type = msg_data.get("type", "")
+
         try:
             if msg_type == "extern_tools":
                 # Register extern tools from agent
@@ -149,35 +240,45 @@ class CapProto(BaseProto):
                         "inputSchema": input_schema,
                     }
                     ex_tools.append(new_tool)
-                return {
-                    "sender_id": client_info["sender_id"],
-                    "chat_id": client_info["chat_id"],
-                    "content": "/register_extern_tools",
-                    "metadata": {
+                await self.message_sender(
+                    sender_id=client_info["sender_id"],
+                    chat_id=client_info["chat_id"],
+                    content="/register_extern_tools",
+                    metadata={
                         "type": "cap",
-                        "kwargs": {"websocket": websocket, "timeout": 30},
+                        "kwargs": {
+                            "websocket": websocket,
+                            "timeout": 30,
+                            "server_url": self._server_url,
+                            "result_queue": self._result_queue,
+                        },
                         "tools": ex_tools,
                     },
-                }
-            elif msg_type == "query_model":
-                return {
-                    "type": "prompt",
-                    "sender_id": client_info["sender_id"],
-                    "chat_id": client_info["chat_id"],
-                    "content": json.dumps(msg_data["prompt"]),
-                    "metadata": {"src_type": msg_type},
-                }
-            else:
-                # Unknown message type
-                logger.warning(f"Unknown message type: {msg_type}")
-                return None
+                )
+                return
+            if msg_type == "task_result":
+                # Put result into queue for tool to fetch
+                await self._result_queue.put(
+                    {
+                        "chat_id": client_info["chat_id"],
+                        "tool_id": "trigger_cap_task",
+                        "result": msg_data["result"],
+                    }
+                )
+                logger.debug(
+                    f"Put trigger_cap_task result into queue, chat_id={client_info['chat_id']}"
+                )
+                return
+            logger.warning(f"Unknown message type: {msg_type}")
+            return
         except Exception as e:
             logger.error(f"Failed to process incoming message: {e}")
-            return None
+            import traceback
 
-    async def send_msg(
-        self, msg: OutboundMessage, client_info: dict, websocket: Any, callback=None
-    ) -> dict:
+            traceback.print_exc()
+            return
+
+    async def send_msg(self, msg: OutboundMessage, client_info: dict, websocket: Any) -> dict:
         """
         Send a message through WebSocket to the agent server.
 
@@ -190,15 +291,18 @@ class CapProto(BaseProto):
             msg: Outbound message to send.
             client_info: Client connection information (agent_id, etc.).
             websocket: The WebSocket connection object.
-            callback: Optional callback function for sending messages.
 
         Returns:
             info: A dictionary containing information about the sent message.
         """
         msg_type = msg.metadata.get("msg_type", "text")
         if msg_type == "text":
-            await websocket.send(
-                json.dumps({"type": "query_model_response", "content": msg.content})
-            )
-            return {"success": True}
+            try:
+                await websocket.send(
+                    json.dumps({"type": "query_model_response", "content": msg.content})
+                )
+                return {"success": True}
+            except Exception as e:
+                logger.error(f"Failed to send message: {e}")
+                return {"success": False, "error": str(e)}
         return {"success": False}

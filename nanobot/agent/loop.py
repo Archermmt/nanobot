@@ -450,6 +450,14 @@ class AgentLoop:
         on_stream_end: Callable[..., Awaitable[None]] | None = None,
     ) -> OutboundMessage | None:
         """Process a single inbound message and return the response."""
+        # Check special cases
+        if isinstance(self.provider, ProvidersManager):
+            if result := await self.provider.check_fast_reply(
+                msg, self.features.get(msg.sender_id, {})
+            ):
+                result.metadata.update({"_is_final": True})
+                return result
+
         # System messages: parse origin from chat_id ("channel:chat_id")
         if msg.channel == "system":
             channel, chat_id = (
@@ -504,11 +512,6 @@ class AgentLoop:
 
         if result := await session.check_reply(msg):
             return result
-
-        # check special cases
-        if isinstance(self.provider, ProvidersManager) and msg.sender_id in self.features:
-            if result := await self.provider.check_fast_reply(msg, self.features[msg.sender_id]):
-                return result
 
         # Handle _as_input flag
         if msg.metadata.get("_as_input", False):

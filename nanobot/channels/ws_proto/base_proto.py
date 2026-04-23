@@ -37,16 +37,18 @@ class BaseProto(ABC):
 
     _registry: Dict[str, Type["BaseProto"]] = {}
 
-    def __init__(self, config: Any = None, ws_config: Any = None):
+    def __init__(self, config: Any, ws_config: Any, message_sender: Any):
         """
         Initialize the WebSocket base protocol.
 
         Args:
             config: Protocol-specific configuration.
             ws_config: WebSocket channel configuration (for host, port, etc.).
+            message_sender: Message sender callback function (e.g., _handle_message).
         """
         self.config = config
         self.ws_config = ws_config
+        self.message_sender = message_sender
 
     @classmethod
     def register(cls):
@@ -132,11 +134,12 @@ class BaseProto(ABC):
         pass
 
     @abstractmethod
-    async def receive_msg(self, msg_data: dict, client_info: dict, websocket) -> dict | None:
+    async def receive_msg(self, msg_data: dict, client_info: dict, websocket) -> None:
         """
         Receive and process incoming message from WebSocket.
 
         Subclasses must implement this method to parse and handle received messages.
+        Messages should be sent using self.message_sender callback.
 
         Args:
             msg_data: Raw message data (JSON string or binary data).
@@ -146,9 +149,7 @@ class BaseProto(ABC):
         pass
 
     @abstractmethod
-    async def send_msg(
-        self, msg: OutboundMessage, client_info: dict, websocket: Any, callback=None
-    ) -> dict:
+    async def send_msg(self, msg: OutboundMessage, client_info: dict, websocket: Any) -> dict:
         """
         Send a message through WebSocket.
 
@@ -156,7 +157,6 @@ class BaseProto(ABC):
             msg: Outbound message to send.
             client_info: Client connection information (sender_id, chat_id, etc.).
             websocket: The WebSocket connection object.
-            callback: Optional callback function for sending messages (e.g., self._handle_message).
 
         Returns:
             info: A dictionary containing information about the sent message.

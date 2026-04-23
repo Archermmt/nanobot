@@ -37,19 +37,20 @@ class NanoboardProto(BaseProto):
         """Return the protocol name for registration."""
         return "nanoboard"
 
-    def __init__(self, config: NanoboardProtoConfig | dict, ws_config: Any):
+    def __init__(self, config: NanoboardProtoConfig | dict, ws_config: Any, message_sender: Any):
         """
         Initialize the nanoboard protocol handler.
 
         Args:
             config: Protocol-specific configuration (dict or NanoboardProtoConfig).
             ws_config: WebSocket channel configuration (for host, port, etc.).
+            message_sender: Message sender function for sending messages.
         """
         # Convert dict to config object if needed
         if isinstance(config, dict):
             config = NanoboardProtoConfig.model_validate(config)
-        super().__init__(config=config, ws_config=ws_config)
-        self._mcp_result_queue: asyncio.Queue = asyncio.Queue()
+        super().__init__(config, ws_config, message_sender)
+        self._result_queue: asyncio.Queue = asyncio.Queue()
         self._stop_audio = False
 
     async def accept(self, websocket) -> dict | None:
@@ -89,7 +90,7 @@ class NanoboardProto(BaseProto):
             logger.warning("Failed to extract client info from websocket: {}", e)
             return None
 
-    async def receive_msg(self, msg_data: dict, client_info: dict, websocket) -> dict | None:
+    async def receive_msg(self, msg_data: dict, client_info: dict, websocket) -> None:
         """
         Receive and process incoming message from WebSocket.
 
@@ -107,21 +108,23 @@ class NanoboardProto(BaseProto):
         metadata = msg_data.get("metadata", {})
 
         if msg_type == "bytes":
-            return {
-                "sender_id": sender_id,
-                "chat_id": chat_id,
-                "content": msg_data["data"],
-                "metadata": {"msg_type": "audio_clip"},
-            }
+            await self.message_sender(
+                sender_id=sender_id,
+                chat_id=chat_id,
+                content=msg_data["data"],
+                metadata={"msg_type": "audio_clip"},
+            )
+            return
 
         if content == "/stop_audio":
             self._stop_audio = True
-            return {
-                "sender_id": sender_id,
-                "chat_id": chat_id,
-                "content": "/update_features",
-                "metadata": {"features": {"audio_playing": False}},
-            }
+            await self.message_sender(
+                sender_id=sender_id,
+                chat_id=chat_id,
+                content="/update_features",
+                metadata={"features": {"audio_playing": False}},
+            )
+            return
 
         if content == "/register_extern_tools":
             mcp_tools, tools_data = [], metadata["tools"]
@@ -140,51 +143,50 @@ class NanoboardProto(BaseProto):
                     ]
                 new_tool = {"name": name, "description": description, "inputSchema": input_schema}
                 mcp_tools.append(new_tool)
-            return {
-                "sender_id": sender_id,
-                "chat_id": chat_id,
-                "content": "/register_extern_tools",
-                "metadata": {
+            await self.message_sender(
+                sender_id=sender_id,
+                chat_id=chat_id,
+                content="/register_extern_tools",
+                metadata={
                     "type": sender_id,
                     "kwargs": {
                         "websocket": websocket,
                         "timeout": 30,
-                        "result_queue": self._mcp_result_queue,
+                        "result_queue": self._result_queue,
                     },
                     "tools": mcp_tools,
                 },
-            }
+            )
+            return
 
         if msg_type == "tool_call":
             # Put result into queue for tool to fetch
-            try:
-                tool_name = msg_data.get("name") or metadata.get("tool_name")
-                await self._mcp_result_queue.put(
-                    {"msg_id": tool_name, "result": msg_data.get("result", {})}
-                )
-                logger.debug(f"Put tool call result into queue, tool_name={tool_name}")
-            except Exception as e:
-                logger.error(f"Failed to put tool call result into queue: {e}")
-            return None
+            tool_name = msg_data.get("name") or metadata.get("tool_name")
+            await self._result_queue.put(
+                {"tool_id": tool_name, "result": msg_data.get("result", {})}
+            )
+            logger.debug(f"Put tool call result into queue, tool_name={tool_name}")
+            return
 
         if msg_type != "message":
             # Ignore unknown message types
-            return None
+            return
 
         meta_type = metadata.get("msg_type", "text")
         # Skip empty messages (unless it's a media message)
         if not content and not media and not metadata:
-            return None
+            return
 
         if not content and meta_type == "audio":
             # Handle the message
-            return {
-                "sender_id": sender_id,
-                "chat_id": chat_id,
-                "content": content,
-                "media": media,
-                "metadata": metadata,
-            }
+            await self.message_sender(
+                sender_id=sender_id,
+                chat_id=chat_id,
+                content=content,
+                media=media,
+                metadata=metadata,
+            )
+            return
 
         # Handle base64-encoded media (images, audio, files)
         # Convert base64 data to temporary files
@@ -205,17 +207,16 @@ class NanoboardProto(BaseProto):
                         logger.error("Failed to process base64 media: {}", e)
                 else:
                     media_paths.append(media_item)
-        return {
-            "sender_id": sender_id,
-            "chat_id": chat_id,
-            "content": "\n".join(content_parts) if content_parts else "",
-            "media": media_paths,
-            "metadata": metadata,
-        }
 
-    async def send_msg(
-        self, msg: OutboundMessage, client_info: dict, websocket: Any, callback=None
-    ) -> dict:
+        await self.message_sender(
+            sender_id=sender_id,
+            chat_id=chat_id,
+            content="\n".join(content_parts) if content_parts else "",
+            media=media_paths,
+            metadata=metadata,
+        )
+
+    async def send_msg(self, msg: OutboundMessage, client_info: dict, websocket: Any) -> dict:
         """
         Send a message through WebSocket.
 
@@ -223,20 +224,18 @@ class NanoboardProto(BaseProto):
             msg: Outbound message to send.
             client_info: Client connection information (sender_id, chat_id, etc.).
             websocket: The WebSocket connection object.
-            callback: Optional callback function for sending messages (e.g., self._handle_message).
 
         Returns:
             info: A dictionary containing information about the sent message.
         """
 
         async def _sync_audio(audio_playing: bool):
-            if callback:
-                await callback(
-                    sender_id=client_info["sender_id"],
-                    chat_id=msg.chat_id,
-                    content="/update_features",
-                    metadata={"features": {"audio_playing": audio_playing}},
-                )
+            await self.message_sender(
+                sender_id=client_info["sender_id"],
+                chat_id=msg.chat_id,
+                content="/update_features",
+                metadata={"features": {"audio_playing": audio_playing}},
+            )
 
         if msg.content == "/stop_audio":
             self._stop_audio = True

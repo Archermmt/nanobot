@@ -57,8 +57,8 @@ class NanoboardTool(ExternTool):
                 result_data = await asyncio.wait_for(
                     self._result_queue.get(), timeout=self._timeout
                 )
-                # Check if msg_id matches
-                if result_data["msg_id"] == self.name:
+                # Check if tool_id matches
+                if result_data["tool_id"] == self.name:
                     # Extract result from kwargs (may contain 'result' or 'error')
                     kwargs_result = result_data.get("result", {})
                     if "error" in kwargs_result:

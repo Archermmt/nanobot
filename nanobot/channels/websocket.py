@@ -93,8 +93,10 @@ class WebSocketChannel(BaseChannel):
                 )
                 if not enabled:
                     continue
-                # Initialize protocol with config and ws_config
-                protos[name] = cls(config=section, ws_config=self.config)
+                # Initialize protocol with config, ws_config and message_sender
+                protos[name] = cls(
+                    config=section, ws_config=self.config, message_sender=self._handle_message
+                )
             except Exception as e:
                 logger.warning("{} protocol handler not available: {}", name, e)
 
@@ -253,9 +255,7 @@ class WebSocketChannel(BaseChannel):
         if not client_info:
             logger.warning("No protocol handler accepted the connection")
             return
-        kwargs = await client_info["proto"].receive_msg(msg_data, client_info, websocket)
-        if kwargs:
-            await self._handle_message(**kwargs)
+        await client_info["proto"].receive_msg(msg_data, client_info, websocket)
 
     async def send(self, msg: OutboundMessage) -> None:
         """Send a message through WebSocket."""
@@ -273,14 +273,12 @@ class WebSocketChannel(BaseChannel):
             logger.warning("No proto or ws found for sender_id: {}", msg.chat_id)
             return
 
-        info = await proto.send_msg(msg, client_info, target_ws, self._handle_message)
+        info = await proto.send_msg(msg, client_info, target_ws)
         if info.get("broadcast_msg"):
             for ws, client_info in self._clients.items():
                 if ws == target_ws:
                     continue
-                await client_info["proto"].send_msg(
-                    info["broadcast_msg"], client_info, ws, self._handle_message
-                )
+                await client_info["proto"].send_msg(info["broadcast_msg"], client_info, ws)
 
     async def _get_client_info(self, websocket) -> dict | None:
         """
