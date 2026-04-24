@@ -22,10 +22,8 @@ class CapProtoConfig(Base):
 
     enabled: bool = True  # Whether this protocol is enabled
     auth_token: str = ""  # Authentication token for WebSocket connection
-    max_retries: int = 3  # Maximum number of retry attempts for failed operations
-    retry_delay: float = 1.0  # Delay between retries in seconds
-    timeout: float = 300.0  # Timeout for WebSocket operations in seconds
     http_port: int = 8110  # HTTP server port for LLM requests
+    capx_root: str = ""  # Root path for capx modules
 
 
 @BaseProto.register()
@@ -95,16 +93,26 @@ class CapProto(BaseProto):
             sender_id: The sender identifier for message routing.
             chat_id: The chat identifier for message routing.
         """
-        try:
-            from capx.serving.openrouter_server import (
-                ChatCompletionRequest,
-                ChatCompletionResponse,
-                ChatCompletionResponseChoice,
-                Message,
-            )
-            from fastapi import FastAPI, HTTPException
-            from fastapi.middleware.cors import CORSMiddleware
+        # add system path
+        if self.config.capx_root:
+            import sys
+            from pathlib import Path
 
+            capx_path = Path(self.config.capx_root).expanduser().resolve()
+            if capx_path.exists() and str(capx_path) not in sys.path:
+                sys.path.insert(0, str(capx_path))
+                logger.debug(f"Added capx root to sys.path: {capx_path}")
+
+        from capx.serving.openrouter_server import (
+            ChatCompletionRequest,
+            ChatCompletionResponse,
+            ChatCompletionResponseChoice,
+            Message,
+        )
+        from fastapi import FastAPI, HTTPException
+        from fastapi.middleware.cors import CORSMiddleware
+
+        try:
             app = FastAPI(title="CapProto LLM Proxy", version="1.0.0")
             app.add_middleware(
                 CORSMiddleware,
