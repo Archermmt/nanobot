@@ -3,6 +3,7 @@
 import io
 import json
 import os
+import shutil
 import wave
 from pathlib import Path
 
@@ -147,16 +148,21 @@ class FunASRHandler(BaseASRHandler):
         total_mem = psutil.virtual_memory().total
         if total_mem < min_mem_bytes:
             logger.error(
-                f"可用内存不足 2G，当前仅有 {total_mem / (1024 * 1024):.2f} MB，可能无法启动 FunASR"
+                f"Insufficient memory (less than 2GB), only {total_mem / (1024 * 1024):.2f} MB available, FunASR may fail to start"
             )
-
-        if os.path.isdir(model):
-            model_dir_expanded = Path(model).expanduser()
-
-            if not model_dir_expanded.exists():
-                logger.warning(f"FunASR model not found at {model}. Please download it manually.")
-                return
-            model = str(model_dir_expanded)
+        local_dir = None
+        if Path(model).expanduser().is_dir():
+            model = str(Path(model).expanduser())
+            # bug of funasr, model path should start with models
+            if not model.startswith("models"):
+                local_dir = Path("models")
+                local_dir.mkdir(parents=True, exist_ok=True)
+                src_model = Path(model).expanduser()
+                dst_model = local_dir / src_model.name
+                logger.debug(f"Copy asr model {src_model} to {dst_model}")
+                if src_model.is_dir() and not dst_model.exists():
+                    shutil.copytree(src_model, dst_model)
+                model = str(dst_model)
         with CaptureOutput():
             self._model = AutoModel(
                 model=model,
@@ -165,6 +171,8 @@ class FunASRHandler(BaseASRHandler):
                 hub="hf",
                 disable_update=True,
             )
+        if local_dir and local_dir.exists():
+            shutil.rmtree(local_dir)
         logger.debug(f"Load FunASR model {model}")
 
     def _process_audio(self, audio_bytes: bytes, audio_format: str = "audio/wav") -> str:
