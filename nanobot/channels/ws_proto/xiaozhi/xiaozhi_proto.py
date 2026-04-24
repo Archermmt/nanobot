@@ -71,23 +71,26 @@ class XiaoZhiProto(BaseProto):
         self._ota_task: asyncio.Task | None = None
         self._stop_audio = False
 
-    async def start(self) -> None:
+    async def connect(self, client_info: dict) -> None:
         """
-        Start the protocol handler and OTA server.
+        Connect the protocol handler and OTA server.
 
-        This method is called when the WebSocket channel starts.
+        This method is called when the WebSocket channel connects.
         Starts the OTA HTTP server for firmware updates.
+
+        Args:
+            client_info: Client connection information (sender_id, chat_id, etc.).
         """
         # Start OTA server
         ota_server = SimpleHttpServer(self.config, self.ws_config.host, self.ws_config.port)
         self._ota_task = asyncio.create_task(ota_server.start())
         logger.debug("XiaoZhi OTA server started")
 
-    async def stop(self) -> None:
+    async def disconnect(self) -> None:
         """
-        Stop the protocol handler and clean up resources.
+        Disconnect the protocol handler and clean up resources.
 
-        This method is called when the WebSocket channel stops.
+        This method is called when the WebSocket channel disconnects.
         Cancels the OTA server task.
         """
         # Cancel OTA task

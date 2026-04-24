@@ -115,20 +115,23 @@ class BaseProto(ABC):
         """
         return None
 
-    async def start(self) -> None:
+    async def connect(self, client_info: dict) -> None:
         """
-        Start the protocol handler.
+        Connect the protocol handler.
 
-        This method is called when the WebSocket channel starts.
+        This method is called when the WebSocket channel connects.
         Subclasses can override this to perform initialization tasks.
+
+        Args:
+            client_info: Client connection information (sender_id, chat_id, etc.).
         """
         pass
 
-    async def stop(self) -> None:
+    async def disconnect(self) -> None:
         """
-        Stop the protocol handler.
+        Disconnect the protocol handler.
 
-        This method is called when the WebSocket channel stops.
+        This method is called when the WebSocket channel disconnects.
         Subclasses can override this to perform cleanup tasks.
         """
         pass

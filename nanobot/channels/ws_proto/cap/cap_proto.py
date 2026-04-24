@@ -64,6 +64,30 @@ class CapProto(BaseProto):
         """Return the protocol name for registration."""
         return "cap"
 
+    async def connect(self, client_info: dict) -> None:
+        """
+        Connect the protocol handler and OTA server.
+
+        This method is called when the WebSocket channel connects.
+        Starts the OTA HTTP server for firmware updates.
+
+        Args:
+            client_info: Client connection information (sender_id, chat_id, etc.).
+        """
+        import uvicorn
+
+        # Start llm server
+        http_app = self._create_http_app(
+            sender_id=client_info["sender_id"], chat_id=client_info["chat_id"]
+        )
+        config = uvicorn.Config(
+            http_app, host="localhost", port=self.config.http_port, log_level="info"
+        )
+        self._http_server = uvicorn.Server(config)
+        self._server_url = f"http://localhost:{self.config.http_port}"
+        asyncio.create_task(self._http_server.serve())
+        logger.info(f"HTTP server started on {self._server_url}")
+
     def _create_http_app(self, sender_id: str = "cap_worker", chat_id: str = ""):
         """Create FastAPI application for LLM requests.
 
@@ -165,8 +189,6 @@ class CapProto(BaseProto):
             A dictionary containing client information if accepted, None otherwise.
         """
 
-        import uvicorn
-
         try:
             headers = dict(websocket.request.headers) if hasattr(websocket, "request") else {}
             agent_id = headers.get("agent_id", "unknown-client")
@@ -195,15 +217,7 @@ class CapProto(BaseProto):
                     logger.warning("Invalid authentication message")
                     return None
 
-            # start llm server
-            http_app = self._create_http_app(sender_id=client_type, chat_id=agent_id)
-            config = uvicorn.Config(
-                http_app, host="localhost", port=self.config.http_port, log_level="info"
-            )
-            self._http_server = uvicorn.Server(config)
-            self._server_url = f"http://localhost:{self.config.http_port}"
-            asyncio.create_task(self._http_server.serve())
-            logger.info(f"Client {agent_id} registered. HTTP server started on {self._server_url}")
+            logger.info(f"Client {agent_id} registered")
             return {"sender_id": client_type, "chat_id": agent_id}
 
         except Exception as e:

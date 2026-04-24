@@ -108,8 +108,6 @@ class WebSocketChannel(BaseChannel):
         self._running = True
         # Start all protocol handlers
         self._protos = self._init_protos()
-        for proto in self._protos.values():
-            await proto.start()
         if self.config.as_server:
             await self._start_server()
         else:
@@ -122,7 +120,7 @@ class WebSocketChannel(BaseChannel):
         """Stop the WebSocket channel."""
         # Stop all protocol handlers
         for proto in self._protos.values():
-            await proto.stop()
+            await proto.disconnect()
 
         # Cancel tasks
         if self._heartbeat_task:
@@ -295,8 +293,10 @@ class WebSocketChannel(BaseChannel):
             for proto in self._protos.values():
                 client_info = await proto.accept(websocket)
                 if client_info:
+                    await proto.connect(client_info)
                     self._clients[websocket] = {**client_info, "proto": proto}
                     logger.info(f"Bind {websocket.remote_address} -> {self._clients[websocket]}")
+                    break
         assert websocket in self._clients, "WebSocket not found in clients"
         return self._clients[websocket]
 
