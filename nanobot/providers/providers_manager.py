@@ -1,5 +1,6 @@
 """Providers manager for handling multiple LLM providers and modes."""
 
+import json
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -105,7 +106,7 @@ class ProvidersManager:
         """Check if the content is a fast reply and return the corresponding message"""
         if msg.metadata.get("msg_type", "text") == "prompt":
             provider = self.get_provider(msg.metadata.get("llm_mode", "main"))
-            response = await provider.chat_with_retry(messages=msg.content)
+            response = await provider.chat_with_retry(messages=json.loads(msg.content), tools=[])
             metadata = {"finish_reason": response.finish_reason}
             if response.content:
                 return OutboundMessage(

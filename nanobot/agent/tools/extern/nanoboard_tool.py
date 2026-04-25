@@ -22,7 +22,6 @@ class NanoboardTool(ExternTool):
         if "websocket" in config:
             self._websocket = config["websocket"]
         self._timeout = config.get("timeout", 30)
-        self._result_queue = config.get("result_queue")  # Queue for fetching MCP results
 
     async def execute(self, **kwargs: Any) -> str:
         """
@@ -49,37 +48,14 @@ class NanoboardTool(ExternTool):
         message_data = {"type": "tool_call", "name": self.name, "kwargs": kwargs}
         await self._websocket.send(json.dumps(message_data, ensure_ascii=False))
 
-        # Fetch result from queue
-        try:
-            raw_result = {}
-            while True:
-                # Get result from queue
-                result_data = await asyncio.wait_for(
-                    self._result_queue.get(), timeout=self._timeout
-                )
-                # Check if tool_id matches
-                if result_data["tool_id"] == self.name:
-                    # Extract result from kwargs (may contain 'result' or 'error')
-                    kwargs_result = result_data.get("result", {})
-                    if "error" in kwargs_result:
-                        raise RuntimeError(kwargs_result["error"])
-                    raw_result = kwargs_result.get("result", kwargs_result)
-                    break
-                else:
-                    # Put back to queue if not matching
-                    await self._result_queue.put(result_data)
-                    await asyncio.sleep(0.1)
-            if "image_data" in raw_result:
-                raw_result["image_data"] = save_media(raw_result["image_data"], self.name + ".jpg")[
-                    0
-                ]
-            return str(raw_result)
+        # wait for result
+        def _checker(result: dict) -> bool:
+            return self._chat_id == result["chat_id"] and self._tool_name == result["tool_name"]
 
-        except asyncio.TimeoutError:
-            raise TimeoutError("Tool call request timeout")
-        except Exception as e:
-            raise e
+        result = await self.wait_for_result(_checker)
+        if "image_data" in result:
+            result["image_data"] = save_media(result["image_data"], self.name + ".jpg")[0]
+        return str(result)
 
 
-# Automatically register with type 'nanoboard'
 ExternTool.register_type("nanoboard", NanoboardTool)

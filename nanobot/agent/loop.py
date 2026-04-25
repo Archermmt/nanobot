@@ -455,7 +455,7 @@ class AgentLoop:
             if result := await self.provider.check_fast_reply(
                 msg, self.features.get(msg.sender_id, {})
             ):
-                result.metadata.update({"_is_final": True})
+                result.metadata.update({"_is_final": True, "fast_reply": True})
                 return result
 
         # System messages: parse origin from chat_id ("channel:chat_id")

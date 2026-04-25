@@ -367,8 +367,9 @@ class XiaoZhiProto(BaseProto):
 
         # Handle tool call results (msg_id > 2)
         if msg_id > 2:
-            await self._result_queue.put({"msg_id": msg_id, "result": result})
-            logger.debug(f"Put tool call result into queue, msg_id={msg_id}")
+            await self._result_queue.put(
+                {"chat_id": client_info["chat_id"], "tool_id": msg_id, "result": result}
+            )
             return
 
     async def _send_mcp_initialize_message(self, websocket: any):

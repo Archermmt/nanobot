@@ -53,9 +53,10 @@ class CapProto(BaseProto):
         if isinstance(config, dict):
             config = CapProtoConfig.model_validate(config)
         super().__init__(config, ws_config, message_sender)
+        self._http_server = None
+        self._llm_messages: asyncio.Queue = asyncio.Queue()
         self._result_queue: asyncio.Queue = asyncio.Queue()
-        self._http_server, self._server_url = None, None
-        self._task_response = None
+        self._llm_mode = "main"
 
     @classmethod
     def proto_name(cls) -> str:
@@ -79,12 +80,12 @@ class CapProto(BaseProto):
             sender_id=client_info["sender_id"], chat_id=client_info["chat_id"]
         )
         config = uvicorn.Config(
-            http_app, host="localhost", port=self.config.http_port, log_level="info"
+            http_app, host="localhost", port=self.config.http_port, log_level="debug"
         )
         self._http_server = uvicorn.Server(config)
-        self._server_url = f"http://localhost:{self.config.http_port}"
+        server_url = f"http://localhost:{self.config.http_port}/chat/completions"
         asyncio.create_task(self._http_server.serve())
-        logger.info(f"HTTP server started on {self._server_url}")
+        logger.info(f"HTTP server started on {server_url}")
 
     def _create_http_app(self, sender_id: str = "cap_worker", chat_id: str = ""):
         """Create FastAPI application for LLM requests.
@@ -132,34 +133,24 @@ class CapProto(BaseProto):
                     self.message_sender(
                         sender_id=sender_id,
                         chat_id=chat_id,
-                        content=client_kwargs["prompt"],
-                        metadata={
-                            "msg_type": "prompt",
-                            "llm_mode": client_kwargs.get("llm_mode", "main"),
-                        },
+                        content=json.dumps(client_kwargs["messages"]),
+                        metadata={"msg_type": "prompt", "llm_mode": self._llm_mode},
                     )
-
-                    print(f"[TMINFO] get client_kwargs {client_kwargs}", flush=True)
-                    while not self._task_response:
-                        await asyncio.sleep(0.5)
-
-                    if self._task_response.get("error"):
-                        raise HTTPException(status_code=500, detail=self._task_response["error"])
-
+                    response = await self._llm_messages.get()
+                    if response.get("error"):
+                        raise HTTPException(status_code=500, detail=response["error"])
                     # Build response
                     choice = ChatCompletionResponseChoice(
                         index=0,
-                        message=Message(role="assistant", content=self._task_response["content"]),
-                        finish_reason=self._task_response.get("finish_reason", "stop"),
+                        message=Message(role="assistant", content=response["content"]),
+                        finish_reason=response.get("finish_reason", "stop"),
                     )
-
                     return ChatCompletionResponse(
                         id=f"chatcmpl-{int(time.time())}",
                         created=int(time.time()),
                         model="nanobot",
                         choices=[choice],
                     )
-
                 except HTTPException:
                     raise
                 except asyncio.TimeoutError:
@@ -274,6 +265,7 @@ class CapProto(BaseProto):
                         "inputSchema": input_schema,
                     }
                     ex_tools.append(new_tool)
+                server_url = f"http://localhost:{self.config.http_port}/chat/completions"
                 await self.message_sender(
                     sender_id=client_info["sender_id"],
                     chat_id=client_info["chat_id"],
@@ -282,8 +274,8 @@ class CapProto(BaseProto):
                         "type": "cap",
                         "kwargs": {
                             "websocket": websocket,
-                            "timeout": 30,
-                            "server_url": self._server_url,
+                            "timeout": 150,
+                            "server_url": server_url,
                             "result_queue": self._result_queue,
                         },
                         "tools": ex_tools,
@@ -291,17 +283,12 @@ class CapProto(BaseProto):
                 )
                 return
             if msg_type == "task_result":
-                # Put result into queue for tool to fetch
-                await self._result_queue.put(
-                    {
-                        "chat_id": client_info["chat_id"],
-                        "tool_id": "trigger_cap_task",
-                        "result": msg_data["result"],
-                    }
-                )
-                logger.debug(
-                    f"Put trigger_cap_task result into queue, chat_id={client_info['chat_id']}"
-                )
+                ret_msg = {
+                    "chat_id": client_info["chat_id"],
+                    "tool_name": "trigger_cap_task",
+                    "result": msg_data["result"],
+                }
+                await self._result_queue.put(ret_msg)
                 return
             logger.warning(f"Unknown message type: {msg_type}")
             return
@@ -330,6 +317,6 @@ class CapProto(BaseProto):
             info: A dictionary containing information about the sent message.
         """
         msg_type = msg.metadata.get("msg_type", "text")
-        if msg_type == "text":
-            self._task_response = {"content": msg.content, **msg.metadata}
+        if msg_type == "text" and msg.metadata.get("fast_reply", False):
+            await self._llm_messages.put({"content": msg.content, **msg.metadata})
         return {"success": False}

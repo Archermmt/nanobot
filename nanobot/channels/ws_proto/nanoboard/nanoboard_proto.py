@@ -160,12 +160,14 @@ class NanoboardProto(BaseProto):
             return
 
         if msg_type == "tool_call":
-            # Put result into queue for tool to fetch
-            tool_name = msg_data.get("name") or metadata.get("tool_name")
-            await self._result_queue.put(
-                {"tool_id": tool_name, "result": msg_data.get("result", {})}
-            )
-            logger.debug(f"Put tool call result into queue, tool_name={tool_name}")
+            ret_msg = {
+                {
+                    "chat_id": client_info["chat_id"],
+                    "tool_name": msg_data.get("name") or metadata.get("tool_name"),
+                    "result": msg_data.get("result", {}),
+                }
+            }
+            await self._result_queue.put(ret_msg)
             return
 
         if msg_type != "message":
