@@ -1,4 +1,4 @@
-"""媒体文件处理工具函数"""
+"""Media file processing utility functions"""
 
 import base64
 import io
@@ -7,21 +7,74 @@ import subprocess
 import tempfile
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 
 import numpy as np
 from loguru import logger
 
 
+def get_mime_type(file_path: str) -> str:
+    """Get MIME type based on file extension (generic)."""
+    ext = Path(file_path).suffix.lower()
+
+    # Image types
+    image_types = {
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".gif": "image/gif",
+        ".webp": "image/webp",
+        ".bmp": "image/bmp",
+        ".svg": "image/svg+xml",
+    }
+
+    # Video types
+    video_types = {
+        ".mp4": "video/mp4",
+        ".avi": "video/x-msvideo",
+        ".mov": "video/quicktime",
+        ".mkv": "video/x-matroska",
+        ".webm": "video/webm",
+    }
+
+    # Audio types
+    audio_types = {
+        ".mp3": "audio/mp3",
+        ".wav": "audio/wav",
+        ".ogg": "audio/ogg",
+        ".aac": "audio/aac",
+        ".flac": "audio/flac",
+        ".m4a": "audio/mp4",
+        ".wma": "audio/x-ms-wma",
+    }
+
+    # HTML type
+    html_types = {
+        ".html": "text/html",
+        ".htm": "text/htm",
+    }
+
+    # Mesh types
+    mesh_types = {
+        ".stl": "mesh/stl",
+        ".3mf": "mesh/3mf",
+        ".obj": "mesh/obj",
+        ".fbx": "mesh/fbx",
+    }
+
+    all_types = {**image_types, **video_types, **audio_types, **html_types, **mesh_types}
+    return all_types.get(ext, "application/octet-stream")
+
+
 def opus_to_wav(opus_data, sample_rate: int = 16000):
-    """将Opus数据转换为WAV格式的字节流
+    """Convert Opus data to WAV format byte stream
 
     Args:
-        output_dir: 输出目录（保留参数以保持接口兼容）
-        opus_data: opus音频数据
+        output_dir: Output directory (kept for interface compatibility)
+        opus_data: Opus audio data
 
     Returns:
-        bytes: WAV格式的音频数据
+        bytes: WAV format audio data
     """
 
     import opuslib_next
@@ -36,7 +89,7 @@ def opus_to_wav(opus_data, sample_rate: int = 16000):
             pcm_data.append(pcm_frame)
 
         if not pcm_data:
-            raise ValueError("没有有效的PCM数据")
+            raise ValueError("No valid PCM data")
 
         # 创建WAV文件头
         pcm_data_bytes = b"".join(pcm_data)
@@ -197,15 +250,15 @@ def save_media(
     target_type: str = "",
 ) -> tuple[Path, str]:
     """
-    保存媒体文件到指定目录
+    Save media file to specified directory
 
     Args:
-        media_data: Base64 编码的媒体数据（包含 data URI 前缀）
-        media_dir: 保存文件的目录路径
-        filename: 文件名，如果为 None 则自动生成
+        media_data: Base64 encoded media data (with data URI prefix)
+        media_dir: Directory path to save the file
+        filename: Filename, auto-generated if None
 
     Returns:
-        tuple[Path, str]: (文件路径，MIME 类型)
+        tuple[Path, str]: (file path, MIME type)
     """
 
     # Parse data URI
@@ -258,14 +311,14 @@ def pcm_to_data_stream(
     opus_encoder=None,
 ):
     """
-    将PCM数据流式编码为Opus或直接输出PCM
+    Stream encode PCM data to Opus or output PCM directly
 
     Args:
-        raw_data: PCM原始数据
-        is_opus: 是否编码为Opus
-        callback: 回调函数
-        sample_rate: 采样率
-        opus_encoder: OpusEncoderUtils对象(推荐提供以保持编码器状态连续)
+        raw_data: Raw PCM data
+        is_opus: Whether to encode as Opus
+        callback: Callback function
+        sample_rate: Sample rate
+        opus_encoder: OpusEncoderUtils object (recommended to maintain encoder state continuity)
     """
 
     import opuslib_next
@@ -275,51 +328,51 @@ def pcm_to_data_stream(
         encoder = opuslib_next.Encoder(sample_rate, 1, opuslib_next.APPLICATION_AUDIO)
         using_temp_encoder = True
 
-    # 编码参数
+    # Encode parameters
     frame_duration = 60  # 60ms per frame
     frame_size = int(sample_rate * frame_duration / 1000)  # samples/frame
 
-    # 按帧处理所有音频数据（包括最后一帧可能补零）
+    # Process all audio data by frames (including zero-padding for the last frame)
     for i in range(0, len(raw_data), frame_size * 2):  # 16bit=2bytes/sample
-        # 获取当前帧的二进制数据
+        # Get current frame binary data
         chunk = raw_data[i : i + frame_size * 2]
 
-        # 如果最后一帧不足，补零
+        # Zero-pad if the last frame is insufficient
         if len(chunk) < frame_size * 2:
             chunk += b"\x00" * (frame_size * 2 - len(chunk))
 
         if is_opus:
             if using_temp_encoder:
-                # 使用临时编码器（仅用于独立音频场景）
+                # Use temporary encoder (only for standalone audio scenarios)
                 np_frame = np.frombuffer(chunk, dtype=np.int16)
                 frame_data = encoder.encode(np_frame.tobytes(), frame_size)
                 callback(frame_data)
             else:
-                # 使用外部编码器（TTS流式场景,保持状态连续）
+                # Use external encoder (TTS streaming scenario, maintain state continuity)
                 is_last = i + frame_size * 2 >= len(raw_data)
                 opus_encoder.encode_pcm_to_opus_stream(
                     chunk, end_of_stream=is_last, callback=callback
                 )
         else:
-            # PCM模式,直接输出
+            # PCM mode, output directly
             frame_data = chunk if isinstance(chunk, bytes) else bytes(chunk)
             callback(frame_data)
 
 
 def get_audio_bytes(media_data, audio_format: str = "audio/wav") -> tuple[bytes, str]:
     """
-    从多种格式的媒体数据中提取音频字节数据和音频格式
+    Extract audio byte data and audio format from various media data formats
 
     Args:
-        media_data: 媒体数据，可以是以下格式：
-            - dict: 包含 'data' 键的字典
-            - str: data URI 格式 (data:audio/wav;base64,...) 或 base64 字符串
-            - bytes: 原始音频字节数据
-            - str: 文件路径
-        audio_format: 默认音频格式，默认为 "audio/wav"
+        media_data: Media data, can be in the following formats:
+            - dict: Dictionary containing 'data' key
+            - str: Data URI format (data:audio/wav;base64,...) or base64 string
+            - bytes: Raw audio byte data
+            - str: File path
+        audio_format: Default audio format, defaults to "audio/wav"
 
     Returns:
-        tuple[bytes, str]: (音频字节数据, 音频格式)
+        tuple[bytes, str]: (audio byte data, audio format)
     """
     # If media is a dict with 'data' key, extract it
     if isinstance(media_data, dict):
@@ -354,7 +407,7 @@ def audio_bytes_to_data_stream(
     opus_encoder=None,
 ) -> None:
     """
-    直接用音频二进制数据转为opus/pcm数据，支持wav、mp3、p3
+    Convert audio binary data directly to opus/pcm data, supporting wav, mp3, p3
     """
 
     from pydub import AudioSegment

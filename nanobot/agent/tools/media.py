@@ -18,7 +18,7 @@ from loguru import logger
 from nanobot.agent.tools.base import Tool
 from nanobot.bus.events import OutboundMessage
 from nanobot.providers.providers_manager import ProvidersManager
-from nanobot.utils.media import get_media_dir
+from nanobot.utils.media import get_media_dir, get_mime_type
 
 
 class MediaTool(Tool):
@@ -354,7 +354,7 @@ class MediaTool(Tool):
             chat_id=self._default_chat_id,
             content=f"Display {media_type}: {media_path_str}",
             media=[media_data],
-            metadata={"msg_type": media_type, "file_type": self._get_mime_type(media_path_str)},
+            metadata={"msg_type": media_type, "file_type": get_mime_type(media_path_str)},
         )
         await self._send_callback(msg)
         return f"Success displayed {media_type}: {media_path_str}"
@@ -655,7 +655,7 @@ class MediaTool(Tool):
         path = Path(media_path)
         if not path.exists():
             raise FileNotFoundError(f"Media file not found: {media_path}")
-        mime_type = self._get_mime_type(media_path)
+        mime_type = get_mime_type(media_path)
         if mime_type.startswith("text"):
             with open(path, "r") as media_file:
                 data = media_file.read()
@@ -663,58 +663,6 @@ class MediaTool(Tool):
         with open(path, "rb") as media_file:
             encoded = base64.b64encode(media_file.read()).decode("utf-8")
         return f"data:{mime_type};base64,{encoded}"
-
-    def _get_mime_type(self, file_path: str) -> str:
-        """Get MIME type based on file extension (generic)."""
-        ext = Path(file_path).suffix.lower()
-
-        # Image types
-        image_types = {
-            ".png": "image/png",
-            ".jpg": "image/jpeg",
-            ".jpeg": "image/jpeg",
-            ".gif": "image/gif",
-            ".webp": "image/webp",
-            ".bmp": "image/bmp",
-            ".svg": "image/svg+xml",
-        }
-
-        # Video types
-        video_types = {
-            ".mp4": "video/mp4",
-            ".avi": "video/x-msvideo",
-            ".mov": "video/quicktime",
-            ".mkv": "video/x-matroska",
-            ".webm": "video/webm",
-        }
-
-        # Audio types
-        audio_types = {
-            ".mp3": "audio/mp3",
-            ".wav": "audio/wav",
-            ".ogg": "audio/ogg",
-            ".aac": "audio/aac",
-            ".flac": "audio/flac",
-            ".m4a": "audio/mp4",
-            ".wma": "audio/x-ms-wma",
-        }
-
-        # HTML type
-        html_types = {
-            ".html": "text/html",
-            ".htm": "text/htm",
-        }
-
-        # Mesh types
-        mesh_types = {
-            ".stl": "mesh/stl",
-            ".3mf": "mesh/3mf",
-            ".obj": "mesh/obj",
-            ".fbx": "mesh/fbx",
-        }
-
-        all_types = {**image_types, **video_types, **audio_types, **html_types, **mesh_types}
-        return all_types.get(ext, "application/octet-stream")
 
     # Image generation methods
     async def _dashscope_image_generate(

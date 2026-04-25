@@ -15,6 +15,7 @@ from loguru import logger
 from nanobot.bus.events import OutboundMessage
 from nanobot.channels.ws_proto.base_proto import BaseProto
 from nanobot.config.schema import Base
+from nanobot.utils.media import get_mime_type
 
 
 class CapProtoConfig(Base):
@@ -282,6 +283,15 @@ class CapProto(BaseProto):
                     },
                 )
                 return
+            if msg_type == "task_record":
+                await self.message_sender(
+                    sender_id=client_info["sender_id"],
+                    chat_id=client_info["chat_id"],
+                    content="",
+                    media=msg_data["records"],
+                    metadata={"msg_type": "video", "file_type": "video/mp4"},
+                )
+                return
             if msg_type == "task_result":
                 ret_msg = {
                     "chat_id": client_info["chat_id"],
@@ -322,4 +332,9 @@ class CapProto(BaseProto):
         msg_type = msg.metadata.get("msg_type", "text")
         if msg_type == "text" and msg.metadata.get("fast_reply", False):
             await self._llm_messages.put({"content": msg.content, **msg.metadata})
+            return {"success": False}
+        if not msg.content and msg.media:
+            if broadcaster:
+                await broadcaster(msg)
+            return {"success": False}
         return {"success": False}
