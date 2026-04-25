@@ -3,17 +3,12 @@
 import socket
 
 
-def get_local_ip(host: str = None) -> str:
-    """获取本地 IP 地址
-
-    Args:
-        host: 主机地址，如果为 "localhost" 则返回 "0.0.0.0"
+def get_local_ip() -> str:
+    """Get local IP address
 
     Returns:
-        str: 本地 IP 地址
+        str: Local IP address
     """
-    if host and host == "localhost":
-        return "0.0.0.0"
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         # Connect to Google's DNS servers
@@ -23,3 +18,18 @@ def get_local_ip(host: str = None) -> str:
         return local_ip
     except Exception:
         return "127.0.0.1"
+
+
+def parse_ip(ip: str):
+    """Parse IP address
+
+    Args:
+        ip: IP address
+
+    Returns:
+        str: Parsed IP address
+    """
+
+    if ip not in ("localhost", "127.0.0.1", "0.0.0.0"):
+        return ip
+    return get_local_ip()

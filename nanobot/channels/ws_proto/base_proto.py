@@ -71,7 +71,6 @@ class BaseProto(ABC):
                 )
             proto_name = subclass.proto_name()
             cls._registry[proto_name] = subclass
-            logger.debug("Registered protocol handler: {} -> {}", proto_name, subclass.__name__)
             return subclass
 
         return decorator

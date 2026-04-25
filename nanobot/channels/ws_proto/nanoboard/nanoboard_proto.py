@@ -51,7 +51,7 @@ class NanoboardProto(BaseProto):
             config = NanoboardProtoConfig.model_validate(config)
         super().__init__(config, ws_config, message_sender)
         self._result_queue: asyncio.Queue = asyncio.Queue()
-        self._stop_audio = False
+        self._stop_audio, self._interruptable = False, False
 
     async def accept(self, websocket) -> dict | None:
         """
@@ -118,12 +118,13 @@ class NanoboardProto(BaseProto):
 
         if content == "/stop_audio":
             self._stop_audio = True
-            await self.message_sender(
-                sender_id=sender_id,
-                chat_id=chat_id,
-                content="/update_features",
-                metadata={"features": {"audio_playing": False}},
-            )
+            if self._interruptable:
+                await self.message_sender(
+                    sender_id=sender_id,
+                    chat_id=chat_id,
+                    content="/update_features",
+                    metadata={"features": {"audio_playing": False}},
+                )
             return
 
         if content == "/register_extern_tools":
@@ -232,12 +233,13 @@ class NanoboardProto(BaseProto):
         """
 
         async def _sync_audio(audio_playing: bool):
-            await self.message_sender(
-                sender_id=client_info["sender_id"],
-                chat_id=msg.chat_id,
-                content="/update_features",
-                metadata={"features": {"audio_playing": audio_playing}},
-            )
+            if self._interruptable:
+                await self.message_sender(
+                    sender_id=client_info["sender_id"],
+                    chat_id=msg.chat_id,
+                    content="/update_features",
+                    metadata={"features": {"audio_playing": audio_playing}},
+                )
 
         if msg.content == "/stop_audio":
             self._stop_audio = True

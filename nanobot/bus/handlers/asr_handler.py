@@ -154,15 +154,19 @@ class FunASRHandler(BaseASRHandler):
         if Path(model).expanduser().is_dir():
             model = str(Path(model).expanduser())
             # bug of funasr, model path should start with models
-            if not model.startswith("models"):
+            if model.startswith("models"):
+                logger.debug(f"Load local asr model {model}")
+            else:
                 local_dir = Path("models")
                 local_dir.mkdir(parents=True, exist_ok=True)
                 src_model = Path(model).expanduser()
                 dst_model = local_dir / src_model.name
-                logger.debug(f"Copy asr model {src_model} to {dst_model}")
+                logger.debug(f"Local local asr {dst_model} from {src_model}")
                 if src_model.is_dir() and not dst_model.exists():
                     shutil.copytree(src_model, dst_model)
                 model = str(dst_model)
+        else:
+            logger.debug(f"Load remote asr model {model}")
         with CaptureOutput():
             self._model = AutoModel(
                 model=model,
@@ -173,7 +177,6 @@ class FunASRHandler(BaseASRHandler):
             )
         if local_dir and local_dir.exists():
             shutil.rmtree(local_dir)
-        logger.debug(f"Load FunASR model {model}")
 
     def _process_audio(self, audio_bytes: bytes, audio_format: str = "audio/wav") -> str:
         """

@@ -69,7 +69,7 @@ class XiaoZhiProto(BaseProto):
         self._session_id = str(uuid.uuid4())[:8]
         self._result_queue: asyncio.Queue = asyncio.Queue()
         self._ota_task: asyncio.Task | None = None
-        self._stop_audio = False
+        self._stop_audio, self._interruptable = False, False
 
     async def connect(self, client_info: dict) -> None:
         """
@@ -235,12 +235,13 @@ class XiaoZhiProto(BaseProto):
 
         if msg_type == TextMessageType.ABORT.value:
             self._stop_audio = True
-            await self.message_sender(
-                sender_id=client_info["sender_id"],
-                chat_id=client_info["chat_id"],
-                content="/update_features",
-                metadata={"features": {"audio_playing": False}},
-            )
+            if self._interruptable:
+                await self.message_sender(
+                    sender_id=client_info["sender_id"],
+                    chat_id=client_info["chat_id"],
+                    content="/update_features",
+                    metadata={"features": {"audio_playing": False}},
+                )
             return
 
         # Handle unknown message types
@@ -451,12 +452,13 @@ class XiaoZhiProto(BaseProto):
             return {"success": True, "broadcast_msg": msg}
 
         async def _sync_audio(audio_playing: bool):
-            await self.message_sender(
-                sender_id=client_info["sender_id"],
-                chat_id=msg.chat_id,
-                content="/update_features",
-                metadata={"features": {"audio_playing": audio_playing}},
-            )
+            if self._interruptable:
+                await self.message_sender(
+                    sender_id=client_info["sender_id"],
+                    chat_id=msg.chat_id,
+                    content="/update_features",
+                    metadata={"features": {"audio_playing": audio_playing}},
+                )
 
         if msg.content == "/stop_audio":
             self._stop_audio = True

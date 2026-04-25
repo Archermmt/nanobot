@@ -10,7 +10,9 @@ from pydantic import Field
 from nanobot.bus.events import OutboundMessage
 from nanobot.bus.queue import MessageBus
 from nanobot.channels.base import BaseChannel
+from nanobot.channels.ws_proto.base_proto import BaseProto
 from nanobot.config.schema import Base
+from nanobot.utils.connect import parse_ip
 
 
 class WebSocketConfig(Base):
@@ -79,27 +81,14 @@ class WebSocketChannel(BaseChannel):
 
     def _init_protos(self) -> None:
         """Initialize protocol handlers discovered via ws_proto directory."""
-        from nanobot.channels.ws_proto.base_proto import BaseProto
-
-        # Initialize each discovered protocol handler
         protos: dict[str, Any] = {}
         for name, cls in BaseProto.get_all_protos().items():
-            try:
-                section = self.config.protos.get(name, {})
-                enabled = (
-                    section.get("enabled", True)
-                    if isinstance(section, dict)
-                    else getattr(section, "enabled", True)
-                )
-                if not enabled:
-                    continue
-                # Initialize protocol with config, ws_config and message_sender
-                protos[name] = cls(
-                    config=section, ws_config=self.config, message_sender=self._handle_message
-                )
-            except Exception as e:
-                logger.warning("{} protocol handler not available: {}", name, e)
-
+            section = self.config.protos.get(name, {})
+            if not section.get("enabled", False):
+                continue
+            protos[name] = cls(
+                config=section, ws_config=self.config, message_sender=self._handle_message
+            )
         logger.info("WebSocket protocol handlers initialized: {}", list(protos.keys()))
         return protos
 
@@ -185,7 +174,9 @@ class WebSocketChannel(BaseChannel):
         # Start server
         try:
             async with websockets.serve(handler, self.host, self.port, max_size=20 * 1024 * 1024):
-                logger.info(f"WebSocket server started and listening on {self.host}:{self.port}")
+                logger.info(
+                    f"WebSocket server started and listening on {parse_ip(self.host)}:{self.port}"
+                )
                 while self._running:
                     await asyncio.sleep(1)
         except Exception as e:
