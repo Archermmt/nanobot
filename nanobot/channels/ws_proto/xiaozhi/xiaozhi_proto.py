@@ -66,22 +66,12 @@ class XiaoZhiProto(BaseProto):
             config = XiaoZhiProtoConfig.model_validate(config)
         super().__init__(config, ws_config, message_sender)
         self._features = {}
-        self._session_id = str(uuid.uuid4())[:8]
+        # self._sender_id = str(uuid.uuid4())[:8]
+        self._sender_id = "xiaozhi"
         self._result_queue: asyncio.Queue = asyncio.Queue()
         self._ota_task: asyncio.Task | None = None
         self._stop_audio, self._interruptable = False, False
-
-    async def connect(self, client_info: dict) -> None:
-        """
-        Connect the protocol handler and OTA server.
-
-        This method is called when the WebSocket channel connects.
-        Starts the OTA HTTP server for firmware updates.
-
-        Args:
-            client_info: Client connection information (sender_id, chat_id, etc.).
-        """
-        # Start OTA server
+        # start ota server
         ota_server = SimpleHttpServer(self.config, self.ws_config.host, self.ws_config.port)
         self._ota_task = asyncio.create_task(ota_server.start())
         logger.debug("XiaoZhi OTA server started")
@@ -155,7 +145,8 @@ class XiaoZhiProto(BaseProto):
                 except AuthenticationError as e:
                     logger.warning("Authentication failed for device {}: {}", device_id, str(e))
                     return None
-            return {"sender_id": self._session_id, "chat_id": client_id or device_id}
+            client_id = "xiaozhi"
+            return {"sender_id": self._sender_id, "chat_id": client_id or device_id}
         except Exception as e:
             logger.warning("Failed to accept xiaozhi connection: {}", e)
             return None
@@ -273,7 +264,7 @@ class XiaoZhiProto(BaseProto):
     async def _handle_hello_message(self, msg_data: dict, websocket: any):
         """Handle hello message."""
         response = {
-            "session_id": self._session_id,
+            "session_id": self._sender_id,
             "type": "hello",
             "version": 1,
             "transport": "websocket",
@@ -411,7 +402,7 @@ class XiaoZhiProto(BaseProto):
         content = msg_data["text"]
         stt_text = get_string_no_punctuation_or_emoji(content)
         await websocket.send(
-            json.dumps({"type": "stt", "text": stt_text, "session_id": self._session_id})
+            json.dumps({"type": "stt", "text": stt_text, "session_id": self._sender_id})
         )
         await self.message_sender(
             sender_id=client_info["sender_id"],
@@ -424,12 +415,14 @@ class XiaoZhiProto(BaseProto):
         """Send TTS status message."""
         if text is None and state == "sentence_start":
             return
-        message = {"type": "tts", "state": state, "session_id": self._session_id}
+        message = {"type": "tts", "state": state, "session_id": self._sender_id}
         if text is not None:
             message["text"] = check_emoji(text)
         await websocket.send(json.dumps(message))
 
-    async def send_msg(self, msg: OutboundMessage, client_info: dict, websocket: Any) -> dict:
+    async def send_msg(
+        self, msg: OutboundMessage, client_info: dict, websocket: Any, broadcaster: callable = None
+    ) -> dict:
         """
         Send a message through WebSocket.
 
@@ -437,6 +430,7 @@ class XiaoZhiProto(BaseProto):
             msg: Outbound message to send.
             client_info: Client connection information (sender_id, chat_id, etc.).
             websocket: The WebSocket connection object.
+            broadcaster: Optional broadcast function for sending messages to other clients.
 
         Returns:
             info: A dictionary containing information about the sent message.
@@ -445,11 +439,17 @@ class XiaoZhiProto(BaseProto):
         # filter messages
         msg_type = msg.metadata.get("msg_type", "audio")
         if msg.metadata.get("_cmd_ref", "") == "register_extern_tools":
-            return {"success": True, "broadcast_msg": msg}
+            if broadcaster:
+                await broadcaster(msg)
+            return {"success": True}
         if msg.metadata.get("_progress", False) or msg.metadata.get("_hide_message", False):
-            return {"success": True, "broadcast_msg": msg}
+            if broadcaster:
+                await broadcaster(msg)
+            return {"success": True}
         if msg.media and msg_type != "audio":
-            return {"success": True, "broadcast_msg": msg}
+            if broadcaster:
+                await broadcaster(msg)
+            return {"success": True}
 
         async def _sync_audio(audio_playing: bool):
             if self._interruptable:
@@ -468,9 +468,14 @@ class XiaoZhiProto(BaseProto):
             self._stop_audio = False
             await _sync_audio(True)
             frame_duration = msg.metadata.get("frame_duration", 60)
+            tts_datas = msg.media
+            if broadcaster:
+                msg.media = []
+                msg.metadata.update({"msg_type": "text"})
+                await broadcaster(msg)
             await self._send_tts_message(websocket, "start")
             await self._send_tts_message(websocket, "sentence_start", msg.content)
-            for media in msg.media:
+            for media in tts_datas:
                 if self._stop_audio:
                     break
                 await websocket.send(media)
@@ -479,9 +484,9 @@ class XiaoZhiProto(BaseProto):
             await self._send_tts_message(websocket, "stop")
             await _sync_audio(False)
         else:
+            if broadcaster:
+                await broadcaster(msg)
             await websocket.send(
-                json.dumps({"type": "stt", "text": msg.content, "session_id": self._session_id})
+                json.dumps({"type": "stt", "text": msg.content, "session_id": self._sender_id})
             )
-        msg.media = []
-        msg.metadata.update({"msg_type": "text"})
-        return {"success": True, "broadcast_msg": msg}
+        return {"success": True}

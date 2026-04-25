@@ -151,7 +151,9 @@ class BaseProto(ABC):
         pass
 
     @abstractmethod
-    async def send_msg(self, msg: OutboundMessage, client_info: dict, websocket: Any) -> dict:
+    async def send_msg(
+        self, msg: OutboundMessage, client_info: dict, websocket: Any, broadcaster: callable = None
+    ) -> dict:
         """
         Send a message through WebSocket.
 
@@ -159,6 +161,7 @@ class BaseProto(ABC):
             msg: Outbound message to send.
             client_info: Client connection information (sender_id, chat_id, etc.).
             websocket: The WebSocket connection object.
+            broadcaster: Optional broadcast function for sending messages to other clients.
 
         Returns:
             info: A dictionary containing information about the sent message.

@@ -90,7 +90,7 @@ class XiaozhiTool(ExternTool):
             "jsonrpc": "2.0",
             "id": self._tool_id,
             "method": "tools/call",
-            "params": {"name": self.name, "arguments": {**arguments, **kwargs}},
+            "params": {"name": self._tool_name, "arguments": {**arguments, **kwargs}},
         }
         message = json.dumps({"type": "mcp", "payload": payload})
         await self._websocket.send(message)

@@ -256,18 +256,19 @@ class WebSocketChannel(BaseChannel):
         proto, target_ws = None, None
         for ws, client_info in self._clients.items():
             if client_info["chat_id"] == msg.chat_id:
-                target_ws, proto = ws, client_info["proto"]
+                proto, target_ws = client_info["proto"], ws
                 break
         if not proto or not target_ws:
             logger.warning("No proto or ws found for sender_id: {}", msg.chat_id)
             return
 
-        info = await proto.send_msg(msg, client_info, target_ws)
-        if info.get("broadcast_msg"):
+        async def _broadcast_msg(msg):
             for ws, client_info in self._clients.items():
                 if ws == target_ws:
                     continue
-                await client_info["proto"].send_msg(info["broadcast_msg"], client_info, ws)
+                await client_info["proto"].send_msg(msg, client_info, ws)
+
+        await proto.send_msg(msg, client_info, target_ws, broadcaster=_broadcast_msg)
 
     async def _get_client_info(self, websocket) -> dict | None:
         """
