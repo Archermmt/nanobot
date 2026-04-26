@@ -310,7 +310,7 @@ class CapProto(BaseProto):
 
     async def send_msg(
         self, msg: OutboundMessage, client_info: dict, websocket: Any, broadcaster: callable = None
-    ) -> dict:
+    ):
         """
         Send a message through WebSocket to the agent server.
 
@@ -324,16 +324,11 @@ class CapProto(BaseProto):
             client_info: Client connection information (agent_id, etc.).
             websocket: The WebSocket connection object.
             broadcaster: Optional broadcast function for sending messages to other clients.
-
-        Returns:
-            info: A dictionary containing information about the sent message.
         """
         msg_type = msg.metadata.get("msg_type", "text")
         if msg_type == "text" and msg.metadata.get("fast_reply", False):
             await self._llm_messages.put({"content": msg.content, **msg.metadata})
-            return {"success": False}
-        if msg_type != "text" and msg.media:
-            if broadcaster:
-                await broadcaster(msg)
-            return {"success": False}
-        return {"success": False}
+            return
+        if broadcaster:
+            await broadcaster(msg)
+        return

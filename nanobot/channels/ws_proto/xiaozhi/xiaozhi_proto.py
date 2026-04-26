@@ -422,7 +422,7 @@ class XiaoZhiProto(BaseProto):
 
     async def send_msg(
         self, msg: OutboundMessage, client_info: dict, websocket: Any, broadcaster: callable = None
-    ) -> dict:
+    ):
         """
         Send a message through WebSocket.
 
@@ -431,9 +431,6 @@ class XiaoZhiProto(BaseProto):
             client_info: Client connection information (sender_id, chat_id, etc.).
             websocket: The WebSocket connection object.
             broadcaster: Optional broadcast function for sending messages to other clients.
-
-        Returns:
-            info: A dictionary containing information about the sent message.
         """
 
         # filter messages
@@ -441,15 +438,15 @@ class XiaoZhiProto(BaseProto):
         if msg.metadata.get("_cmd_ref", "") == "register_extern_tools":
             if broadcaster:
                 await broadcaster(msg)
-            return {"success": True}
+            return
         if msg.metadata.get("_progress", False) or msg.metadata.get("_hide_message", False):
             if broadcaster:
                 await broadcaster(msg)
-            return {"success": True}
+            return
         if msg.media and msg_type != "audio":
             if broadcaster:
                 await broadcaster(msg)
-            return {"success": True}
+            return
 
         async def _sync_audio(audio_playing: bool):
             if self._interruptable:
@@ -463,7 +460,7 @@ class XiaoZhiProto(BaseProto):
         if msg.content == "/stop_audio":
             self._stop_audio = True
             await _sync_audio(False)
-            return {"success": True}
+            return
         if msg_type == "audio":
             self._stop_audio = False
             await _sync_audio(True)
@@ -489,4 +486,4 @@ class XiaoZhiProto(BaseProto):
             await websocket.send(
                 json.dumps({"type": "stt", "text": msg.content, "session_id": self._sender_id})
             )
-        return {"success": True}
+        return

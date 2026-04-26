@@ -221,7 +221,7 @@ class NanoboardProto(BaseProto):
 
     async def send_msg(
         self, msg: OutboundMessage, client_info: dict, websocket: Any, broadcaster: callable = None
-    ) -> dict:
+    ):
         """
         Send a message through WebSocket.
 
@@ -230,9 +230,6 @@ class NanoboardProto(BaseProto):
             client_info: Client connection information (sender_id, chat_id, etc.).
             websocket: The WebSocket connection object.
             broadcaster: Optional broadcast function for sending messages to other clients.
-
-        Returns:
-            info: A dictionary containing information about the sent message.
         """
 
         async def _sync_audio(audio_playing: bool):
@@ -247,7 +244,7 @@ class NanoboardProto(BaseProto):
         if msg.content == "/stop_audio":
             self._stop_audio = True
             await _sync_audio(False)
-            return {"success": True}
+            return
 
         if msg.metadata.get("msg_type", "text") == "audio" and msg.metadata.get("encoder_type"):
             self._stop_audio = False
@@ -273,24 +270,7 @@ class NanoboardProto(BaseProto):
             await websocket.send(json.dumps({**tts_info, "state": "sentence_end"}))
             await websocket.send(json.dumps({**tts_info, "state": "stop"}))
             await _sync_audio(False)
-            return {"success": True}
-
-        # Handle mesh type messages
-        if msg.metadata.get("msg_type") == "mesh":
-            try:
-                mesh_info = {"type": "mesh", "chat_id": msg.chat_id}
-                await websocket.send(json.dumps({**mesh_info, "state": "start"}))
-
-                for media_item in msg.media:
-                    if isinstance(media_item, dict):
-                        await websocket.send(json.dumps(media_item, ensure_ascii=False))
-                        await asyncio.sleep(0.1)  # Small delay to avoid sending too fast
-
-                await websocket.send(json.dumps({**mesh_info, "state": "stop"}))
-                return {"success": True}
-            except Exception as e:
-                logger.error("Error sending mesh data: {}", e)
-                return {"success": False}
+            return
 
         # Send common messages
         try:
@@ -312,5 +292,4 @@ class NanoboardProto(BaseProto):
             await websocket.send(json.dumps(message_data, ensure_ascii=False))
         except Exception as e:
             logger.error("Error sending WebSocket message: {}", e)
-            return {"success": False}
-        return {"success": True}
+        return
