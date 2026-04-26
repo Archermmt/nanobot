@@ -104,7 +104,8 @@ class ProvidersManager:
 
     async def check_fast_reply(self, msg: InboundMessage, features: dict) -> OutboundMessage | None:
         """Check if the content is a fast reply and return the corresponding message"""
-        if not msg.content and msg.media:
+        msg_type = msg.metadata.get("msg_type", "text")
+        if msg_type != "text" and msg.media:
             return OutboundMessage(
                 channel=msg.channel,
                 chat_id=msg.chat_id,
@@ -112,7 +113,7 @@ class ProvidersManager:
                 media=msg.media,
                 metadata=msg.metadata,
             )
-        if msg.metadata.get("msg_type", "text") == "prompt":
+        if msg_type == "prompt":
             provider = self.get_provider(msg.metadata.get("llm_mode", "main"))
             response = await provider.chat_with_retry(messages=json.loads(msg.content), tools=[])
             metadata = {"finish_reason": response.finish_reason}

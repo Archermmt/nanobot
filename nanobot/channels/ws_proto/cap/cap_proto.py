@@ -129,9 +129,8 @@ class CapProto(BaseProto):
                 """Handle chat completion requests."""
                 try:
                     # Put request into inbound queue
-                    self._task_response = None
                     client_kwargs = request.model_dump(exclude_none=True)
-                    self.message_sender(
+                    await self.message_sender(
                         sender_id=sender_id,
                         chat_id=chat_id,
                         content=json.dumps(client_kwargs["messages"]),
@@ -287,8 +286,8 @@ class CapProto(BaseProto):
                 await self.message_sender(
                     sender_id=client_info["sender_id"],
                     chat_id=client_info["chat_id"],
-                    content="",
-                    media=msg_data["records"],
+                    content="Task record of " + str(client_info["chat_id"]),
+                    media=[{"data": record} for record in msg_data["records"]],
                     metadata={"msg_type": "video", "file_type": "video/mp4"},
                 )
                 return
@@ -333,7 +332,7 @@ class CapProto(BaseProto):
         if msg_type == "text" and msg.metadata.get("fast_reply", False):
             await self._llm_messages.put({"content": msg.content, **msg.metadata})
             return {"success": False}
-        if not msg.content and msg.media:
+        if msg_type != "text" and msg.media:
             if broadcaster:
                 await broadcaster(msg)
             return {"success": False}
