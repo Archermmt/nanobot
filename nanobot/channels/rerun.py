@@ -76,12 +76,8 @@ class RerunChannel(BaseChannel):
 
             # Start gRPC server
             self.server_uri = rr.serve_grpc(
-                grpc_port=self.config.grpc_port,
-                default_blueprint=None,
-                server_memory_limit="2GiB",
+                grpc_port=self.config.grpc_port, default_blueprint=None, server_memory_limit="2GiB"
             )
-
-            # Start web viewer
             rr.serve_web_viewer(
                 open_browser=self.config.open_browser,
                 web_port=self.config.web_port,
@@ -91,8 +87,7 @@ class RerunChannel(BaseChannel):
             # Generate web viewer URL
             encoded_uri = quote(self.server_uri, safe="")
             self.web_viewer_url = f"http://127.0.0.1:{self.config.web_port}/?url={encoded_uri}"
-            logger.info("Rerun gRPC server started: {}", self.server_uri)
-            logger.info("Web Viewer URL: {}", self.web_viewer_url)
+            logger.info(f"Rerun gRPC server: {self.server_uri}, WebViewer: {self.web_viewer_url}")
             self._rr_initialized = True
 
             # Keep the server running
