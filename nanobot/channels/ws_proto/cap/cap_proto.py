@@ -57,7 +57,6 @@ class CapProto(BaseProto):
         self._http_server = None
         self._llm_messages: asyncio.Queue = asyncio.Queue()
         self._result_queue: asyncio.Queue = asyncio.Queue()
-        self._llm_mode = "main"
 
     @classmethod
     def proto_name(cls) -> str:
@@ -134,7 +133,7 @@ class CapProto(BaseProto):
                         sender_id=sender_id,
                         chat_id=chat_id,
                         content=json.dumps(client_kwargs["messages"]),
-                        metadata={"msg_type": "prompt", "llm_mode": self._llm_mode},
+                        metadata={"msg_type": "prompt"},
                     )
                     response = await self._llm_messages.get()
                     if response.get("error"):

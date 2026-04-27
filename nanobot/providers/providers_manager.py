@@ -114,8 +114,19 @@ class ProvidersManager:
                 metadata=msg.metadata,
             )
         if msg_type == "prompt":
-            provider = self.get_provider(msg.metadata.get("llm_mode", "main"))
-            response = await provider.chat_with_retry(messages=json.loads(msg.content), tools=[])
+            messages, llm_mode = json.loads(msg.content), "main"
+            for message in messages:
+                content = message.get("content", [])
+                if isinstance(content, list):
+                    for item in content:
+                        if isinstance(item, dict) and item.get("type") == "image_url":
+                            llm_mode = "multimodal"
+                            break
+                if llm_mode == "multimodal":
+                    break
+            logger.debug(f"Use mode: {llm_mode} for fast reply")
+            provider = self.get_provider(llm_mode)
+            response = await provider.chat_with_retry(messages=messages, tools=[])
             metadata = {"finish_reason": response.finish_reason}
             if response.content:
                 return OutboundMessage(
