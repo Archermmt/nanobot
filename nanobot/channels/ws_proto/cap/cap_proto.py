@@ -285,9 +285,9 @@ class CapProto(BaseProto):
                 await self.message_sender(
                     sender_id=client_info["sender_id"],
                     chat_id=client_info["chat_id"],
-                    content="Task record of " + str(client_info["chat_id"]),
+                    content=f"Task record of {client_info['chat_id']}, trail {msg_data['trial']}",
                     media=[{"data": record} for record in msg_data["records"]],
-                    metadata={"msg_type": "video", "file_type": "video/mp4"},
+                    metadata={"msg_type": "video", "file_type": "video/mp4", "_progress": True},
                 )
                 return
             if msg_type == "task_result":

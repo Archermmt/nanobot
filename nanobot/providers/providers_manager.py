@@ -109,7 +109,7 @@ class ProvidersManager:
             return OutboundMessage(
                 channel=msg.channel,
                 chat_id=msg.chat_id,
-                content="",
+                content=msg.content,
                 media=msg.media,
                 metadata=msg.metadata,
             )
