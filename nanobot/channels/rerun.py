@@ -19,7 +19,6 @@ class RerunConfig(Base):
     grpc_port: int = 9876  # gRPC server port for Rerun
     web_port: int = 9090  # Web viewer port
     open_browser: bool = False  # Whether to automatically open browser
-    host: str = "127.0.0.1"  # Host address for the server
     allow_from: list[str] = Field(default_factory=list)  # Allowed sender identifiers
 
 
@@ -91,14 +90,9 @@ class RerunChannel(BaseChannel):
 
             # Generate web viewer URL
             encoded_uri = quote(self.server_uri, safe="")
-            self.web_viewer_url = (
-                f"http://{self.config.host}:{self.config.web_port}/?url={encoded_uri}"
-            )
-
+            self.web_viewer_url = f"http://127.0.0.1:{self.config.web_port}/?url={encoded_uri}"
             logger.info("Rerun gRPC server started: {}", self.server_uri)
             logger.info("Web Viewer URL: {}", self.web_viewer_url)
-            logger.info("Server is running, press Ctrl+C to stop.")
-
             self._rr_initialized = True
 
             # Keep the server running
