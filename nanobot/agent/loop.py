@@ -23,6 +23,7 @@ from nanobot.agent.subagent import SubagentManager
 from nanobot.agent.tools.agent import AgentModeTool
 from nanobot.agent.tools.cron import CronTool
 from nanobot.agent.tools.filesystem import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
+from nanobot.agent.tools.haos import HaosTool
 from nanobot.agent.tools.media import MediaTool
 from nanobot.agent.tools.message import MessageTool
 from nanobot.agent.tools.registry import ToolRegistry
@@ -174,6 +175,7 @@ class AgentLoop:
             )
         self.tools.register(AgentModeTool(self.provider))
         self.tools.register(MediaTool(self.provider, send_callback=self.bus.publish_outbound))
+        self.tools.register(HaosTool(send_callback=self.bus.publish_outbound))
 
     async def _connect_mcp(self) -> None:
         """Connect to configured MCP servers (one-time, lazy)."""
