@@ -41,6 +41,7 @@ class MessageBus:
         _add_handler("speak", handlers_config.speak)
         _add_handler("asr", handlers_config.asr)
         _add_handler("tts", handlers_config.tts)
+        _add_handler("audio_encode", handlers_config.audio_encode)
         info = {k: v.handler_type() for k, v in self.handlers.items()}
         logger.info(f"Handlers: {info}")
 

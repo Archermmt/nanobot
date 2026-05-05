@@ -25,9 +25,11 @@ nano.*.save
 uv.lock
 
 tests/
+models/
 
 # Vue.js project files
 /dashboard/node_modules/
+/dashboard/public/
 /dashboard/dist/
 /dashboard/.vite/
 /dashboard/*.log

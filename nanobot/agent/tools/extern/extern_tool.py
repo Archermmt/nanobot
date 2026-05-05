@@ -1,6 +1,10 @@
 """External tool wrapper for dynamic tool specifications."""
 
-from typing import Any, Type
+import asyncio
+import time
+from typing import Any, Callable, Type
+
+from loguru import logger
 
 from ..base import Tool
 
@@ -27,10 +31,13 @@ class ExternTool(Tool):
         for key in required:
             if key not in config:
                 raise ValueError(f"Missing required key in spec: {key}")
-        self._name = config["name"]
         self._chat_id = config["chatId"]
+        self._tool_name = config["name"]
+        self._name = f"{self._tool_name}_{self._chat_id}"
         self._description = config["description"]
         self._parameters = config["inputSchema"]
+        self._result_queue = config.get("result_queue")
+        self._timeout = config.get("timeout", 30)
         self.setup(config)
 
     def setup(self, config: dict[str, Any]) -> None:
@@ -70,6 +77,41 @@ class ExternTool(Tool):
             f"ExternTool '{self._name}' execution not implemented. "
             "Subclass this class and override execute() method."
         )
+
+    async def wait_for_result(
+        self, checker: Callable[[dict], bool], max_wait_time: float = 120
+    ) -> Any:
+        """
+        Wait for a result from the queue that matches the checker condition.
+
+        Args:
+            checker: A function that takes a result dict and returns True if it matches.
+            max_wait_time: Maximum total wait time in seconds. If None, no limit.
+
+        Returns:
+            The 'result' field from the matching message, or None if max_wait_time exceeded.
+
+        Raises:
+            RuntimeError: If the result contains an error.
+            TimeoutError: If no matching result is received within timeout.
+        """
+        if not self._result_queue:
+            return {}
+        start_time, result = time.time(), {}
+        while True:
+            if (time.time() - start_time) >= max_wait_time:
+                logger.debug(f"Max wait time {max_wait_time}s exceeded")
+                break
+            msg = await asyncio.wait_for(self._result_queue.get(), timeout=self._timeout)
+            if checker(msg):
+                if "error" in msg:
+                    raise RuntimeError(msg["error"])
+                result = msg["result"]
+                break
+            else:
+                await self._result_queue.put(msg)
+                await asyncio.sleep(0.5)
+        return result
 
     @staticmethod
     def register_type(type_name: str, tool_class: Type["ExternTool"]) -> None:

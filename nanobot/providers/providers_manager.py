@@ -1,12 +1,13 @@
 """Providers manager for handling multiple LLM providers and modes."""
 
+import json
 from collections.abc import Awaitable, Callable
 from typing import Any
 
 from loguru import logger
 
 from nanobot.agent.context import ContextBuilder
-from nanobot.bus.events import OutboundMessage
+from nanobot.bus.events import InboundMessage, OutboundMessage
 from nanobot.config.schema import Config
 from nanobot.providers.base import LLMProvider, LLMResponse
 
@@ -100,6 +101,45 @@ class ProvidersManager:
         else:
             raise ValueError(f"Unknown mode: {mode} and no fallback available")
         return self._current_mode
+
+    async def check_fast_reply(self, msg: InboundMessage, features: dict) -> OutboundMessage | None:
+        """Check if the content is a fast reply and return the corresponding message"""
+        msg_type = msg.metadata.get("msg_type", "text")
+        if msg_type != "text" and msg.media:
+            return OutboundMessage(
+                channel=msg.channel,
+                chat_id=msg.chat_id,
+                content=msg.content,
+                media=msg.media,
+                metadata=msg.metadata,
+            )
+        if msg_type == "prompt":
+            messages, llm_mode = json.loads(msg.content), "main"
+            for message in messages:
+                content = message.get("content", [])
+                if isinstance(content, list):
+                    for item in content:
+                        if isinstance(item, dict) and item.get("type") == "image_url":
+                            llm_mode = "multimodal"
+                            break
+                if llm_mode == "multimodal":
+                    break
+            logger.debug(f"Use mode: {llm_mode} for fast reply")
+            provider = self.get_provider(llm_mode)
+            response = await provider.chat_with_retry(messages=messages, tools=[])
+            metadata = {"finish_reason": response.finish_reason}
+            if response.content:
+                return OutboundMessage(
+                    channel=msg.channel,
+                    chat_id=msg.chat_id,
+                    content=response.content.strip(),
+                    metadata=metadata,
+                )
+            metadata["error"] = "Failed to call llm"
+            return OutboundMessage(
+                channel=msg.channel, chat_id=msg.chat_id, content="", metadata=metadata
+            )
+        return None
 
     async def chat_stream_with_retry(
         self,

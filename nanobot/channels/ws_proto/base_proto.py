@@ -1,7 +1,9 @@
 """WebSocket base protocol for handling WebSocket message processing."""
 
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, Dict, Type
+
+from loguru import logger
 
 from nanobot.bus.events import OutboundMessage
 
@@ -20,18 +22,81 @@ class BaseProto(ABC):
     Subclasses should implement:
     - receive_msg(): Process incoming messages
     - send_msg(): Send outgoing messages
+
+    Registration:
+        Use @BaseProto.register() decorator to register a protocol handler.
+        The protocol name is obtained from the subclass's proto_name() class method.
+
+        Usage:
+            @BaseProto.register()
+            class MyProto(BaseProto):
+                @classmethod
+                def proto_name(cls) -> str:
+                    return "my_protocol"
     """
 
-    def __init__(self, config: Any = None, ws_config: Any = None):
+    _registry: Dict[str, Type["BaseProto"]] = {}
+
+    def __init__(self, config: Any, ws_config: Any, message_sender: Any):
         """
         Initialize the WebSocket base protocol.
 
         Args:
             config: Protocol-specific configuration.
             ws_config: WebSocket channel configuration (for host, port, etc.).
+            message_sender: Message sender callback function (e.g., _handle_message).
         """
         self.config = config
         self.ws_config = ws_config
+        self.message_sender = message_sender
+
+    @classmethod
+    def register(cls):
+        """
+        Decorator to register a protocol handler subclass.
+        The protocol name is obtained from the subclass's proto_name() class method.
+
+        Usage:
+            @BaseProto.register()
+            class MyProto(BaseProto):
+                @classmethod
+                def proto_name(cls) -> str:
+                    return "my_protocol"
+        """
+
+        def decorator(subclass: Type["BaseProto"]) -> Type["BaseProto"]:
+            if not hasattr(subclass, "proto_name") or not callable(subclass.proto_name):
+                raise TypeError(
+                    f"Subclass {subclass.__name__} must define proto_name() class method"
+                )
+            proto_name = subclass.proto_name()
+            cls._registry[proto_name] = subclass
+            return subclass
+
+        return decorator
+
+    @classmethod
+    def get_registered_proto(cls, proto_name: str) -> Type["BaseProto"] | None:
+        """
+        Get a registered protocol handler class by protocol name.
+
+        Args:
+            proto_name: The protocol name to look up
+
+        Returns:
+            The registered protocol handler class, or None if not found
+        """
+        return cls._registry.get(proto_name)
+
+    @classmethod
+    def get_all_protos(cls) -> Dict[str, Type["BaseProto"]]:
+        """Get all registered protocol handlers."""
+        return cls._registry.copy()
+
+    @classmethod
+    def clear_registry(cls) -> None:
+        """Clear all registered protocol handlers."""
+        cls._registry.clear()
 
     async def accept(self, websocket) -> dict | None:
         """
@@ -49,30 +114,34 @@ class BaseProto(ABC):
         """
         return None
 
-    async def start(self) -> None:
+    async def connect(self, client_info: dict) -> None:
         """
-        Start the protocol handler.
+        Connect the protocol handler.
 
-        This method is called when the WebSocket channel starts.
+        This method is called when the WebSocket channel connects.
         Subclasses can override this to perform initialization tasks.
+
+        Args:
+            client_info: Client connection information (sender_id, chat_id, etc.).
         """
         pass
 
-    async def stop(self) -> None:
+    async def disconnect(self) -> None:
         """
-        Stop the protocol handler.
+        Disconnect the protocol handler.
 
-        This method is called when the WebSocket channel stops.
+        This method is called when the WebSocket channel disconnects.
         Subclasses can override this to perform cleanup tasks.
         """
         pass
 
     @abstractmethod
-    async def receive_msg(self, msg_data: dict, client_info: dict, websocket) -> dict | None:
+    async def receive_msg(self, msg_data: dict, client_info: dict, websocket) -> None:
         """
         Receive and process incoming message from WebSocket.
 
         Subclasses must implement this method to parse and handle received messages.
+        Messages should be sent using self.message_sender callback.
 
         Args:
             msg_data: Raw message data (JSON string or binary data).
@@ -82,15 +151,16 @@ class BaseProto(ABC):
         pass
 
     @abstractmethod
-    async def send_msg(self, msg: OutboundMessage, websocket: Any) -> dict:
+    async def send_msg(
+        self, msg: OutboundMessage, client_info: dict, websocket: Any, broadcaster: callable = None
+    ):
         """
         Send a message through WebSocket.
 
         Args:
             msg: Outbound message to send.
+            client_info: Client connection information (sender_id, chat_id, etc.).
             websocket: The WebSocket connection object.
-
-        Returns:
-            info: A dictionary containing information about the sent message.
+            broadcaster: Optional broadcast function for sending messages to other clients.
         """
         pass

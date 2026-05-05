@@ -5,6 +5,7 @@ from aiohttp import web
 from loguru import logger
 
 from nanobot.channels.ws_proto.xiaozhi.core.schema import XiaoZhiProtoConfig
+from nanobot.utils.connect import parse_ip
 
 from .api.ota_handler import OTAHandler
 
@@ -45,7 +46,7 @@ class SimpleHttpServer:
             await runner.setup()
             site = web.TCPSite(runner, self.host, port)
             await site.start()
-            logger.info(f"Xiaozhi HTTP Server: {self.host}:{port}")
+            logger.info(f"Xiaozhi HTTP Server: {parse_ip(self.host)}:{port}")
             # 保持服务运行
             while True:
                 await asyncio.sleep(3600)  # 每隔 1 小时检查一次

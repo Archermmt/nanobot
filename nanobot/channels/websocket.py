@@ -10,8 +10,9 @@ from pydantic import Field
 from nanobot.bus.events import OutboundMessage
 from nanobot.bus.queue import MessageBus
 from nanobot.channels.base import BaseChannel
+from nanobot.channels.ws_proto.base_proto import BaseProto
 from nanobot.config.schema import Base
-from nanobot.utils.connect import get_local_ip
+from nanobot.utils.connect import parse_ip
 
 
 class WebSocketConfig(Base):
@@ -80,25 +81,14 @@ class WebSocketChannel(BaseChannel):
 
     def _init_protos(self) -> None:
         """Initialize protocol handlers discovered via ws_proto directory."""
-        from nanobot.channels.ws_proto.registry import discover_all_protos
-
-        # Initialize each discovered protocol handler
         protos: dict[str, Any] = {}
-        for name, cls in discover_all_protos().items():
-            try:
-                section = self.config.protos.get(name, {})
-                enabled = (
-                    section.get("enabled", True)
-                    if isinstance(section, dict)
-                    else getattr(section, "enabled", True)
-                )
-                if not enabled:
-                    continue
-                # Initialize protocol with config and ws_config
-                protos[name] = cls(config=section, ws_config=self.config)
-            except Exception as e:
-                logger.warning("{} protocol handler not available: {}", name, e)
-
+        for name, cls in BaseProto.get_all_protos().items():
+            section = self.config.protos.get(name, {})
+            if not section.get("enabled", False):
+                continue
+            protos[name] = cls(
+                config=section, ws_config=self.config, message_sender=self._handle_message
+            )
         logger.info("WebSocket protocol handlers initialized: {}", list(protos.keys()))
         return protos
 
@@ -107,8 +97,6 @@ class WebSocketChannel(BaseChannel):
         self._running = True
         # Start all protocol handlers
         self._protos = self._init_protos()
-        for proto in self._protos.values():
-            await proto.start()
         if self.config.as_server:
             await self._start_server()
         else:
@@ -121,7 +109,7 @@ class WebSocketChannel(BaseChannel):
         """Stop the WebSocket channel."""
         # Stop all protocol handlers
         for proto in self._protos.values():
-            await proto.stop()
+            await proto.disconnect()
 
         # Cancel tasks
         if self._heartbeat_task:
@@ -186,7 +174,9 @@ class WebSocketChannel(BaseChannel):
         # Start server
         try:
             async with websockets.serve(handler, self.host, self.port, max_size=20 * 1024 * 1024):
-                logger.info(f"WebSocket server started and listening on {self.host}:{self.port}")
+                logger.info(
+                    f"WebSocket server started and listening on {parse_ip(self.host)}:{self.port}"
+                )
                 while self._running:
                     await asyncio.sleep(1)
         except Exception as e:
@@ -254,9 +244,7 @@ class WebSocketChannel(BaseChannel):
         if not client_info:
             logger.warning("No protocol handler accepted the connection")
             return
-        kwargs = await client_info["proto"].receive_msg(msg_data, client_info, websocket)
-        if kwargs:
-            await self._handle_message(**kwargs)
+        await client_info["proto"].receive_msg(msg_data, client_info, websocket)
 
     async def send(self, msg: OutboundMessage) -> None:
         """Send a message through WebSocket."""
@@ -268,17 +256,19 @@ class WebSocketChannel(BaseChannel):
         proto, target_ws = None, None
         for ws, client_info in self._clients.items():
             if client_info["chat_id"] == msg.chat_id:
-                target_ws, proto = ws, client_info["proto"]
+                proto, target_ws = client_info["proto"], ws
                 break
         if not proto or not target_ws:
             logger.warning("No proto or ws found for sender_id: {}", msg.chat_id)
             return
-        info = await proto.send_msg(msg, target_ws)
-        if info.get("broadcast_msg"):
+
+        async def _broadcast_msg(msg):
             for ws, client_info in self._clients.items():
                 if ws == target_ws:
                     continue
-                await client_info["proto"].send_msg(info["broadcast_msg"], ws)
+                await client_info["proto"].send_msg(msg, client_info, ws)
+
+        await proto.send_msg(msg, client_info, target_ws, broadcaster=_broadcast_msg)
 
     async def _get_client_info(self, websocket) -> dict | None:
         """
@@ -295,8 +285,10 @@ class WebSocketChannel(BaseChannel):
             for proto in self._protos.values():
                 client_info = await proto.accept(websocket)
                 if client_info:
+                    await proto.connect(client_info)
                     self._clients[websocket] = {**client_info, "proto": proto}
                     logger.info(f"Bind {websocket.remote_address} -> {self._clients[websocket]}")
+                    break
         assert websocket in self._clients, "WebSocket not found in clients"
         return self._clients[websocket]
 

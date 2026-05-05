@@ -21,7 +21,6 @@ class XiaozhiTool(ExternTool):
         if "websocket" in config:
             self._websocket = config["websocket"]
         self._timeout = config.get("timeout", 30)
-        self._result_queue = config.get("result_queue")  # Queue for fetching MCP results
         self._tool_id = config.get("tool_id", 1)
 
     async def execute(self, **kwargs: Any) -> str:
@@ -91,44 +90,25 @@ class XiaozhiTool(ExternTool):
             "jsonrpc": "2.0",
             "id": self._tool_id,
             "method": "tools/call",
-            "params": {"name": self.name, "arguments": {**arguments, **kwargs}},
+            "params": {"name": self._tool_name, "arguments": {**arguments, **kwargs}},
         }
         message = json.dumps({"type": "mcp", "payload": payload})
         await self._websocket.send(message)
 
-        try:
-            raw_result = None
-            while True:
-                # Get result from queue
-                result_data = await asyncio.wait_for(
-                    self._result_queue.get(), timeout=self._timeout
-                )
-                # Check if msg_id matches
-                if result_data["msg_id"] == self._tool_id:
-                    raw_result = result_data["result"]
-                    break
-                else:
-                    # Put back to queue if not matching
-                    await self._result_queue.put(result_data)
-                    await asyncio.sleep(0.1)
+        # wait for result
+        def _checker(result: dict) -> bool:
+            return self._chat_id == result["chat_id"] and self._tool_id == result["tool_id"]
 
-            if isinstance(raw_result, dict):
-                if raw_result.get("isError") is True:
-                    error_msg = raw_result.get("error", "工具调用返回错误，但未提供具体错误信息")
-                    raise RuntimeError(f"工具调用错误：{error_msg}")
-
-                content = raw_result.get("content")
-                if isinstance(content, list) and len(content) > 0:
-                    if isinstance(content[0], dict) and "text" in content[0]:
-                        return content[0]["text"]
-
-            return str(raw_result)
-
-        except asyncio.TimeoutError:
-            raise TimeoutError("工具调用请求超时")
-        except Exception as e:
-            raise e
+        result = await self.wait_for_result(_checker)
+        if isinstance(result, dict):
+            if result.get("isError") is True:
+                error_msg = result.get("error", "工具调用返回错误，但未提供具体错误信息")
+                raise RuntimeError(f"工具调用错误：{error_msg}")
+            content = result.get("content")
+            if isinstance(content, list) and len(content) > 0:
+                if isinstance(content[0], dict) and "text" in content[0]:
+                    return content[0]["text"]
+        return str(result)
 
 
-# Automatically register with type 'xiaozhi'
 ExternTool.register_type("xiaozhi", XiaozhiTool)

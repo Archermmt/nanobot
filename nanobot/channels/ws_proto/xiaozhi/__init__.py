@@ -1,5 +1,5 @@
 """XiaoZhi protocol handler package."""
 
-from .xiaozhi_proto import XiaoZhiProto, XiaoZhiProtoConfig
+from .xiaozhi_proto import XiaoZhiProto
 
-__all__ = ["XiaoZhiProtoConfig", "XiaoZhiProto"]
+__all__ = ["XiaoZhiProto"]

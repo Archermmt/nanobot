@@ -23,7 +23,8 @@ from nanobot.agent.subagent import SubagentManager
 from nanobot.agent.tools.agent import AgentModeTool
 from nanobot.agent.tools.cron import CronTool
 from nanobot.agent.tools.filesystem import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
-from nanobot.agent.tools.image import ImageTool
+from nanobot.agent.tools.haos import HaosTool
+from nanobot.agent.tools.media import MediaTool
 from nanobot.agent.tools.message import MessageTool
 from nanobot.agent.tools.registry import ToolRegistry
 from nanobot.agent.tools.shell import ExecTool
@@ -173,7 +174,8 @@ class AgentLoop:
                 CronTool(self.cron_service, default_timezone=self.context.timezone or "UTC")
             )
         self.tools.register(AgentModeTool(self.provider))
-        self.tools.register(ImageTool(self.provider, send_callback=self.bus.publish_outbound))
+        self.tools.register(MediaTool(self.provider, send_callback=self.bus.publish_outbound))
+        self.tools.register(HaosTool(send_callback=self.bus.publish_outbound))
 
     async def _connect_mcp(self) -> None:
         """Connect to configured MCP servers (one-time, lazy)."""
@@ -200,7 +202,7 @@ class AgentLoop:
 
     def _set_tool_context(self, channel: str, chat_id: str, message_id: str | None = None) -> None:
         """Update context for all tools that need routing info."""
-        for name in ("message", "spawn", "cron", "image"):
+        for name in ("message", "spawn", "cron", "media"):
             if tool := self.tools.get(name):
                 if hasattr(tool, "set_context"):
                     tool.set_context(channel, chat_id, *([message_id] if name == "message" else []))
@@ -450,6 +452,14 @@ class AgentLoop:
         on_stream_end: Callable[..., Awaitable[None]] | None = None,
     ) -> OutboundMessage | None:
         """Process a single inbound message and return the response."""
+        # Check special cases
+        if isinstance(self.provider, ProvidersManager):
+            if result := await self.provider.check_fast_reply(
+                msg, self.features.get(msg.sender_id, {})
+            ):
+                result.metadata.update({"_is_final": True, "fast_reply": True})
+                return result
+
         # System messages: parse origin from chat_id ("channel:chat_id")
         if msg.channel == "system":
             channel, chat_id = (
@@ -530,14 +540,17 @@ class AgentLoop:
         if isinstance(self.provider, ProvidersManager):
             msg.metadata["_mode_hint"] = await self.provider.choose_mode(msg.content)
         history = session.get_history(max_messages=0)
-        initial_messages = self.context.build_messages(
-            history=history,
-            current_message=msg.content,
-            media=msg.media if msg.media else None,
-            channel=msg.channel,
-            chat_id=msg.chat_id,
-            features=self.features.get(msg.sender_id, {}),
-        )
+        if msg.metadata.get("type", "text") == "promt":
+            initial_messages = json.loads(msg.content)
+        else:
+            initial_messages = self.context.build_messages(
+                history=history,
+                current_message=msg.content,
+                media=msg.media if msg.media else None,
+                channel=msg.channel,
+                chat_id=msg.chat_id,
+                features=self.features.get(msg.sender_id, {}),
+            )
 
         async def _bus_progress(content: str, *, tool_hint: bool = False) -> None:
             meta = dict(msg.metadata or {})
@@ -561,9 +574,11 @@ class AgentLoop:
             chat_id=msg.chat_id,
             message_id=msg.metadata.get("message_id"),
         )
+        meta = dict(msg.metadata or {})
 
         if final_content is None:
             final_content = "I've completed processing but have no response to give."
+            meta["_hide_message"] = True
 
         self._save_turn(session, all_msgs, 1 + len(history))
         self.sessions.save(session)
@@ -580,7 +595,6 @@ class AgentLoop:
         preview = final_content[:120] + "..." if len(final_content) > 120 else final_content
         logger.info("Response to {}:{}: {}", msg.channel, msg.sender_id, preview)
 
-        meta = dict(msg.metadata or {})
         if on_stream is not None:
             meta["_streamed"] = True
         meta["_is_final"] = True

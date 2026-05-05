@@ -7,7 +7,6 @@ from enum import Enum
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
-from aiohttp import web
 from loguru import logger
 
 from nanobot.bus.events import OutboundMessage
@@ -36,6 +35,7 @@ class AuthenticationError(Exception):
     pass
 
 
+@BaseProto.register()
 class XiaoZhiProto(BaseProto):
     """
     XiaoZhi protocol handler for WebSocket message processing.
@@ -48,39 +48,39 @@ class XiaoZhiProto(BaseProto):
     - TTS (Text-to-Speech) message handling
     """
 
-    def __init__(self, config: XiaoZhiProtoConfig | dict, ws_config: Any):
+    @classmethod
+    def proto_name(cls) -> str:
+        """Return the protocol name for registration."""
+        return "xiaozhi"
+
+    def __init__(self, config: XiaoZhiProtoConfig | dict, ws_config: Any, message_sender: Any):
         """
         Initialize the XiaoZhi protocol handler.
 
         Args:
             config: Protocol-specific configuration (dict or XiaoZhiProtoConfig).
             ws_config: WebSocket channel configuration (for host, port, etc.).
+            message_sender: Callback function for sending messages.
         """
         if isinstance(config, dict):
             config = XiaoZhiProtoConfig.model_validate(config)
-        super().__init__(config=config, ws_config=ws_config)
-        self.features = {}
-        self.session_id = str(uuid.uuid4())[:8]
-        self._mcp_result_queue: asyncio.Queue = asyncio.Queue()
+        super().__init__(config, ws_config, message_sender)
+        self._features = {}
+        # self._sender_id = str(uuid.uuid4())[:8]
+        self._sender_id = "xiaozhi"
+        self._result_queue: asyncio.Queue = asyncio.Queue()
         self._ota_task: asyncio.Task | None = None
-
-    async def start(self) -> None:
-        """
-        Start the protocol handler and OTA server.
-
-        This method is called when the WebSocket channel starts.
-        Starts the OTA HTTP server for firmware updates.
-        """
-        # Start OTA server
+        self._stop_audio, self._interruptable = False, False
+        # start ota server
         ota_server = SimpleHttpServer(self.config, self.ws_config.host, self.ws_config.port)
         self._ota_task = asyncio.create_task(ota_server.start())
         logger.debug("XiaoZhi OTA server started")
 
-    async def stop(self) -> None:
+    async def disconnect(self) -> None:
         """
-        Stop the protocol handler and clean up resources.
+        Disconnect the protocol handler and clean up resources.
 
-        This method is called when the WebSocket channel stops.
+        This method is called when the WebSocket channel disconnects.
         Cancels the OTA server task.
         """
         # Cancel OTA task
@@ -145,7 +145,8 @@ class XiaoZhiProto(BaseProto):
                 except AuthenticationError as e:
                     logger.warning("Authentication failed for device {}: {}", device_id, str(e))
                     return None
-            return {"sender_id": self.session_id, "chat_id": client_id or device_id}
+            client_id = "xiaozhi"
+            return {"sender_id": self._sender_id, "chat_id": client_id or device_id}
         except Exception as e:
             logger.warning("Failed to accept xiaozhi connection: {}", e)
             return None
@@ -186,7 +187,7 @@ class XiaoZhiProto(BaseProto):
 
         logger.debug("Device {} authenticated successfully", device_id)
 
-    async def receive_msg(self, msg_data: dict, client_info: dict, websocket) -> dict | None:
+    async def receive_msg(self, msg_data: dict, client_info: dict, websocket) -> None:
         """
         Receive and process incoming message from WebSocket.
 
@@ -194,64 +195,76 @@ class XiaoZhiProto(BaseProto):
             msg_data: Parsed message data dictionary.
             client_info: Client connection information (sender_id, chat_id, etc.).
             websocket: The WebSocket connection object.
-
-        Returns:
-            Processed message dictionary or None if message should be ignored.
         """
         msg_type = msg_data.get("type", TextMessageType.LISTEN.value)
 
         # Handle audio_clip message type
         if msg_type == "bytes":
-            return {
-                "sender_id": client_info["sender_id"],
-                "chat_id": client_info["chat_id"],
-                "content": msg_data["data"],
-                "metadata": {"msg_type": "audio_clip", "need_tts": True},
-            }
+            await self.message_sender(
+                sender_id=client_info["sender_id"],
+                chat_id=client_info["chat_id"],
+                content=msg_data["data"],
+                metadata={"msg_type": "audio_clip", "need_tts": True},
+            )
+            return
 
         # Handle hello message
         if msg_type == TextMessageType.HELLO.value:
             await self._handle_hello_message(msg_data, websocket)
-            return {
-                "sender_id": client_info["sender_id"],
-                "chat_id": client_info["chat_id"],
-                "content": "/update_features",
-                "metadata": {"features": {"need_tts": True}},
-            }
+            await self.message_sender(
+                sender_id=client_info["sender_id"],
+                chat_id=client_info["chat_id"],
+                content="/update_features",
+                metadata={"features": {"need_tts": True}},
+            )
+            return
 
         # Handle MCP message
         if msg_type == TextMessageType.MCP.value:
-            return await self._handle_mcp_message(msg_data, client_info, websocket)
+            await self._handle_mcp_message(msg_data, client_info, websocket)
+            return
+
+        if msg_type == TextMessageType.ABORT.value:
+            self._stop_audio = True
+            if self._interruptable:
+                await self.message_sender(
+                    sender_id=client_info["sender_id"],
+                    chat_id=client_info["chat_id"],
+                    content="/update_features",
+                    metadata={"features": {"audio_playing": False}},
+                )
+            return
 
         # Handle unknown message types
         if msg_type != TextMessageType.LISTEN.value:
             logger.warning(f"Received unknown message({msg_type}): {msg_data}")
-            return None
+            return
 
         # Handle listen state messages
         if msg_data.get("state") == "start":
-            return {
-                "sender_id": client_info["sender_id"],
-                "chat_id": client_info["chat_id"],
-                "content": "/vad_reset",
-                "metadata": {"msg_type": "audio_clip"},
-            }
+            await self.message_sender(
+                sender_id=client_info["sender_id"],
+                chat_id=client_info["chat_id"],
+                content="/vad_reset",
+                metadata={"msg_type": "audio_clip"},
+            )
+            return
 
         if msg_data.get("state") != "detect":
             logger.warning(f"Received unknown state type({msg_data.get('state')}): {msg_data}")
-            return None
+            return
 
         if "text" not in msg_data:
             logger.warning("No text in msg_data, nothing to response")
-            return None
+            return
 
         # Process chat message
-        return await self._process_chat_message(msg_data, client_info, websocket)
+        await self._process_chat_message(msg_data, client_info, websocket)
 
     async def _handle_hello_message(self, msg_data: dict, websocket: any):
         """Handle hello message."""
         response = {
-            "session_id": self.session_id,
+            "session_id": self._sender_id,
             "type": "hello",
             "version": 1,
             "transport": "websocket",
@@ -265,15 +278,15 @@ class XiaoZhiProto(BaseProto):
         audio_params = msg_data.get("audio_params")
         if audio_params:
             response["audio_params"] = audio_params
-        self.features = msg_data.get("features", {})
-        if self.features.get("mcp"):
+        self._features = msg_data.get("features", {})
+        if self._features.get("mcp"):
             asyncio.create_task(self._send_mcp_initialize_message(websocket))
         try:
             await websocket.send(json.dumps(response, ensure_ascii=False))
         except Exception as e:
             logger.warning("Failed to send hello response: {}", e)
 
-    async def _handle_mcp_message(self, msg_data: dict, client_info: dict, websocket: any):
+    async def _handle_mcp_message(self, msg_data: dict, client_info: dict, websocket: any) -> None:
         """Handle MCP message."""
         # Handle result
         payload = msg_data["payload"]
@@ -281,10 +294,10 @@ class XiaoZhiProto(BaseProto):
             error_data = payload["error"]
             error_msg = error_data.get("message", "Unknown error")
             logger.error(f"Received MCP error response: {error_msg}")
-            return None
+            return
 
         if "result" not in payload:
-            return None
+            return
 
         msg_id, result = int(payload.get("id", 0)), payload["result"]
         if msg_id == 1:  # mcpInitializeID
@@ -298,7 +311,7 @@ class XiaoZhiProto(BaseProto):
             logger.debug("Initialization complete, start requesting MCP tool list")
             msg = {"jsonrpc": "2.0", "id": 2, "method": "tools/list"}
             await self._send_mcp_message(msg, websocket)
-            return None
+            return
 
         if msg_id == 2:  # mcpToolsListID
             logger.debug("Received MCP tool list response")
@@ -328,31 +341,28 @@ class XiaoZhiProto(BaseProto):
                         "tool_id": i + 3,
                     }
                     mcp_tools.append(new_tool)
-            return {
-                "sender_id": client_info["sender_id"],
-                "chat_id": client_info["chat_id"],
-                "content": "/register_extern_tools",
-                "metadata": {
+            await self.message_sender(
+                sender_id=client_info["sender_id"],
+                chat_id="xiaozhi",
+                content="/register_extern_tools",
+                metadata={
                     "type": "xiaozhi",
                     "kwargs": {
                         "websocket": websocket,
                         "timeout": 30,
-                        "result_queue": self._mcp_result_queue,
+                        "result_queue": self._result_queue,
                     },
                     "tools": mcp_tools,
                 },
-            }
+            )
+            return
 
         # Handle tool call results (msg_id > 2)
         if msg_id > 2:
-            logger.debug(f"Received MCP tool call result, msg_id={msg_id}")
-            # Put result into queue for tool to fetch
-            try:
-                await self._mcp_result_queue.put({"msg_id": msg_id, "result": result})
-                logger.debug(f"Put tool call result into queue, msg_id={msg_id}")
-            except Exception as e:
-                logger.error(f"Failed to put tool call result into queue: {e}")
-            return None
+            await self._result_queue.put(
+                {"chat_id": client_info["chat_id"], "tool_id": msg_id, "result": result}
+            )
+            return
 
     async def _send_mcp_initialize_message(self, websocket: any):
         """Send MCP initialization message."""
@@ -376,7 +386,7 @@ class XiaoZhiProto(BaseProto):
 
     async def _send_mcp_message(self, payload: dict, websocket: any):
         """Helper to send MCP messages, encapsulating common logic."""
-        if not self.features.get("mcp"):
+        if not self._features.get("mcp"):
             logger.warning("Client does not support MCP, cannot send MCP message")
             return
 
@@ -387,61 +397,93 @@ class XiaoZhiProto(BaseProto):
         except Exception as e:
             logger.error(f"Failed to send MCP message: {e}")
 
-    async def _process_chat_message(self, msg_data, client_info, websocket: any):
+    async def _process_chat_message(self, msg_data, client_info, websocket: any) -> None:
         """Process chat message and prepare response."""
         content = msg_data["text"]
         stt_text = get_string_no_punctuation_or_emoji(content)
         await websocket.send(
-            json.dumps({"type": "stt", "text": stt_text, "session_id": self.session_id})
+            json.dumps({"type": "stt", "text": stt_text, "session_id": self._sender_id})
         )
-        return {
-            "sender_id": client_info["sender_id"],
-            "chat_id": client_info["chat_id"],
-            "content": content,
-            "metadata": {"need_tts": True},
-        }
+        await self.message_sender(
+            sender_id=client_info["sender_id"],
+            chat_id=client_info["chat_id"],
+            content=content,
+            metadata={"need_tts": True},
+        )
 
     async def _send_tts_message(self, websocket: any, state, text=None):
         """Send TTS status message."""
         if text is None and state == "sentence_start":
             return
-        message = {"type": "tts", "state": state, "session_id": self.session_id}
+        message = {"type": "tts", "state": state, "session_id": self._sender_id}
         if text is not None:
             message["text"] = check_emoji(text)
         await websocket.send(json.dumps(message))
 
-    async def send_msg(self, msg: OutboundMessage, websocket: Any) -> dict:
+    async def send_msg(
+        self, msg: OutboundMessage, client_info: dict, websocket: Any, broadcaster: callable = None
+    ):
         """
         Send a message through WebSocket.
 
         Args:
             msg: Outbound message to send.
+            client_info: Client connection information (sender_id, chat_id, etc.).
             websocket: The WebSocket connection object.
-
-        Returns:
-            info: A dictionary containing information about the sent message.
+            broadcaster: Optional broadcast function for sending messages to other clients.
         """
 
         # filter messages
-        if msg.metadata.get("_cmd_ref", "") == "register_extern_tools":
-            return {"success": True, "broadcast_msg": msg}
-        if msg.metadata.get("_progress", False) or msg.metadata.get("_hide_message", False):
-            return {"success": True, "broadcast_msg": msg}
-
         msg_type = msg.metadata.get("msg_type", "audio")
+        if msg.metadata.get("_cmd_ref", "") == "register_extern_tools":
+            if broadcaster:
+                await broadcaster(msg)
+            return
+        if msg.metadata.get("_progress", False) or msg.metadata.get("_hide_message", False):
+            if broadcaster:
+                await broadcaster(msg)
+            return
+        if msg.media and msg_type != "audio":
+            if broadcaster:
+                await broadcaster(msg)
+            return
+
+        async def _sync_audio(audio_playing: bool):
+            if self._interruptable:
+                await self.message_sender(
+                    sender_id=client_info["sender_id"],
+                    chat_id=msg.chat_id,
+                    content="/update_features",
+                    metadata={"features": {"audio_playing": audio_playing}},
+                )
+
+        if msg.content == "/stop_audio":
+            self._stop_audio = True
+            await _sync_audio(False)
+            return
         if msg_type == "audio":
+            self._stop_audio = False
+            await _sync_audio(True)
             frame_duration = msg.metadata.get("frame_duration", 60)
+            tts_datas = msg.media
+            if broadcaster:
+                msg.media = []
+                msg.metadata.update({"msg_type": "text"})
+                await broadcaster(msg)
             await self._send_tts_message(websocket, "start")
             await self._send_tts_message(websocket, "sentence_start", msg.content)
-            for media in msg.media:
+            for media in tts_datas:
+                if self._stop_audio:
+                    break
                 await websocket.send(media)
                 await asyncio.sleep(frame_duration / 1000.0)
             await self._send_tts_message(websocket, "sentence_end")
             await self._send_tts_message(websocket, "stop")
+            await _sync_audio(False)
         else:
+            if broadcaster:
+                await broadcaster(msg)
             await websocket.send(
-                json.dumps({"type": "stt", "text": msg.content, "session_id": self.session_id})
+                json.dumps({"type": "stt", "text": msg.content, "session_id": self._sender_id})
             )
-        msg.media = []
-        msg.metadata.update({"msg_type": "text"})
-        return {"success": True, "broadcast_msg": msg}
+        return

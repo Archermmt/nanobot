@@ -9,6 +9,7 @@ interface Props {
   isOnlineChatOn?: boolean
   msgHandlers?: string[]
   messages?: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>
+  interruptable?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -38,7 +39,15 @@ const userHistory = computed(() => {
 
 // Check if input is disabled based on chat status and props
 const isInputDisabled = () => {
-  return props.disabled || props.chatState === 'Thinking' || props.chatState === 'Loading' || props.chatState === 'Speaking'
+  // Always disable if Thinking or Loading
+  if (props.chatState === 'Thinking' || props.chatState === 'Loading') {
+    return true
+  }
+  // Disable Speaking state only if interruptable is false
+  if (props.chatState === 'Speaking' && props.interruptable === false) {
+    return true
+  }
+  return props.disabled || false
 }
 
 const textareaRef = ref<HTMLTextAreaElement | null>(null)

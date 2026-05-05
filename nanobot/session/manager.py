@@ -68,12 +68,16 @@ class Session:
         # Start background timeout checking task
         if self.wakeup_words:
             self._state = SessionState.STANDBY
-            self._stop_timeout_check = False
-            self._timeout_task = asyncio.create_task(
-                self._check_timeout_loop(
-                    timeout_seconds=config.timeout_seconds, check_interval=config.check_interval
+            if config.timeout_seconds > 0:
+                self._stop_timeout_check = False
+                self._timeout_task = asyncio.create_task(
+                    self._check_timeout_loop(
+                        timeout_seconds=config.timeout_seconds, check_interval=config.check_interval
+                    )
                 )
-            )
+            else:
+                self._stop_timeout_check = True
+                self._timeout_task = None
         else:
             self._state = SessionState.READY
             self._stop_timeout_check = True
@@ -191,11 +195,6 @@ class Session:
         if response:
             metadata.update({"_is_final": True, "_session_state": self._state, "_as_input": False})
 
-        # Update last activity time when in LISTEN state and received a message
-        if self._state == SessionState.READY:
-            self._last_meta = msg.metadata
-            self._last_activity_time = time.time() * 1000
-
         return {"status": self._state, "response": response, "metadata": metadata}
 
     async def check_reply(self, msg: InboundMessage) -> OutboundMessage | None:
@@ -211,6 +210,11 @@ class Session:
 
         self._default_channel = msg.channel
         self._default_chat_id = msg.chat_id
+
+        # Update last activity time when in READY state and received a message
+        if self._state == SessionState.READY:
+            self._last_meta = msg.metadata
+            self._last_activity_time = time.time() * 1000
 
         if "_warning_msg" in msg.metadata:
             msg.metadata.update(

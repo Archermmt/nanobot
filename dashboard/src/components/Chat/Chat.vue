@@ -2,6 +2,7 @@
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 import MessageList from './MessageList.vue'
 import ChatInput from './ChatInput.vue'
+import ThreejsViewer from '../Media/ThreejsViewer.vue'
 import { getAudioPlayer } from '../../js/audio/player.js'
 import { handleToolCallMessage } from '../../js/tools/tools.js'
 import WebsocketTools from '../../js/tools/websocket_tools.json'
@@ -11,7 +12,9 @@ interface Message {
   content: string
   timestamp: number
   imageUrl?: string
+  videoUrl?: string
   audioUrl?: string
+  htmlContent?: string
   media?: Array<{
     data: string
     file_name: string
@@ -23,6 +26,7 @@ interface Message {
     _hide_message?: boolean
     _progress?: boolean
     isPlayingOpus?: boolean
+    isVideoPlaying?: boolean
   }
 }
 
@@ -32,6 +36,7 @@ const props = defineProps<{
   msgHandlers?: string[]
   senderId?: string
   chatId?: string
+  interruptable?: boolean
 }>()
 
 const emit = defineEmits(['status-update', 'chat-state-change'])
@@ -39,11 +44,18 @@ const messages = ref<Message[]>([])
 const chatState = ref<string>("Waiting")
 const sessionId = ref(`session_${Date.now()}`)
 const currentAudio = ref<HTMLAudioElement | null>(null)
+const currentVideo = ref<HTMLVideoElement | null>(null)
 const chatInputRef = ref<InstanceType<typeof ChatInput> | null>(null)
+const messageListRef = ref<InstanceType<typeof MessageList> | null>(null)
 const pendingCommandsCount = ref(0)  // Track pending commands during connection
+const showHtmlDialog = ref(false)
+const currentHtmlContent = ref('')
+const showThreejsViewer = ref(false)
+const currentMeshData = ref<any>(null)
 
 // Global audio playing state shared across components
 const playingAudioUrl = ref<string | null>(null)
+const playingVideoUrl = ref<string | null>(null)
 
 // WebSocket instance (managed by App.vue)
 let ws: WebSocket | null = null
@@ -89,6 +101,12 @@ const handleWebSocketMessage = (event: MessageEvent) => {
     // Handle TTS messages for opus audio streaming
     if (data.type === 'tts') {
       handleTTSMessage(data)
+      return
+    }
+
+    // Handle Mesh messages for 3D model streaming
+    if (data.type === 'mesh') {
+      handleMeshMessage(data)
       return
     }
 
@@ -192,9 +210,11 @@ const handleWebSocketMessage = (event: MessageEvent) => {
         return  // Don't create duplicate message entry
       }
 
-      // Handle image and audio messages from media
+      // Handle image, video, audio and html messages from media
       let imageUrl: string | undefined
+      let videoUrl: string | undefined
       let audioUrl: string | undefined
+      let htmlContent: string | undefined
 
       if (data.media && data.media.length > 0) {
         const msgType = data.metadata?.msg_type
@@ -204,14 +224,31 @@ const handleWebSocketMessage = (event: MessageEvent) => {
         if (msgType === 'image' || (fileType && fileType.startsWith('image/'))) {
           // Extract image from media data
           const mediaItem = data.media[0]
-          if (mediaItem && typeof mediaItem === 'string') {
-            imageUrl = mediaItem
+          if (mediaItem && typeof mediaItem === 'object' && mediaItem.data) {
+            imageUrl = mediaItem.data
+          }
+        }
+
+        // Check if this is a video message
+        if (msgType === 'video' || (fileType && fileType.startsWith('video/'))) {
+          // Extract video from media data
+          const mediaItem = data.media[0]
+          if (mediaItem && typeof mediaItem === 'object' && mediaItem.data) {
+            videoUrl = mediaItem.data
+          }
+        }
+
+        // Check if this is an HTML message
+        if (msgType === 'html' || (fileType && fileType === 'text/html')) {
+          // Extract HTML content from media data
+          const mediaItem = data.media[0]
+          if (mediaItem && typeof mediaItem === 'object' && mediaItem.data) {
+            htmlContent = mediaItem.data
           }
         }
 
         // Check if this is an audio message
         if (msgType === 'audio' || (fileType && fileType.startsWith('audio/'))) {
-          // Extract audio from media data
           const mediaItem = data.media[0]
           if (mediaItem && typeof mediaItem === 'string') {
             // Convert base64 to blob URL for playback
@@ -235,7 +272,9 @@ const handleWebSocketMessage = (event: MessageEvent) => {
           content: data.content || 'Message received',
           timestamp: Date.now(),
           imageUrl: imageUrl,
+          videoUrl: videoUrl,
           audioUrl: audioUrl,
+          htmlContent: htmlContent,
           media: data.media,
           metadata: data.metadata
         }
@@ -244,6 +283,23 @@ const handleWebSocketMessage = (event: MessageEvent) => {
         // Auto-play audio if it's an audio message and TTS is enabled
         if (audioUrl) {
           playAudio(audioUrl)
+        }
+
+        // Auto-play video if it's a video message
+        if (videoUrl && messageListRef.value) {
+          // Call MessageList's expandVideo method to auto-expand and play the video
+          messageListRef.value.expandVideo(videoUrl)
+        }
+
+        // Auto-expand image if it's an image message
+        if (imageUrl && messageListRef.value) {
+          // Call MessageList's expandImage method to auto-expand the image
+          messageListRef.value.expandImage(imageUrl)
+        }
+
+        // Auto-show HTML dialog if it's an HTML message
+        if (htmlContent) {
+          showHtml(htmlContent)
         }
       }
 
@@ -501,6 +557,55 @@ const stopAudio = () => {
   sendMessage('/stop_audio', true)
 }
 
+const playVideo = (videoUrl: string) => {
+  if (currentVideo.value) {
+    if (currentVideo.value.src === videoUrl && !currentVideo.value.paused) {
+      currentVideo.value.pause()
+      playingVideoUrl.value = null
+      chatState.value = "Waiting"
+      return
+    }
+    currentVideo.value.pause()
+  }
+
+  currentVideo.value = document.createElement('video')
+  currentVideo.value.src = videoUrl
+  currentVideo.value.controls = true
+  currentVideo.value.play()
+  playingVideoUrl.value = videoUrl
+  chatState.value = "VideoPlaying"
+
+  currentVideo.value.onended = () => {
+    playingVideoUrl.value = null
+    chatState.value = "Waiting"
+  }
+}
+
+const stopVideo = () => {
+  if (currentVideo.value) {
+    console.log('Stopping video playback')
+    currentVideo.value.pause()
+    playingVideoUrl.value = null
+    currentVideo.value = null
+    chatState.value = "Waiting"
+  }
+}
+
+const showHtml = (htmlContent: string) => {
+  currentHtmlContent.value = htmlContent
+  showHtmlDialog.value = true
+}
+
+const closeHtmlDialog = () => {
+  showHtmlDialog.value = false
+  currentHtmlContent.value = ''
+}
+
+const closeThreejsViewer = () => {
+  showThreejsViewer.value = false
+  currentMeshData.value = null
+}
+
 // Watch for chatState changes and emit to parent
 watch(chatState, (newStatus) => {
   emit('chat-state-change', newStatus)
@@ -510,6 +615,15 @@ watch(chatState, (newStatus) => {
 watch(playingAudioUrl, (newUrl) => {
   if (newUrl) {
     chatState.value = "Speaking"
+  } else {
+    chatState.value = "Waiting"
+  }
+})
+
+// Watch for playingVideoUrl changes and update chatState
+watch(playingVideoUrl, (newUrl) => {
+  if (newUrl) {
+    chatState.value = "VideoPlaying"
   } else {
     chatState.value = "Waiting"
   }
@@ -548,6 +662,31 @@ const handleTTSMessage = async (data: any) => {
   }
 }
 
+// Handle Mesh message - streaming 3D model data
+const handleMeshMessage = async (data: any) => {
+  const state = data.state
+  if (state === 'start') {
+    console.log('🎨 3D Model streaming start')
+    showThreejsViewer.value = true
+    // Initialize with empty media array
+    currentMeshData.value = {
+      type: 'mesh',
+      chat_id: data.chat_id,
+      media: [],
+      metadata: {}
+    }
+  } else if (state === 'stop') {
+    console.log('🎨 3D Model streaming complete')
+    // Viewer will automatically render when currentMeshData changes
+  } else {
+    // This is a mesh frame/data chunk
+    console.debug('📦 Received mesh frame')
+    if (currentMeshData.value && Array.isArray(currentMeshData.value.media)) {
+      currentMeshData.value.media.push(data)
+    }
+  }
+}
+
 // Handle opus audio frame - enqueue to player
 const handleOpusAudioFrame = async (data: Blob | ArrayBuffer) => {
   if (chatState.value !== "Speaking") {
@@ -579,6 +718,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   stopAudio()
+  stopVideo()
 
   // Clear all audio when component unmounts
   if (audioPlayer) {
@@ -600,12 +740,119 @@ defineExpose({
 <template>
   <div class="flex flex-col h-full chat-container">
     <!-- Messages -->
-    <MessageList :messages="messages" :chat-state="chatState" @play-audio="playAudio" @stop-audio="stopAudio"
+    <MessageList ref="messageListRef" :messages="messages" :chat-state="chatState" @play-audio="playAudio"
+      @stop-audio="stopAudio" @play-video="playVideo" @stop-video="stopVideo" @show-html="showHtml"
       :show-progress-messages="props.showProgressMessages" :playing-audio-url="playingAudioUrl" />
 
     <!-- Input -->
     <ChatInput ref="chatInputRef" :chat-state="chatState" :disabled="!isConnected"
       :is-online-chat-on="props.isOnlineChatOn" :msg-handlers="props.msgHandlers" :messages="messages"
-      @send="sendMessage" @stop-audio="stopAudio" @recording-start="handleRecordingStart" />
+      :interruptable="props.interruptable" @send="sendMessage" @stop-audio="stopAudio"
+      @recording-start="handleRecordingStart" />
+
+    <!-- HTML Dialog Overlay -->
+    <div v-if="showHtmlDialog" class="html-dialog-overlay" @click="closeHtmlDialog">
+      <div class="html-dialog-content" @click.stop>
+        <div class="html-dialog-header">
+          <span class="html-dialog-title">🌐 HTML Preview</span>
+          <button class="html-dialog-close" @click="closeHtmlDialog" title="Close">✕</button>
+        </div>
+        <div class="html-dialog-body">
+          <iframe :srcdoc="currentHtmlContent" class="html-dialog-iframe"
+            sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
+        </div>
+      </div>
+    </div>
+
+    <!-- Three.js Viewer -->
+    <ThreejsViewer :visible="showThreejsViewer" :message-data="currentMeshData" @close="closeThreejsViewer" />
   </div>
 </template>
+
+<style scoped>
+/* HTML Dialog Styles */
+.html-dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  backdrop-filter: blur(4px);
+}
+
+.html-dialog-content {
+  background: white;
+  border-radius: 12px;
+  width: 90vw;
+  height: 90vh;
+  max-width: 1600px;
+  max-height: 900px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  animation: dialogSlideIn 0.3s ease-out;
+}
+
+@keyframes dialogSlideIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9) translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.html-dialog-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e5e7eb;
+  background: linear-gradient(to right, #f9fafb, #ffffff);
+  border-radius: 12px 12px 0 0;
+}
+
+.html-dialog-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.html-dialog-close {
+  background: transparent;
+  border: none;
+  font-size: 24px;
+  color: #6b7280;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: all 0.2s;
+  line-height: 1;
+}
+
+.html-dialog-close:hover {
+  background: #f3f4f6;
+  color: #1f2937;
+}
+
+.html-dialog-body {
+  flex: 1;
+  overflow: hidden;
+  border-radius: 0 0 12px 12px;
+}
+
+.html-dialog-iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: white;
+}
+</style>
