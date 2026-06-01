@@ -942,7 +942,6 @@ class WebSocketChannel(BaseChannel):
                 await self._send_event(
                     connection,
                     "transcribe_result",
-                    chat_id="__transcription__",
                     request_id=request_id,
                     error="missing data_url",
                 )
@@ -954,7 +953,6 @@ class WebSocketChannel(BaseChannel):
                 await self._send_event(
                     connection,
                     "transcribe_result",
-                    chat_id="__transcription__",
                     request_id=request_id,
                     error=f"invalid audio data: {error_reason}",
                 )
@@ -965,7 +963,6 @@ class WebSocketChannel(BaseChannel):
             await self._send_event(
                 connection,
                 "transcribe_result",
-                chat_id="__transcription__",
                 request_id=request_id,
                 text=transcription or "",
             )
@@ -973,7 +970,6 @@ class WebSocketChannel(BaseChannel):
             await self._send_event(
                 connection,
                 "transcribe_result",
-                chat_id="__transcription__",
                 request_id=envelope.get("request_id", ""),
                 error=f"transcription failed: {str(e)}",
             )
