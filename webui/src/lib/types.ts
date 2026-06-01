@@ -22,7 +22,7 @@ export interface UIImage {
   name?: string;
 }
 
-export type UIMediaKind = "image" | "video" | "file";
+export type UIMediaKind = "image" | "video" | "audio" | "file";
 
 export interface UIMediaAttachment {
   kind: UIMediaKind;

@@ -326,9 +326,7 @@ class MediaTool(Tool):
             }
         ]
 
-        result = self._generate_result(media_type, artifacts)
-        print(f"[TMINFO] get result {result}", flush=True)
-        return result
+        return self._generate_result(media_type, artifacts)
 
     def _generate_result(self, media_type: str, artifacts: list[dict[str, Any]]) -> str:
         """Generate structured result for media artifacts."""

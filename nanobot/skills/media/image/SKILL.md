@@ -86,6 +86,3 @@ Put a hat on the cat in `cat.png`:
 1. **ALWAYS use the `media` tool** with `media_type="image"` for all image operations. Never attempt direct LLM API calls.
 2. **Absolute paths only** - Convert all paths to absolute before calling the tool in `display` or `edit` modes.
 3. **Keep text unchanged in generate mode** - Do not change the `prompt` when generating an image.
-4. **Display generated/edited images** - After calling the `media` tool in `generate` or `edit` mode, always call the `media` tool in `display` mode to display the image.
-5. **Single Display Call Per Conversation**: During a single conversation turn, you can call the `display` mode AT MOST ONCE to send media content to the user
-6. **Display Only First Image from List**: When using `mode="list"` and multiple images are available, display ONLY the first image. Do not display multiple images in a single conversation turn

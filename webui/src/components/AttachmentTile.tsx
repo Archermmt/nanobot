@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { FileIcon, ImageIcon, PlaySquare } from "lucide-react";
+import { FileIcon, ImageIcon, PlaySquare, Volume2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { cn } from "@/lib/utils";
@@ -72,11 +72,35 @@ export function AttachmentTile({ attachment, className, inline = false, variant 
     );
   }
 
+  if (attachment.kind === "audio" && hasUrl) {
+    return (
+      <AttachmentFrame
+        attachment={attachment}
+        className={className}
+        inline={inline}
+        variant={variant}
+      >
+        <audio
+          src={attachment.url}
+          controls
+          preload="auto"
+          className={cn(
+            "block w-full",
+            variant === "compact" ? "max-w-[20rem]" : "max-w-[32rem]",
+          )}
+          aria-label={attachment.name ? `${t("message.audioAttachment", { defaultValue: "Audio attachment" })}: ${attachment.name}` : t("message.audioAttachment", { defaultValue: "Audio attachment" })}
+        />
+      </AttachmentFrame>
+    );
+  }
+
   const Icon = attachment.kind === "video"
     ? PlaySquare
-    : attachment.kind === "image"
-      ? ImageIcon
-      : FileIcon;
+    : attachment.kind === "audio"
+      ? Volume2
+      : attachment.kind === "image"
+        ? ImageIcon
+        : FileIcon;
   const body = (
     <>
       <Icon className="h-4 w-4 flex-none" aria-hidden />
@@ -141,8 +165,10 @@ function AttachmentFrame({
     "border border-border/60 bg-muted/40",
     attachment.kind === "image" && "bg-background/85",
     attachment.kind === "video" ? "w-[min(100%,32rem)]" : "",
+    attachment.kind === "audio" ? "w-[min(100%,32rem)]" : "",
     variant === "compact" && "my-1 rounded-xl shadow-none",
     variant === "compact" && attachment.kind === "video" && "w-[min(100%,20rem)]",
+    variant === "compact" && attachment.kind === "audio" && "w-[min(100%,20rem)]",
     className,
   );
   const bodyClassName = "block max-w-full";
@@ -165,6 +191,9 @@ function AttachmentFrame({
 function attachmentLabel(attachment: UIMediaAttachment, t: ReturnType<typeof useTranslation>["t"]): string {
   if (attachment.kind === "video") {
     return t("message.videoAttachment", { defaultValue: "Video attachment" });
+  }
+  if (attachment.kind === "audio") {
+    return t("message.audioAttachment", { defaultValue: "Audio attachment" });
   }
   if (attachment.kind === "image") {
     return t("message.imageAttachment", { defaultValue: "Image attachment" });

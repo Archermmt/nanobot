@@ -47,27 +47,26 @@ When you need to work with media, follow this decision tree:
 - **Create video from text**: `mode="generate"`
 - **Modify existing video**: `mode="edit"` (currently not supported)
 
-## Common Workflow Patterns
+## Important Rules
 
-### Pattern 1: List and Select
+**Media Display Priority**: When users request to show/display media (images, videos, audio), **always** follow this priority order:
+1. **First**: Use `list` mode to find existing media files that match the request
+2. **Second**: Use `display` mode to show the found media file
+3. **Last resort**: Only use `generate` mode if no suitable existing media is found
+
+**Example workflow for "Show me a picture of sunset":**
 ```json
-// Step 1: List available media files
+// Step 1: List existing images
 {"name": "media", "arguments": {"media_type": "image", "mode": "list"}}
 
-// Step 2: After user selects a file, display it
-{"name": "media", "arguments": {"media_type": "image", "mode": "display", "media_path": "/path/to/selected.png"}}
+// Step 2: If matching file found (e.g., sunset.jpg)
+{"name": "media", "arguments": {"media_type": "image", "mode": "display", "media_path": "/path/to/sunset.jpg"}}
+
+// Step 3: ONLY if no matching file exists, then generate
+{"name": "media", "arguments": {"media_type": "image", "mode": "generate", "prompt": "sunset", "media_path": "sunset_generated.png"}}
 ```
 
-### Pattern 2: Generate and Display
-```json
-// Step 1: Generate media
-{"name": "media", "arguments": {"media_type": "image", "mode": "generate", "prompt": "A beautiful sunset", "media_path": "sunset.png"}}
-
-// Step 2: Always display the generated media
-{"name": "media", "arguments": {"media_type": "image", "mode": "display", "media_path": "/absolute/path/to/sunset.png"}}
-```
-
-## Important Rules
+This prevents unnecessary generation when suitable media already exists.
 
 1. **Always use the correct media_type**:
    - Never mix up media types (e.g., don't use `media_type="image"` for audio files)
@@ -76,43 +75,16 @@ When you need to work with media, follow this decision tree:
    - `display`, and `edit` modes, always convert paths to absolute paths
    - For `generate` mode, use relative filenames
 
-3. **Display after generation**:
-   - After generating images or videos, ALWAYS call `display` mode to show the result to the user
-
-4. **Read detailed skill documentation**:
+3. **Read detailed skill documentation**:
    - For specific parameter details and advanced usage, read the individual skill files:
      - [Image Skill](./image/SKILL.md) - Complete guide for image operations
      - [Music Skill](./music/SKILL.md) - Complete guide for audio operations
      - [Video Skill](./video/SKILL.md) - Complete guide for video operations
 
-5. **Supported formats**:
+4. **Supported formats**:
    - Images: PNG, JPG, JPEG, GIF, WEBP, BMP, SVG
    - Audio: MP3, WAV, OGG, AAC, FLAC, M4A, WMA
    - Videos: MP4, AVI, MOV, MKV, WEBM
-
-## Examples by Use Case
-
-### "Show me a picture of X"
-→ Use image generate + display
-```json
-{"name": "media", "arguments": {"media_type": "image", "mode": "generate", "prompt": "X", "media_path": "x_image.png"}}
-{"name": "media", "arguments": {"media_type": "image", "mode": "display", "media_path": "/absolute/path/x_image.png"}}
-```
-
-### "Play some music"
-→ First list available audio, then display selected
-```json
-{"name": "media", "arguments": {"media_type": "audio", "mode": "list"}}
-// After selection:
-{"name": "media", "arguments": {"media_type": "audio", "mode": "display", "media_path": "/path/to/song.mp3"}}
-```
-
-### "Create a video of X"
-→ Use video generate + display
-```json
-{"name": "media", "arguments": {"media_type": "video", "mode": "generate", "prompt": "X", "media_path": "x_video.mp4"}}
-{"name": "media", "arguments": {"media_type": "video", "mode": "display", "media_path": "/absolute/path/x_video.mp4"}}
-```
 
 ## When to Read Detailed Documentation
 
@@ -123,9 +95,3 @@ Read the specific skill documentation when you need:
 - Mode-specific constraints and best practices
 
 **Remember**: This master guide helps you choose the right tool and mode. For detailed implementation, always refer to the specific skill documentation.
-
-## Important Rules
-
-1. **Single Display Call Per Conversation**: During a single conversation turn, you can call the `display` mode AT MOST ONCE to send media content to the user
-
-2. **Display Only First Item from List**: When using `mode="list"` and multiple media files are available (images, videos, or audio), display or play ONLY the first item. Do not display or play multiple media files in a single conversation turn

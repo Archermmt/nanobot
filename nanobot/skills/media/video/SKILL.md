@@ -84,6 +84,3 @@ Create a video with background music:
 1. **ALWAYS use the `media` tool** with `media_type="video"` for all video operations. Never attempt direct LLM API calls.
 2. **Absolute paths only** - Convert all paths to absolute before calling the tool in `display` mode.
 3. **Keep text unchanged in generate mode** - Do not change the `prompt` when generating a video.
-4. **Display generated videos** - After calling the `media` tool in `generate` mode, always call the `media` tool in `display` mode to display the video.
-5. **Single Display Call Per Conversation**: During a single conversation turn, you can call the `display` mode AT MOST ONCE to send media content to the user
-6. **Display Only First Video from List**: When using `mode="list"` and multiple videos are available, display ONLY the first video. Do not display multiple videos in a single conversation turn
