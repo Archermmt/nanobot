@@ -145,6 +145,9 @@ class ChannelManager:
 
     def _resolve_transcription_key(self, provider: str) -> str:
         """Pick the API key for the configured transcription provider."""
+        override = getattr(self.config.channels, "transcription_api_key", None)
+        if override:
+            return override
         try:
             if provider == "openai":
                 return self.config.providers.openai.api_key
@@ -154,6 +157,9 @@ class ChannelManager:
 
     def _resolve_transcription_base(self, provider: str) -> str:
         """Pick the API base URL for the configured transcription provider."""
+        override = getattr(self.config.channels, "transcription_base_url", None)
+        if override:
+            return override
         try:
             if provider == "openai":
                 return self.config.providers.openai.api_base or ""

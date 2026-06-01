@@ -124,6 +124,8 @@ async def webm_to_wav_async(
             stderr=asyncio.subprocess.PIPE,
         )
 
+        await process.communicate()
+
         if process.returncode != 0:
             return None
 
@@ -135,11 +137,11 @@ async def webm_to_wav_async(
         return wav_io
     except FileNotFoundError:
         return None
-    except Exception as e:
+    except Exception:
         return None
     finally:
-        # Cleanup temporary files
-        if in_path and os.path.exists(in_path):
+        # Only unlink the input if it was a temporary file we created from audio_bytes
+        if audio_bytes is not None and in_path and os.path.exists(in_path):
             os.unlink(in_path)
         if not output_file and out_path and os.path.exists(out_path):
             os.unlink(out_path)
