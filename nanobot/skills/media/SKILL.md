@@ -1,6 +1,6 @@
 ---
 name: media
-description: Master guide for all media operations including images, audio, videos, and HTML. Provides unified access to analyze, display, generate, edit media files, and render HTML content using the media tool with appropriate media_type parameter.
+description: Master guide for all media operations including images, audio, and videos. Provides unified access to list, display, generate, and edit media files using the media tool with appropriate media_type parameter.
 metadata: {"nanobot":{"emoji":"🎨"}}
 ---
 
@@ -10,19 +10,15 @@ This is the master guide for all media-related operations in nanobot. It provide
 
 ## Overview
 
-The media system supports five types of media:
-- **Images** 🖼️ - Analysis, display, generation, and editing
+The media system supports three types of media:
+- **Images** 🖼️ - Listing, display, generation, and editing
 - **Audio** 🎵 - Listing and playback
-- **Videos** 🎬 - Analysis, display, generation, and editing
-- **HTML** 🌐 - Listing and rendering HTML content
-- **3D Mesh** 🧊 - Listing 3D mesh model files
+- **Videos** 🎬 - Listing, display, generation, and editing
 
 All media operations use the same `media` tool but with different `media_type` parameters:
 - `"image"` for image operations
 - `"audio"` for audio operations
 - `"video"` for video operations
-- `"html"` for HTML content rendering
-- `"mesh"` for 3D mesh model display
 
 ## Quick Decision Guide
 
@@ -32,8 +28,6 @@ When you need to work with media, follow this decision tree:
 - **Image** → Use `media_type="image"`, see [Image Skill](./image/SKILL.md)
 - **Audio** → Use `media_type="audio"`, see [Music Skill](./music/SKILL.md)
 - **Video** → Use `media_type="video"`, see [Video Skill](./video/SKILL.md)
-- **HTML** → Use `media_type="html"`, see details below
-- **3D Mesh** → Use `media_type="mesh"`, see details below
 
 ### 2. What operation?
 
@@ -53,13 +47,6 @@ When you need to work with media, follow this decision tree:
 - **Create video from text**: `mode="generate"`
 - **Modify existing video**: `mode="edit"` (currently not supported)
 
-#### For HTML (`media_type="html"`):
-- **List available HTML files**: `mode="list"`
-- **Render HTML content**: `mode="display"`
-
-#### For 3D Mesh (`media_type="mesh"`):
-- **List available mesh files**: `mode="list"`
-
 ## Common Workflow Patterns
 
 ### Pattern 1: List and Select
@@ -67,7 +54,7 @@ When you need to work with media, follow this decision tree:
 // Step 1: List available media files
 {"name": "media", "arguments": {"media_type": "image", "mode": "list"}}
 
-// Step 2: After user selects a file, display or analyze it
+// Step 2: After user selects a file, display it
 {"name": "media", "arguments": {"media_type": "image", "mode": "display", "media_path": "/path/to/selected.png"}}
 ```
 
@@ -78,11 +65,6 @@ When you need to work with media, follow this decision tree:
 
 // Step 2: Always display the generated media
 {"name": "media", "arguments": {"media_type": "image", "mode": "display", "media_path": "/absolute/path/to/sunset.png"}}
-```
-
-### Pattern 3: Analyze Media
-```json
-// Analyze image/video content
 ```
 
 ## Important Rules
@@ -107,8 +89,6 @@ When you need to work with media, follow this decision tree:
    - Images: PNG, JPG, JPEG, GIF, WEBP, BMP, SVG
    - Audio: MP3, WAV, OGG, AAC, FLAC, M4A, WMA
    - Videos: MP4, AVI, MOV, MKV, WEBM
-   - HTML: HTML, HTM
-   - 3D Mesh: STL, 3MF, OBJ, FBX, GLTF, GLB (with texture support via companion directories)
 
 ## Examples by Use Case
 
@@ -117,9 +97,6 @@ When you need to work with media, follow this decision tree:
 ```json
 {"name": "media", "arguments": {"media_type": "image", "mode": "generate", "prompt": "X", "media_path": "x_image.png"}}
 {"name": "media", "arguments": {"media_type": "image", "mode": "display", "media_path": "/absolute/path/x_image.png"}}
-```
-
-### "What's in this image?"
 ```
 
 ### "Play some music"
@@ -137,22 +114,6 @@ When you need to work with media, follow this decision tree:
 {"name": "media", "arguments": {"media_type": "video", "mode": "display", "media_path": "/absolute/path/x_video.mp4"}}
 ```
 
-### "Show me an HTML page"
-→ List available HTML files, then display selected
-```json
-{"name": "media", "arguments": {"media_type": "html", "mode": "list"}}
-// After selection:
-{"name": "media", "arguments": {"media_type": "html", "mode": "display", "media_path": "/path/to/page.html"}}
-```
-
-### "Show me a 3D model"
-→ List available mesh files
-```json
-{"name": "media", "arguments": {"media_type": "mesh", "mode": "list"}}
-```
-
-**Note**: Currently only listing mesh files is supported. Display functionality is not yet implemented.
-
 ## When to Read Detailed Documentation
 
 Read the specific skill documentation when you need:
@@ -167,8 +128,4 @@ Read the specific skill documentation when you need:
 
 1. **Single Display Call Per Conversation**: During a single conversation turn, you can call the `display` mode AT MOST ONCE to send media content to the user
 
-2. **Mesh Model File Selection**: When you need to use 3D mesh model files, ALWAYS use the media tool with `media_type="mesh"` and `mode="list"` to find available mesh files first. The media tool will list all available mesh files (STL, 3MF, OBJ, FBX, GLTF, GLB formats) that can be used for 3D rendering
-
-3. **Display Only First Item from List**: When using `mode="list"` and multiple media files are available (images, videos, or audio), display or play ONLY the first item. Do not display or play multiple media files in a single conversation turn
-
-4. **Mesh File Display Requires Three.js Skill**: To display 3D mesh model files, you MUST use the `threejs` skill for 3D scene modeling and implementation. The media tool only supports listing mesh files; actual rendering and display must be handled through the threejs skill
+2. **Display Only First Item from List**: When using `mode="list"` and multiple media files are available (images, videos, or audio), display or play ONLY the first item. Do not display or play multiple media files in a single conversation turn

@@ -1,16 +1,16 @@
 ---
 name: image
-description: Unified tool for analyzing and displaying images. Supports three modes?: display for showing images to users, generate for creating images from text prompts, and edit for modifying existing images based on reference images.
+description: Unified tool for listing, displaying, generating, and editing images. Supports four modes: list for showing available images, display for showing images to users, generate for creating images from text prompts, and edit for modifying existing images based on reference images.
 metadata: {"nanobot":{"emoji":"🖼️"}}
 ---
 
 # Image Skill
 
-Unified tool for analyzing and displaying images using the `media` tool with `media_type="image"`. Supports three modes?: display, image generation from text prompts, and editing images with reference images.
+Unified tool for listing, displaying, generating, and editing images using the `media` tool with `media_type="image"`. Supports four modes: list, display, image generation from text prompts, and editing images with reference images.
 
 ## Features
 
-- Analyze images using multimodal LLM models (OCR, description, visual QA)
+- List all available image files in the media directory
 - Display images to users by sending them to the frontend
 - Generate images from text prompts using AI models
 - Edit images based on reference images and text prompts
@@ -25,7 +25,7 @@ The image skill uses the `media` tool. When using this tool, the `media_type` pa
 - `media_type` (string): Must be `"image"` for all image operations.
 - `mode` (string): The operation mode.
   - `list`: List all available image files in the media directory.
-    - `display`: Show an image to the user.
+  - `display`: Show an image to the user.
   - `generate`: Create an image from a text prompt.
   - `edit`: Modify an existing image based on a text prompt and a reference image.
 - `media_path` (string):

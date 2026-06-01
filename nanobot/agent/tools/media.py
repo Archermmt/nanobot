@@ -7,8 +7,6 @@ import base64
 import json
 import mimetypes
 import os
-import re
-import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -24,21 +22,17 @@ from nanobot.agent.tools.schema import (
 )
 from nanobot.config.paths import get_media_dir
 from nanobot.config.schema import Base
-from nanobot.providers.image_generation import (
-    ImageGenerationError,
-    get_image_gen_provider,
-)
+from nanobot.providers.image_generation import ImageGenerationError, get_image_gen_provider
 from nanobot.security.workspace_access import current_tool_workspace
 from nanobot.security.workspace_policy import WorkspaceBoundaryError, resolve_allowed_path
 from nanobot.utils.artifacts import (
     ArtifactError,
-    generated_image_tool_result,
     store_generated_image_artifact,
+    store_generated_video_artifact,
 )
 from nanobot.utils.helpers import detect_image_mime
 
 if TYPE_CHECKING:
-    from nanobot.bus.events import OutboundMessage
     from nanobot.config.schema import ProviderConfig
 
 
@@ -140,18 +134,10 @@ class MediaTool(Tool):
         workspace: str | Path,
         config: MediaToolConfig,
         image_provider_configs: dict[str, ProviderConfig] | None = None,
-        send_callback: Any = None,
-        default_channel: str = "",
-        default_chat_id: str = "",
-        default_message_id: str | None = None,
     ) -> None:
         self.workspace = Path(workspace).expanduser()
         self.config = config
         self.image_provider_configs = image_provider_configs or {}
-        self._send_callback = send_callback
-        self._default_channel = default_channel
-        self._default_chat_id = default_chat_id
-        self._default_message_id = default_message_id
 
     @property
     def name(self) -> str:
@@ -174,23 +160,8 @@ class MediaTool(Tool):
             "- audio: List or display audio files\n"
             "  * list: List all available audio files in the media directory\n"
             "  * display: Play an audio file by sending it as media\n"
-            "- html: List or display HTML content\n"
-            "  * list: List all available HTML files in the media directory\n"
-            "  * display: Render HTML content in a dialog window\n"
-            "- mesh: List 3D mesh files (STL, 3MF, etc.)\n"
-            "  * list: List all available mesh files in the media directory\n"
             "The media_type parameter determines which type of media to process."
         )
-
-    def set_context(self, channel: str, chat_id: str, message_id: str | None = None) -> None:
-        """Set the current message context."""
-        self._default_channel = channel
-        self._default_chat_id = chat_id
-        self._default_message_id = message_id
-
-    def set_send_callback(self, callback: Any) -> None:
-        """Set the callback for sending messages."""
-        self._send_callback = callback
 
     def _provider_client(self, media_type: str) -> Any:
         if media_type == "image":
@@ -341,93 +312,37 @@ class MediaTool(Tool):
 
     async def _execute_display(self, media_path: str, media_type: str) -> str:
         """Execute media display."""
-        if not self._send_callback:
-            return "Error: Message sending not configured"
-
         media_path_obj = self._get_media_path(media_path, media_type)
         if not media_path_obj.exists():
             return f"Error: Media file not found: {media_path_obj}"
 
-        media_path_str = str(media_path_obj)
-        file_content = self._get_media_data(media_path_str)
+        # Return artifact result similar to generated_image_tool_result
+        artifacts = [
+            {
+                "type": media_type,
+                "path": str(media_path_obj),
+                "mime_type": mimetypes.guess_type(str(media_path_obj))[0]
+                or "application/octet-stream",
+            }
+        ]
 
-        # Process special type
-        if media_type == "html":
-            file_content = self._process_html_content(file_content)
+        result = self._generate_result(media_type, artifacts)
+        print(f"[TMINFO] get result {result}", flush=True)
+        return result
 
-        media_data = {"data": file_content, "file_name": media_path_str}
-        msg = OutboundMessage(
-            channel=self._default_channel,
-            chat_id=self._default_chat_id,
-            content=f"Display {media_type}: {media_path_str}",
-            media=[media_data],
-            metadata={
-                "msg_type": media_type,
-                "file_type": mimetypes.guess_type(media_path_str)[0] or "application/octet-stream",
+    def _generate_result(self, media_type: str, artifacts: list[dict[str, Any]]) -> str:
+        """Generate structured result for media artifacts."""
+        return json.dumps(
+            {
+                "artifacts": artifacts,
+                "next_step": (
+                    f"Use this {media_type} artifact path in the message tool's media parameter "
+                    f"to deliver the {media_type} to the user. Keep raw paths internal unless the "
+                    "user asks for debug details."
+                ),
             },
+            ensure_ascii=False,
         )
-        await self._send_callback(msg)
-        return f"Success displayed {media_type}: {media_path_str}"
-
-    def _process_html_content(self, html_content: str) -> str:
-        """Process file paths in HTML content."""
-        project_root = Path(__file__).parent.parent.parent.parent
-        public_dir = project_root / "dashboard" / "public"
-        public_dir.mkdir(parents=True, exist_ok=True)
-
-        file_extensions = r"\.(stl|3mf|obj|fbx|gltf|glb|png|jpg|jpeg|gif|webp|bmp|svg|mp4|avi|mov|mkv|webm|mp3|wav|ogg|aac|flac|m4a|wma|html|htm|css|js|json|txt)"
-        path_pattern = re.compile(
-            r'["\']?([A-Za-z]:)?(/[A-Za-z0-9_./-]+)' + file_extensions + r'["\']?', re.IGNORECASE
-        )
-
-        def _cleanup_public_directory(public_dir: Path) -> None:
-            """Clean up public directory to maintain maximum of 20 files."""
-            max_files = 20
-            files = [f for f in public_dir.iterdir() if f.is_file()]
-            if len(files) <= max_files:
-                return
-            files.sort(key=lambda f: f.stat().st_mtime)
-            files_to_remove = len(files) - max_files
-            for file in files[:files_to_remove]:
-                try:
-                    file.unlink()
-                except Exception:
-                    pass
-
-        def _replace_path(match):
-            """Replace a file path with relative path and copy file to public directory."""
-            original_path = match.group(0)
-            file_path = (match.group(1) or "") + match.group(2) + "." + match.group(3)
-            file_path = file_path.strip('"').strip("'")
-            path_obj = Path(file_path)
-
-            if not path_obj.is_absolute() or not path_obj.exists():
-                return original_path
-
-            file_name = path_obj.name
-            _cleanup_public_directory(public_dir)
-
-            dest_path = public_dir / file_name
-            if not dest_path.exists():
-                try:
-                    shutil.copy2(path_obj, dest_path)
-                except Exception:
-                    return original_path
-
-            return f"'/{file_name}'"
-
-        processed_content = path_pattern.sub(_replace_path, html_content)
-
-        try:
-            media_dir = get_media_dir() / "html"
-            media_dir.mkdir(parents=True, exist_ok=True)
-            temp_file = media_dir / "temp.html"
-            with open(temp_file, "w", encoding="utf-8") as f:
-                f.write(processed_content)
-        except Exception:
-            pass
-
-        return processed_content
 
     async def _execute_image(
         self,
@@ -526,7 +441,7 @@ class MediaTool(Tool):
                     artifacts.append(artifact)
                     if len(artifacts) >= requested:
                         break
-            return generated_image_tool_result(artifacts)
+            return self._generate_result("image", artifacts)
         except (ArtifactError, ImageGenerationError, OSError) as exc:
             return f"Error: {exc}"
 
@@ -549,9 +464,7 @@ class MediaTool(Tool):
         """Execute video operations."""
         video_path_obj = self._get_media_path(video_path or "generated.mp4", "video")
 
-        if mode == "display":
-            return await self._execute_video_display(video_path=video_path_obj, **kwargs)
-        elif mode == "generate":
+        if mode == "generate":
             if not video_path_obj.exists():
                 video_path_obj = media_dir / "generated.mp4" if media_dir else video_path_obj
             return await self._dashscope_video_generate(
@@ -692,7 +605,18 @@ class MediaTool(Tool):
                         with open(save_path, "wb") as f:
                             f.write(video_response.content)
 
-                    return f"Video generated successfully, saved to {save_path}"
+                    # Store video as artifact and return structured result
+                    try:
+                        model_name = os.getenv("DASHSCOPE_VIDEO_GEN_MODEL", "wan2.7-t2v")
+                        artifact = store_generated_video_artifact(
+                            video_path,
+                            prompt=prompt,
+                            model=model_name,
+                            provider="dashscope",
+                        )
+                        return self._generate_result("video", [artifact])
+                    except ArtifactError as exc:
+                        return f"Error: {exc}"
 
                 elif task_status == "FAILED":
                     error_code = task_result.get("output", {}).get("code", "unknown")
