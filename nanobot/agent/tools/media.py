@@ -443,29 +443,14 @@ class MediaTool(Tool):
         elif mode == "edit":
             if not ref_media:
                 return "Error: ref_media is required for image editing."
-            access = current_tool_workspace(self.workspace, restrict_to_workspace=True)
-            workspace = access.project_path or self.workspace
             try:
-                resolved = resolve_allowed_path(
-                    ref_media,
-                    workspace=workspace,
-                    allowed_root=access.allowed_root,
-                    extra_allowed_roots=[get_media_dir()]
-                    if access.allowed_root is not None
-                    else None,
-                    strict=True,
-                )
-            except (WorkspaceBoundaryError, OSError):
-                return f"Error: Reference image not found or not accessible: {ref_media}"
-            if not resolved.is_file():
-                return f"Error: Reference image is not a file: {ref_media}"
-            raw = resolved.read_bytes()
-            if detect_image_mime(raw) is None:
-                return f"Error: Unsupported reference image format: {ref_media}"
+                resolved_ref = self._resolve_reference_image(ref_media)
+            except ImageGenerationError as e:
+                return f"Error: {e}"
 
             return await self._execute_image_generate(
                 prompt=prompt,
-                reference_images=[str(resolved)],
+                reference_images=[resolved_ref],
                 aspect_ratio=None,
                 image_size=size,
                 media_path=media_path,
@@ -487,11 +472,10 @@ class MediaTool(Tool):
         if client is None:
             return f"Error: unsupported media provider '{self.config.media_provider}'"
         try:
-            refs = self._resolve_reference_images(reference_images)
             response = await client.generate(
                 prompt=prompt,
                 model=self.config.image_model,
-                reference_images=refs,
+                reference_images=reference_images,
                 aspect_ratio=aspect_ratio,
                 image_size=image_size or self.config.default_image_size,
             )
@@ -500,7 +484,7 @@ class MediaTool(Tool):
                 response.images[0],
                 prompt=prompt,
                 model=self.config.image_model or "",
-                source_images=refs,
+                source_images=reference_images,
                 provider=self.config.media_provider,
                 media_path=media_path if media_path else None,
             )
