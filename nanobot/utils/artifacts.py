@@ -15,6 +15,7 @@ from nanobot.config.paths import get_media_dir
 from nanobot.utils.helpers import detect_image_mime, ensure_dir
 
 _DATA_IMAGE_RE = re.compile(r"^data:(image/[A-Za-z0-9.+-]+);base64,(.*)$", re.DOTALL)
+_DATA_VIDEO_RE = re.compile(r"^data:(video/[A-Za-z0-9.+-]+);base64,(.*)$", re.DOTALL)
 _MIME_EXTENSIONS = {
     "image/png": ".png",
     "image/jpeg": ".jpg",
@@ -53,6 +54,25 @@ def decode_image_data_url(data_url: str) -> tuple[bytes, str]:
         raise ArtifactError("unsupported or unrecognized image data")
     if declared_mime != detected_mime:
         declared_mime = detected_mime
+    return raw, declared_mime
+
+
+def decode_video_data_url(data_url: str) -> tuple[bytes, str]:
+    """Decode a base64 video data URL and return ``(bytes, mime)``."""
+    match = _DATA_VIDEO_RE.match(data_url.strip())
+    if match is None:
+        raise ArtifactError("expected a base64 video data URL")
+
+    declared_mime, encoded = match.groups()
+    try:
+        raw = base64.b64decode(encoded, validate=True)
+    except binascii.Error as exc:
+        raise ArtifactError("invalid base64 video payload") from exc
+
+    # Validate that the MIME type is a supported video format
+    if declared_mime not in _VIDEO_MIME_EXTENSIONS:
+        raise ArtifactError(f"unsupported video MIME type: {declared_mime}")
+
     return raw, declared_mime
 
 
@@ -107,59 +127,6 @@ def store_generated_image_artifact(
         "model": model,
         "provider": provider,
         "source_images": list(source_images or []),
-        "created_at": now.isoformat(),
-    }
-    metadata_path.write_text(
-        json.dumps(metadata, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
-    return metadata
-
-
-def store_generated_video_artifact(
-    video_path: Path,
-    *,
-    prompt: str,
-    model: str,
-    save_dir: str = "generated",
-    provider: str = "dashscope",
-    created_at: datetime | None = None,
-) -> dict[str, Any]:
-    """Persist a generated video and sidecar metadata under the media root."""
-    # Determine MIME type based on file extension
-    suffix = video_path.suffix.lower()
-    mime_type_map = {
-        ".mp4": "video/mp4",
-        ".avi": "video/avi",
-        ".mov": "video/mov",
-        ".wmv": "video/wmv",
-        ".flv": "video/flv",
-        ".mkv": "video/mkv",
-    }
-    mime = mime_type_map.get(suffix, "video/mp4")  # Default to mp4
-
-    ext = _VIDEO_MIME_EXTENSIONS.get(mime)
-    if ext is None:
-        raise ArtifactError(f"unsupported video MIME type: {mime}")
-
-    now = created_at or datetime.now().astimezone()
-    day_dir = ensure_dir(_artifact_root(save_dir) / now.strftime("%Y-%m-%d"))
-    artifact_id = f"vid_{uuid.uuid4().hex[:12]}"
-    video_file_path = day_dir / f"{artifact_id}{ext}"
-    metadata_path = day_dir / f"{artifact_id}.json"
-
-    # Copy the video file to the artifact directory
-    import shutil
-
-    shutil.copy2(video_path, video_file_path)
-
-    metadata: dict[str, Any] = {
-        "id": artifact_id,
-        "path": str(video_file_path),
-        "mime": mime,
-        "prompt": prompt,
-        "model": model,
-        "provider": provider,
         "created_at": now.isoformat(),
     }
     metadata_path.write_text(

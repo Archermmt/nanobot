@@ -2,15 +2,13 @@
 
 from __future__ import annotations
 
-import asyncio
-import base64
 import json
 import mimetypes
 import os
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-import httpx
 from pydantic import Field
 
 from nanobot.agent.tools.base import Tool, tool_parameters
@@ -23,13 +21,10 @@ from nanobot.agent.tools.schema import (
 from nanobot.config.paths import get_media_dir
 from nanobot.config.schema import Base
 from nanobot.providers.image_generation import ImageGenerationError, get_image_gen_provider
+from nanobot.providers.video_generation import get_video_gen_provider
 from nanobot.security.workspace_access import current_tool_workspace
 from nanobot.security.workspace_policy import WorkspaceBoundaryError, resolve_allowed_path
-from nanobot.utils.artifacts import (
-    ArtifactError,
-    store_generated_image_artifact,
-    store_generated_video_artifact,
-)
+from nanobot.utils.artifacts import ArtifactError
 from nanobot.utils.helpers import detect_image_mime
 
 if TYPE_CHECKING:
@@ -45,8 +40,9 @@ class MediaToolConfig(Base):
     default_video_resolution: str = "1080P"
     default_video_ratio: str = "16:9"
     default_video_duration: int = Field(default=5, ge=2, le=15)
-    image_provider: str = "dashscope"
-    video_provider: str = "dashscope"
+    media_provider: str = "dashscope"
+    image_model: str | None = None
+    video_model: str | None = None
 
 
 @tool_parameters(
@@ -72,11 +68,6 @@ class MediaToolConfig(Base):
         ),
         negative_prompt=StringSchema(
             "[Optional for image/video generate] Negative prompt describing what should NOT appear. Max 500 characters.",
-        ),
-        count=IntegerSchema(
-            description="[Optional for image generate] Number of images to generate (1-6). Default is 1.",
-            minimum=1,
-            maximum=6,
         ),
         prompt_extend=BooleanSchema(
             description="[Optional for image/video generate] Enable AI-powered prompt enhancement. Default is true.",
@@ -165,8 +156,11 @@ class MediaTool(Tool):
 
     def _provider_client(self, media_type: str) -> Any:
         if media_type == "image":
-            provider = self.image_provider_configs.get(self.config.image_provider)
-            cls = get_image_gen_provider(self.config.image_provider)
+            provider = self.image_provider_configs.get(self.config.media_provider)
+            cls = get_image_gen_provider(self.config.media_provider)
+        elif media_type == "video":
+            provider = self.image_provider_configs.get(self.config.media_provider)
+            cls = get_video_gen_provider(self.config.media_provider)  # TODO: Fix this
         else:
             provider = None
             cls = None
@@ -206,6 +200,79 @@ class MediaTool(Tool):
             return []
         return [self._resolve_reference_image(value) for value in values if value]
 
+    def store_artifacts(
+        self,
+        media_type: str,
+        data_url: str,
+        *,
+        prompt: str = "",
+        model: str = "",
+        source_images: list[str] | None = None,
+        provider: str = "openrouter",
+        created_at: datetime | None = None,
+        media_path: str | None = None,
+    ) -> dict[str, Any]:
+        """Store generated media artifacts.
+
+        Args:
+            media_type: Type of media (image, video, etc.)
+            data_url: Data URL containing the media content
+            prompt: Generation prompt
+            model: Model used for generation
+            source_images: List of source/reference images
+            provider: Provider used for generation
+            created_at: Creation timestamp
+            media_path: Path to save the media file. If not provided, auto-generates path.
+
+        Returns:
+            Metadata dictionary with id, path, mime, and other info
+        """
+        from nanobot.utils.artifacts import (
+            ArtifactError,
+            decode_image_data_url,
+            decode_video_data_url,
+        )
+
+        now = created_at or datetime.now().astimezone()
+        art_path = Path(media_path)
+        art_path.parent.mkdir(parents=True, exist_ok=True)
+        metadata_path = art_path.with_suffix(".json")
+        # Create metadata
+        metadata: dict[str, Any] = {
+            "id": art_path.stem,
+            "path": str(media_path),
+            "prompt": prompt,
+            "model": model,
+            "provider": provider,
+            "source_images": list(source_images or []),
+            "created_at": now.isoformat(),
+        }
+
+        if media_type == "image":
+            from nanobot.utils.artifacts import _MIME_EXTENSIONS
+
+            raw, mime = decode_image_data_url(data_url)
+            ext = _MIME_EXTENSIONS.get(mime)
+            if ext is None:
+                raise ArtifactError(f"unsupported image MIME type: {mime}")
+        elif media_type == "video":
+            # For video, we need to decode the data URL and save it first
+            from nanobot.utils.artifacts import _VIDEO_MIME_EXTENSIONS
+
+            raw, mime = decode_video_data_url(data_url)
+            ext = _VIDEO_MIME_EXTENSIONS.get(mime)
+            if ext is None:
+                raise ArtifactError(f"unsupported video MIME type: {mime}")
+        else:
+            raise ValueError(f"Unsupported media type: {media_type}")
+        # Write the media data
+        art_path.write_bytes(raw)
+        metadata["mime"] = mime
+        metadata_path.write_text(
+            json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        return metadata
+
     async def execute(
         self,
         media_type: str,
@@ -214,7 +281,6 @@ class MediaTool(Tool):
         media_path: str = "",
         size: str | None = None,
         negative_prompt: str = "",
-        count: int | None = None,
         prompt_extend: bool = True,
         watermark: bool = False,
         ref_media: str | None = None,
@@ -234,13 +300,17 @@ class MediaTool(Tool):
         media_dir = get_media_dir() / media_type
         media_dir.mkdir(parents=True, exist_ok=True)
 
+        # If media_path is not absolute, prepend media_dir
+        if media_path and not Path(media_path).is_absolute():
+            media_path = str(media_dir / media_path)
+
         if media_type == "image":
             return await self._execute_image(
                 mode=mode,
                 prompt=prompt,
                 size=size or self.config.default_image_size,
-                count=count,
                 ref_media=ref_media,
+                media_path=media_path,
                 **kwargs,
             )
         elif media_type == "video":
@@ -316,17 +386,25 @@ class MediaTool(Tool):
         if not media_path_obj.exists():
             return f"Error: Media file not found: {media_path_obj}"
 
-        # Return artifact result similar to generated_image_tool_result
         artifacts = [
             {
                 "type": media_type,
                 "path": str(media_path_obj),
-                "mime_type": mimetypes.guess_type(str(media_path_obj))[0]
-                or "application/octet-stream",
+                "mime": mimetypes.guess_type(str(media_path_obj))[0] or "application/octet-stream",
             }
         ]
 
-        return self._generate_result(media_type, artifacts)
+        return json.dumps(
+            {
+                "artifacts": artifacts,
+                "next_step": (
+                    f"You MUST immediately call the message tool now. "
+                    f"Pass the artifact path in the media parameter to deliver the {media_type} to the user. "
+                    "Do not reply with text alone — the user expects the actual media to be displayed."
+                ),
+            },
+            ensure_ascii=False,
+        )
 
     def _generate_result(self, media_type: str, artifacts: list[dict[str, Any]]) -> str:
         """Generate structured result for media artifacts."""
@@ -334,8 +412,9 @@ class MediaTool(Tool):
             {
                 "artifacts": artifacts,
                 "next_step": (
-                    f"Use this {media_type} artifact path in the message tool's media parameter "
-                    f"to deliver the {media_type} to the user. Keep raw paths internal unless the "
+                    f"Use these artifact paths as reference_{media_type}s for follow-up edits. "
+                    "Call the message tool with the artifact paths in the media parameter "
+                    f"to deliver the {media_type}s to the user. Keep raw paths internal unless the "
                     "user asks for debug details."
                 ),
             },
@@ -347,8 +426,8 @@ class MediaTool(Tool):
         mode: str,
         prompt: str = "",
         size: str = "1024*1024",
-        count: int | None = None,
         ref_media: str | None = None,
+        media_path: str = "",
         **kwargs: Any,
     ) -> str:
         """Execute image operations."""
@@ -358,7 +437,7 @@ class MediaTool(Tool):
                 reference_images=None,
                 aspect_ratio=None,
                 image_size=size,
-                count=count,
+                media_path=media_path,
                 **kwargs,
             )
         elif mode == "edit":
@@ -378,7 +457,6 @@ class MediaTool(Tool):
                 )
             except (WorkspaceBoundaryError, OSError):
                 return f"Error: Reference image not found or not accessible: {ref_media}"
-
             if not resolved.is_file():
                 return f"Error: Reference image is not a file: {ref_media}"
             raw = resolved.read_bytes()
@@ -390,7 +468,7 @@ class MediaTool(Tool):
                 reference_images=[str(resolved)],
                 aspect_ratio=None,
                 image_size=size,
-                count=count,
+                media_path=media_path,
                 **kwargs,
             )
         else:
@@ -402,44 +480,31 @@ class MediaTool(Tool):
         reference_images: list[str] | None = None,
         aspect_ratio: str | None = None,
         image_size: str | None = None,
-        count: int | None = None,
+        media_path: str = "",
         **kwargs: Any,
     ) -> str:
         client = self._provider_client("image")
         if client is None:
-            return f"Error: unsupported image generation provider '{self.config.image_provider}'"
-
-        requested = count or 1
-        if requested > self.config.max_images_per_turn:
-            return (
-                "Error: count exceeds tools.media.maxImagesPerTurn "
-                f"({self.config.max_images_per_turn})"
-            )
-
+            return f"Error: unsupported media provider '{self.config.media_provider}'"
         try:
             refs = self._resolve_reference_images(reference_images)
-            artifacts: list[dict[str, Any]] = []
-            while len(artifacts) < requested:
-                response = await client.generate(
-                    prompt=prompt,
-                    model=self.config.model,
-                    reference_images=refs,
-                    aspect_ratio=aspect_ratio or self.config.default_aspect_ratio,
-                    image_size=image_size or self.config.default_image_size,
-                )
-                for image_data_url in response.images:
-                    artifact = store_generated_image_artifact(
-                        image_data_url,
-                        prompt=prompt,
-                        model=self.config.model,
-                        source_images=refs,
-                        save_dir=self.config.save_dir,
-                        provider=self.config.provider,
-                    )
-                    artifacts.append(artifact)
-                    if len(artifacts) >= requested:
-                        break
-            return self._generate_result("image", artifacts)
+            response = await client.generate(
+                prompt=prompt,
+                model=self.config.image_model,
+                reference_images=refs,
+                aspect_ratio=aspect_ratio,
+                image_size=image_size or self.config.default_image_size,
+            )
+            artifact = self.store_artifacts(
+                "image",
+                response.images[0],
+                prompt=prompt,
+                model=self.config.image_model or "",
+                source_images=refs,
+                provider=self.config.media_provider,
+                media_path=media_path if media_path else None,
+            )
+            return self._generate_result("image", [artifact])
         except (ArtifactError, ImageGenerationError, OSError) as exc:
             return f"Error: {exc}"
 
@@ -465,7 +530,7 @@ class MediaTool(Tool):
         if mode == "generate":
             if not video_path_obj.exists():
                 video_path_obj = media_dir / "generated.mp4" if media_dir else video_path_obj
-            return await self._dashscope_video_generate(
+            return await self._execute_video_generate(
                 prompt=prompt,
                 video_path=video_path_obj,
                 resolution=resolution,
@@ -483,23 +548,7 @@ class MediaTool(Tool):
         else:
             return f"Error: Invalid mode '{mode}' for video. Must be 'list', 'display', 'generate', or 'edit'."
 
-    def _get_media_data(self, media_path: str) -> str:
-        """Get media data as base64 encoded string with MIME type."""
-        path = Path(media_path)
-        if not path.exists():
-            raise FileNotFoundError(f"Media file not found: {media_path}")
-
-        mime_type = mimetypes.guess_type(media_path)[0] or "application/octet-stream"
-        if mime_type.startswith("text"):
-            with open(path, "r") as media_file:
-                data = media_file.read()
-            return data
-
-        with open(path, "rb") as media_file:
-            encoded = base64.b64encode(media_file.read()).decode("utf-8")
-        return f"data:{mime_type};base64,{encoded}"
-
-    async def _dashscope_video_generate(
+    async def _execute_video_generate(
         self,
         prompt: str,
         video_path: Path,
@@ -513,135 +562,36 @@ class MediaTool(Tool):
         seed: int | None = None,
         **kwargs: Any,
     ) -> str:
-        """Execute video generation using Alibaba Cloud DashScope Wanxiang API."""
-        api_key = os.getenv("DASHSCOPE_API_KEY")
-        if not api_key:
-            return "Error: DASHSCOPE_API_KEY not found. Please set it in environment variables at ~/.nanobot/workspace/.env."
-
-        region = os.getenv("DASHSCOPE_REGION", "beijing").lower()
-        if region == "beijing":
-            create_endpoint = "https://dashscope.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis"
-        elif region == "singapore":
-            create_endpoint = "https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis"
-        else:
-            return f"Error: Invalid region '{region}'. Must be 'beijing' or 'singapore'."
-
-        model_name = os.getenv("DASHSCOPE_VIDEO_GEN_MODEL", "wan2.7-t2v")
-
-        input_data = {"prompt": prompt}
-        if ref_media:
-            input_data["audio_url"] = ref_media
-
-        parameters = {
-            "resolution": resolution,
-            "ratio": ratio,
-            "duration": duration,
-            "prompt_extend": prompt_extend,
-            "watermark": watermark,
-        }
-
-        if negative_prompt:
-            parameters["negative_prompt"] = negative_prompt
-
-        if seed is not None:
-            parameters["seed"] = seed
-
-        payload = {
-            "model": model_name,
-            "input": input_data,
-            "parameters": parameters,
-        }
-
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {api_key}",
-            "X-DashScope-Async": "enable",
-        }
+        """Execute video generation using configured video provider."""
+        client = self._provider_client("video")
+        if client is None:
+            return f"Error: unsupported media provider '{self.config.media_provider}'"
 
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(create_endpoint, headers=headers, json=payload)
-                response.raise_for_status()
-                result = response.json()
-
-            task_id = result.get("output", {}).get("task_id")
-            if not task_id:
-                return f"Error: No task_id in response. Response: {json.dumps(result, ensure_ascii=False)}"
-
-            if region == "beijing":
-                query_endpoint = f"https://dashscope.aliyuncs.com/api/v1/tasks/{task_id}"
-            else:
-                query_endpoint = f"https://dashscope-intl.aliyuncs.com/api/v1/tasks/{task_id}"
-
-            query_headers = {
-                "Authorization": f"Bearer {api_key}",
-            }
-
-            max_wait_time = 600
-            poll_interval = 10
-            elapsed_time = 0
-
-            while elapsed_time < max_wait_time:
-                await asyncio.sleep(poll_interval)
-                elapsed_time += poll_interval
-
-                async with httpx.AsyncClient(timeout=30.0) as client:
-                    query_response = await client.get(query_endpoint, headers=query_headers)
-                    query_response.raise_for_status()
-                    task_result = query_response.json()
-
-                task_status = task_result.get("output", {}).get("task_status", "")
-                if task_status == "SUCCEEDED":
-                    video_url = task_result.get("output", {}).get("video_url", "")
-                    if not video_url:
-                        return f"Error: No video_url in response. Response: {json.dumps(task_result, ensure_ascii=False)}"
-
-                    save_path = str(video_path)
-                    async with httpx.AsyncClient(timeout=120.0) as download_client:
-                        video_response = await download_client.get(video_url)
-                        video_response.raise_for_status()
-                        with open(save_path, "wb") as f:
-                            f.write(video_response.content)
-
-                    # Store video as artifact and return structured result
-                    try:
-                        model_name = os.getenv("DASHSCOPE_VIDEO_GEN_MODEL", "wan2.7-t2v")
-                        artifact = store_generated_video_artifact(
-                            video_path,
-                            prompt=prompt,
-                            model=model_name,
-                            provider="dashscope",
-                        )
-                        return self._generate_result("video", [artifact])
-                    except ArtifactError as exc:
-                        return f"Error: {exc}"
-
-                elif task_status == "FAILED":
-                    error_code = task_result.get("output", {}).get("code", "unknown")
-                    error_message = task_result.get("output", {}).get("message", "Unknown error")
-                    return f"Error: Video generation failed - [{error_code}] {error_message}"
-
-                elif task_status in ["RUNNING", "PENDING"]:
-                    continue
-
-                else:
-                    return f"Error: Unknown task status: {task_status}"
-
-            return f"Error: Video generation timed out after {max_wait_time} seconds. Task ID: {task_id}"
-
-        except httpx.HTTPStatusError as e:
-            error_detail = e.response.text if e.response else str(e)
-            try:
-                error_json = e.response.json()
-                error_msg = error_json.get("message", error_json.get("error", error_detail))
-            except Exception:
-                error_msg = error_detail
-            return f"Error: HTTP {e.response.status_code} - {error_msg}"
-        except httpx.TimeoutException:
-            return (
-                "Error: Request timed out. Video generation may take 1-5 minutes, please try again."
+            model = self.config.video_model or os.getenv("DASHSCOPE_VIDEO_GEN_MODEL", "wan2.7-t2v")
+            response = await client.generate(
+                prompt=prompt,
+                model=model,
+                resolution=resolution,
+                ratio=ratio,
+                duration=duration,
+                negative_prompt=negative_prompt,
+                ref_media=ref_media,
+                prompt_extend=prompt_extend,
+                watermark=watermark,
+                seed=seed,
             )
-        except httpx.RequestError as e:
-            return f"Error: Network request failed - {str(e)}"
+
+            artifact = self.store_artifacts(
+                "video",
+                response.video_data_url,
+                prompt=prompt,
+                model=model,
+                provider=self.config.media_provider,
+                media_path=str(video_path),
+            )
+            return self._generate_result("video", [artifact])
+        except (ArtifactError, ValueError, TimeoutError, OSError) as exc:
+            return f"Error: {exc}"
         except Exception as e:
             return f"Error: Generation failed - {str(e)}"

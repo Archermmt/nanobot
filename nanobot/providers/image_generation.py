@@ -1616,9 +1616,6 @@ class DashScopeImageGenerationClient(ImageGenerationProvider):
         return "https://dashscope.aliyuncs.com/api/v1"
 
     def _resolve_base_url(self, api_base: str | None) -> str:
-        if api_base:
-            return api_base.rstrip("/")
-        # Determine region from environment or config
         region = os.getenv("DASHSCOPE_REGION", "beijing").lower()
         if region == "singapore":
             return "https://dashscope-intl.aliyuncs.com/api/v1"
