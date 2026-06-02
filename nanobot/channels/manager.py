@@ -72,8 +72,10 @@ class ChannelManager:
         self.channels: dict[str, BaseChannel] = {}
         self._dispatch_task: asyncio.Task | None = None
         self._origin_reply_fingerprints: dict[tuple[str, str, str], str] = {}
+        self._handlers: dict[str, Any] = {}
 
         self._init_channels()
+        self._init_handlers()
 
     def _init_channels(self) -> None:
         """Initialize channels discovered via pkgutil scan + entry_points plugins."""
@@ -146,6 +148,46 @@ class ChannelManager:
                 logger.warning("{} channel not available: {}", name, e)
 
         self._validate_allow_from()
+
+    def _init_handlers(self) -> None:
+        """Initialize message handlers from channel config."""
+        from nanobot.channels.handlers.base_handler import BaseHandler
+
+        handlers_config = self.config.channels.handlers
+        if not handlers_config:
+            logger.debug("No handlers configured")
+            return
+
+        for handler_name, handler_cfg in handlers_config.items():
+            if not isinstance(handler_cfg, dict):
+                logger.warning("Handler {} config is not a dict, skipping", handler_name)
+                continue
+
+            enabled = handler_cfg.get("enabled", False)
+            if not enabled:
+                logger.debug("Handler {} is disabled, skipping", handler_name)
+                continue
+
+            handler_type = handler_cfg.get("handler_type")
+            if not handler_type:
+                logger.warning("Handler {} missing handler_type, skipping", handler_name)
+                continue
+
+            try:
+                handler_cls = BaseHandler.get_registered_type(handler_type)
+                if handler_cls:
+                    self._handlers[handler_name] = handler_cls(handler_cfg)
+                    logger.info("Handler {} ({}) initialized", handler_name, handler_type)
+                else:
+                    logger.warning(
+                        "Handler type {} not found for handler {}", handler_type, handler_name
+                    )
+            except Exception as e:
+                logger.exception("Failed to initialize handler {}: {}", handler_name, e)
+
+        if self._handlers:
+            handler_info = {k: type(v).__name__ for k, v in self._handlers.items()}
+            logger.info("Initialized handlers: {}", handler_info)
 
     def _resolve_transcription_key(self, provider: str) -> str:
         """Pick the API key for the configured transcription provider."""

@@ -50,6 +50,7 @@ class ChannelsConfig(Base):
         default=None, pattern=r"^[a-z]{2,3}$"
     )  # Optional ISO-639-1 hint for audio transcription
     transcription_model: str | None = None  # Model path/name for local provider
+    handlers: dict[str, Any] = Field(default_factory=dict)  # Handler configurations per channel
 
 
 class DreamConfig(Base):
