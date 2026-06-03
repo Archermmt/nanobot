@@ -53,6 +53,57 @@ class ChannelsConfig(Base):
     handlers: dict[str, Any] = Field(default_factory=dict)  # Handler configurations per channel
 
 
+class ASRHandlerConfig(Base):
+    """Configuration for ASR (Automatic Speech Recognition) handler."""
+
+    enabled: bool = False
+    handler_type: str = "fun_asr"
+    model: str = "paraformer-zh"
+
+
+class VADHandlerConfig(Base):
+    """Configuration for VAD (Voice Activity Detection) handler."""
+
+    enabled: bool = False
+    handler_type: str = "silero_vad"
+    audio_format: str = "opus"  # opus or pcm
+    model: str = "~/.nanobot/models/silero_vad"  # Path to Silero VAD model directory
+    threshold: float = 0.5  # High threshold for voice detection
+    threshold_low: float = 0.2  # Low threshold for voice detection
+    min_silence_duration_ms: int = 1000  # Silence duration in ms to consider speech ended
+
+
+class TTSHandlerConfig(Base):
+    """Configuration for TTS (Text-to-Speech) handler."""
+
+    enabled: bool = False
+    handler_type: str = "edge_tts"
+    depends_folder: str = "~/.nanobot/depends/tts"  # Depends folder for voice configuration
+    model: str | None = None  # Model name for TTS service (e.g., cosyvoice-v3.5-plus for Qwen TTS)
+    voice: str = "zh-CN-XiaoxiaoNeural"
+    audio_format: str = "opus"  # Edge TTS returns mp3 format
+    sample_rate: int = 16000
+
+
+class SpeakHandlerConfig(Base):
+    """Configuration for Speaker Verification handler."""
+
+    enabled: bool = False
+    handler_type: str = "we_speak"
+    depends_folder: str = "~/.nanobot/depends/speak"  # Folder for speaker reference audio files
+    speaker: str = ""  # Reference speaker audio file name (relative to depends_folder)
+    threshold: float = 0.9  # Similarity threshold for speaker verification
+    separate_speaker: bool = False  # Enable speech separation for multi-speaker scenarios
+
+
+class AudioEncodeHandlerConfig(Base):
+    """Configuration for Audio Decode handler."""
+
+    enabled: bool = False
+    handler_type: str = "opus_encode"
+    sample_rate: int = 16000  # Target sample rate for decoding
+
+
 class DreamConfig(Base):
     """Dream memory consolidation configuration."""
 

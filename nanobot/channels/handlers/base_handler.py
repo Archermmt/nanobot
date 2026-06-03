@@ -1,9 +1,28 @@
 """Base handler for processing inbound and outbound messages."""
 
-from abc import ABC, abstractmethod
-from typing import Dict, Type
+from abc import ABC
+from dataclasses import dataclass, field
+from typing import Any, Dict, Type
 
-from nanobot.bus.events import InboundMessage, OutboundMessage
+
+@dataclass
+class HandlerMessage:
+    """Message received from a chat channel."""
+
+    content: str | None = None  # Message text
+    media: list[str] = field(default_factory=list)  # Media URLs
+    metadata: dict[str, Any] = field(default_factory=dict)  # Channel-specific data
+    error: str | None = None
+    channel: str | None = None  # Channel name
+    chat_id: str | None = None  # Chat ID
+    session_key_override: str | None = None  # Optional override for session key
+
+    @property
+    def session_key(self) -> str:
+        """Unique key for session identification."""
+        if self.session_key_override:
+            return self.session_key_override
+        return f"{self.channel}:{self.chat_id}" if self.channel and self.chat_id else "unknown"
 
 
 class BaseHandler(ABC):
@@ -51,50 +70,14 @@ class BaseHandler(ABC):
         """
         return cls._registry.get(handler_type)
 
-    def can_handle_input(self, msg: InboundMessage) -> bool:
+    async def process(self, msg: HandlerMessage) -> HandlerMessage:
         """
-        Check if this handler can process the given inbound message.
+        Process a message (unified handler for both input and output).
 
         Args:
-            msg: The inbound message to check
+            msg: The message to process
 
         Returns:
-            True if the message can be handled, False otherwise
-        """
-        return False
-
-    def can_handle_output(self, msg: OutboundMessage) -> bool:
-        """
-        Check if this handler can process the given outbound message.
-
-        Args:
-            msg: The outbound message to check
-
-        Returns:
-            True if the message can be handled, False otherwise
-        """
-        return False
-
-    async def handle_input(self, msg: InboundMessage) -> InboundMessage:
-        """
-        Process an inbound message.
-
-        Args:
-            msg: The inbound message to process
-
-        Returns:
-            The processed inbound message (may be modified or the same instance)
-        """
-        return msg
-
-    async def handle_output(self, msg: OutboundMessage) -> OutboundMessage:
-        """
-        Process an outbound message.
-
-        Args:
-            msg: The outbound message to process
-
-        Returns:
-            The processed outbound message (may be modified or the same instance)
+            The processed message (may be modified or the same instance)
         """
         return msg

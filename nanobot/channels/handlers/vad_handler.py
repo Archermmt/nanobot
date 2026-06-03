@@ -11,7 +11,7 @@ import numpy as np
 from loguru import logger
 
 from nanobot.bus.events import InboundMessage, OutboundMessage
-from nanobot.bus.handlers.base_handler import BaseHandler
+from nanobot.channels.handlers.base_handler import BaseHandler, HandlerMessage
 from nanobot.config.schema import VADHandlerConfig
 from nanobot.utils.message import RetType
 
@@ -42,36 +42,6 @@ class BaseVADHandler(BaseHandler, ABC):
         # decoder
         self._opus_decoder = opuslib_next.Decoder(16000, 1)
 
-    def can_handle_input(self, msg: InboundMessage) -> bool:
-        """
-        Check if this handler can process the given message.
-
-        Args:
-            msg: The inbound message to check
-
-        Returns:
-            True if the message type is audio
-        """
-        msg_type = msg.metadata.get("msg_type", "text")
-        return msg_type == "audio_clip" or msg.content == "/val_process"
-
-    def can_handle_output(self, msg: OutboundMessage) -> bool:
-        """
-        Check if this handler can process the given outbound message.
-
-        Args:
-            msg: The outbound message to check
-
-        Returns:
-            True if the message can be handled, False otherwise
-        """
-
-        if msg.metadata.get("_progress", False):
-            return False
-        if msg.metadata.get("msg_type", "text") == "audio_clip":
-            return False
-        return True
-
     @abstractmethod
     def is_vad(self, opus_packet: bytes) -> bool:
         """
@@ -85,15 +55,15 @@ class BaseVADHandler(BaseHandler, ABC):
         """
         pass
 
-    async def handle_input(self, msg: InboundMessage) -> InboundMessage:
+    async def process(self, msg: HandlerMessage) -> HandlerMessage:
         """
-        Process an audio message for voice activity detection.
+        Process a message for voice activity detection.
 
         Args:
-            msg: InboundMessage with audio media
+            msg: HandlerMessage with audio media
 
         Returns:
-            Modified InboundMessage with VAD metadata
+            Modified HandlerMessage with VAD metadata
         """
 
         def _ignore_msg(msg):
@@ -126,20 +96,6 @@ class BaseVADHandler(BaseHandler, ABC):
             self._reset_audio()
             return msg
         return _ignore_msg(msg)
-
-    async def handle_output(self, msg: OutboundMessage) -> OutboundMessage:
-        """
-        Process an outbound message.
-
-        Args:
-            msg: The outbound message to process
-
-        Returns:
-            The processed outbound message (may be modified or the same instance)
-        """
-
-        self._asr_audio, self._waiting_id = [], ""
-        return msg
 
     def _reset_audio(self):
         """Reset the audio state."""

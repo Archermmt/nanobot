@@ -12,9 +12,9 @@ import numpy as np
 from loguru import logger
 
 from nanobot.bus.events import OutboundMessage
-from nanobot.bus.handlers.base_handler import BaseHandler
+from nanobot.channels.handlers.base_handler import BaseHandler, HandlerMessage
+from nanobot.channels.handlers.utils.log import CaptureOutput
 from nanobot.config.schema import TTSHandlerConfig
-from nanobot.utils.log import CaptureOutput
 from nanobot.utils.text_utils import check_emoji, clean_markdown
 
 
@@ -38,32 +38,12 @@ class BaseTTSHandler(BaseHandler):
         with open(voice_path, "r", encoding="utf-8") as f:
             self.voice_config = json.load(f).get(self.voice, {})
 
-    def can_handle_output(self, msg: OutboundMessage) -> bool:
-        """
-        Check if this handler can process the given message.
-
-        Args:
-            msg: The outbound message to check
-
-        Returns:
-            True if the message is text type and should be converted to speech
-        """
-        msg_type = msg.metadata.get("msg_type", "text")
-        # Only handle text messages that need TTS conversion
-        return (
-            msg_type == "text"
-            and msg.metadata.get("need_tts", False)
-            and not msg.metadata.get("_progress", False)
-            and not msg.metadata.get("_hide_message", False)
-            and "_warning_msg" not in msg.metadata
-        )
-
-    async def handle_output(self, msg: OutboundMessage) -> OutboundMessage:
+    async def process(self, msg: HandlerMessage) -> HandlerMessage:
         """
         Process a text message and convert it to speech.
 
         Args:
-            msg: The outbound message to process
+            msg: The message to process
 
         Returns:
             The processed message with audio data added

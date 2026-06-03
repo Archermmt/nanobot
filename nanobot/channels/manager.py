@@ -85,7 +85,6 @@ class ChannelManager:
         transcription_key = self._resolve_transcription_key(transcription_provider)
         transcription_base = self._resolve_transcription_base(transcription_provider)
         transcription_language = self.config.channels.transcription_language
-        transcription_model = self.config.channels.transcription_model
 
         # Collect enabled module names first, then only import those.
         # Channel configs live in ChannelsConfig's extra fields (via
@@ -130,7 +129,6 @@ class ChannelManager:
                 channel.transcription_provider = transcription_provider
                 channel.transcription_api_key = transcription_key
                 channel.transcription_api_base = transcription_base
-                channel.transcription_model = transcription_model
                 channel.transcription_language = transcription_language
                 channel.send_progress = self._resolve_bool_override(
                     section, "send_progress", self.config.channels.send_progress
@@ -141,7 +139,6 @@ class ChannelManager:
                 channel.show_reasoning = self._resolve_bool_override(
                     section, "show_reasoning", self.config.channels.show_reasoning
                 )
-                channel.setup()
                 self.channels[name] = channel
                 logger.info("{} channel enabled", cls.display_name)
             except Exception as e:
@@ -191,6 +188,9 @@ class ChannelManager:
 
     def _resolve_transcription_key(self, provider: str) -> str:
         """Pick the API key for the configured transcription provider."""
+        override = getattr(self.config.channels, "transcription_api_key", None)
+        if override:
+            return override
         try:
             if provider == "openai":
                 return self.config.providers.openai.api_key
@@ -200,6 +200,9 @@ class ChannelManager:
 
     def _resolve_transcription_base(self, provider: str) -> str:
         """Pick the API base URL for the configured transcription provider."""
+        override = getattr(self.config.channels, "transcription_base_url", None)
+        if override:
+            return override
         try:
             if provider == "openai":
                 return self.config.providers.openai.api_base or ""

@@ -9,10 +9,15 @@ from pathlib import Path
 from loguru import logger
 
 from nanobot.bus.events import InboundMessage
-from nanobot.bus.handlers.base_handler import BaseHandler
+from nanobot.channels.handlers.base_handler import BaseHandler, HandlerMessage
+from nanobot.channels.handlers.utils.log import CaptureOutput
+from nanobot.channels.handlers.utils.media import (
+    get_audio_bytes,
+    get_media_dir,
+    pcm_to_wav,
+    webm_to_wav,
+)
 from nanobot.config.schema import SpeakHandlerConfig
-from nanobot.utils.log import CaptureOutput
-from nanobot.utils.media import get_audio_bytes, get_media_dir, pcm_to_wav, webm_to_wav
 
 
 class BaseSpeakHandler(BaseHandler, ABC):
@@ -26,19 +31,6 @@ class BaseSpeakHandler(BaseHandler, ABC):
         assert voice_path.exists(), f"Voice configuration not found: {voice_path}"
         with open(voice_path, "r", encoding="utf-8") as f:
             self.voice_config = json.load(f).get(config.speaker, {})
-
-    def can_handle_input(self, msg: InboundMessage) -> bool:
-        """
-        Check if this handler can process the given message.
-
-        Args:
-            msg: The inbound message to check
-
-        Returns:
-            True if the message type is audio
-        """
-        msg_type = msg.metadata.get("msg_type", "text")
-        return msg_type == "audio" and not msg.content and msg.media
 
     @abstractmethod
     def _verify_speaker(
@@ -57,15 +49,15 @@ class BaseSpeakHandler(BaseHandler, ABC):
         """
         pass
 
-    async def handle_input(self, msg: InboundMessage) -> InboundMessage:
+    async def process(self, msg: HandlerMessage) -> HandlerMessage:
         """
         Process an audio message for speaker verification.
 
         Args:
-            msg: InboundMessage with audio media
+            msg: HandlerMessage with audio media
 
         Returns:
-            Modified InboundMessage with speaker verification result
+            Modified HandlerMessage with speaker verification result
         """
 
         if self.threshold == 0.0:

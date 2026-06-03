@@ -4,11 +4,10 @@ from abc import abstractmethod
 
 from loguru import logger
 
-from nanobot.bus.events import OutboundMessage
-from nanobot.bus.handlers.base_handler import BaseHandler
+from nanobot.channels.handlers.base_handler import BaseHandler, HandlerMessage
+from nanobot.channels.handlers.utils.log import CaptureOutput
+from nanobot.channels.handlers.utils.media import audio_bytes_to_data_stream, get_audio_bytes
 from nanobot.config.schema import AudioEncodeHandlerConfig
-from nanobot.utils.log import CaptureOutput
-from nanobot.utils.media import audio_bytes_to_data_stream, get_audio_bytes
 
 
 class BaseAudioEncodeHandler(BaseHandler):
@@ -27,25 +26,12 @@ class BaseAudioEncodeHandler(BaseHandler):
         """
         self.sample_rate = config.sample_rate if config else 16000
 
-    def can_handle_output(self, msg: OutboundMessage) -> bool:
+    async def process(self, msg: HandlerMessage) -> HandlerMessage:
         """
-        Check if this handler can process the given message.
+        Process a message and encode audio data.
 
         Args:
-            msg: The outbound message to check
-
-        Returns:
-            True if the message contains audio data that needs encoding
-        """
-        msg_type = msg.metadata.get("msg_type", "")
-        return msg_type == "audio" and not msg.metadata.get("encoder_type")
-
-    async def handle_output(self, msg: OutboundMessage) -> OutboundMessage:
-        """
-        Process an outbound message and encode audio data.
-
-        Args:
-            msg: The outbound message to process
+            msg: The message to process
 
         Returns:
             The processed message with encoded audio data
