@@ -42,6 +42,7 @@ from nanobot.session.webui_turns import websocket_turn_wall_started_at
 from nanobot.utils.media_decode import (
     FileSizeExceeded,
     save_base64_data_url,
+    webm_to_wav,
 )
 from nanobot.utils.subagent_channel_display import scrub_subagent_messages_for_channel
 from nanobot.webui.cli_apps_api import normalize_cli_app_mentions
@@ -959,9 +960,18 @@ class WebSocketChannel(BaseChannel):
                     error=f"invalid audio data: {error_reason}",
                 )
                 return
+            # Convert webm to wav before transcription
+            audio_path = paths[0]
+            if Path(audio_path).suffix.lower() == ".webm":
+                input_path = Path(audio_path)
+                output_path = input_path.with_suffix(".wav")
+                converted = webm_to_wav(input_file=input_path, output_file=output_path)
+                if isinstance(converted, Path):
+                    audio_path = str(converted)
+                    input_path.unlink(missing_ok=True)
 
             # Transcribe the audio
-            transcription = await self.transcribe_audio(paths[0])
+            transcription = await self.transcribe_audio(audio_path)
             await self._send_event(
                 connection,
                 "transcribe_result",
@@ -1795,10 +1805,10 @@ class WebSocketChannel(BaseChannel):
             and not msg.metadata.get("_tool_hint")
             and not msg.metadata.get("_turn_end")
         ):
-            audio_bytes = await self.text_to_tts(text)
-            if audio_bytes:
-                temp_file = get_media_dir("websocket") / f"tts_{hash(text)}.wav"
-                temp_file.write_bytes(audio_bytes)
+            result = await self.text_to_speech(text)
+            if result:
+                temp_file = get_media_dir("websocket") / f"tts_{hash(text)}.{result['format']}"
+                temp_file.write_bytes(result["datas"])
                 media_list.append(str(temp_file))
 
         if media_list:

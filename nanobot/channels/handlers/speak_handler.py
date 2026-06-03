@@ -8,9 +8,9 @@ from loguru import logger
 
 from nanobot.channels.handlers.base_handler import BaseHandler, HandlerMessage
 from nanobot.channels.handlers.utils.log import CaptureOutput
-from nanobot.channels.handlers.utils.media import pcm_to_wav, webm_to_wav
 from nanobot.config.paths import get_media_dir
 from nanobot.config.schema import Base
+from nanobot.utils.media_decode import pcm_to_wav, webm_to_wav
 
 
 class SpeakHandlerConfig(Base):

@@ -10,8 +10,8 @@ from loguru import logger
 
 from nanobot.channels.handlers.base_handler import BaseHandler, HandlerMessage
 from nanobot.channels.handlers.utils.log import CaptureOutput
-from nanobot.channels.handlers.utils.media import webm_to_wav
 from nanobot.config.schema import Base
+from nanobot.utils.media_decode import webm_to_wav
 
 
 class ASRHandlerConfig(Base):

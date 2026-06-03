@@ -60,7 +60,6 @@ class ChannelsConfig(Base):
     transcription_language: str | None = Field(
         default=None, pattern=r"^[a-z]{2,3}$"
     )  # Optional ISO-639-1 hint for audio transcription
-    transcription_model: str | None = None  # Model path/name for local provider
     handlers: HandlersConfig = Field(default_factory=HandlersConfig)  # Typed handler configurations
 
 

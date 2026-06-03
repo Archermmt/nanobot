@@ -6,8 +6,8 @@ from loguru import logger
 
 from nanobot.channels.handlers.base_handler import BaseHandler, HandlerMessage
 from nanobot.channels.handlers.utils.log import CaptureOutput
-from nanobot.channels.handlers.utils.media import audio_bytes_to_data_stream, get_audio_bytes
 from nanobot.config.schema import Base
+from nanobot.utils.media_decode import audio_bytes_to_data_stream, get_audio_bytes
 
 
 class AudioEncodeHandlerConfig(Base):

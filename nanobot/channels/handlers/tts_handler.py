@@ -69,7 +69,7 @@ class BaseTTSHandler(BaseHandler):
             msg.media = None
             audio_bytes = await self._to_tts_datas(msg.content)
             if audio_bytes:
-                msg.media = [audio_bytes]
+                msg.media = [{"datas": audio_bytes, "format": self.audio_format}]
             else:
                 msg.error = "Failed to convert to speech"
         except Exception as e:

@@ -32,7 +32,6 @@ class BaseChannel(ABC):
     transcription_provider: str = "groq"
     transcription_api_key: str = ""
     transcription_api_base: str = ""
-    transcription_model: str | None = None
     transcription_language: str | None = None
     send_progress: bool = True
     send_tool_hints: bool = False
@@ -56,8 +55,7 @@ class BaseChannel(ABC):
         """Transcribe an audio file via Whisper (OpenAI or Groq). Returns empty string on failure."""
         if "speak" in self.handlers:
             result = await self.handlers["speak"].process(HandlerMessage(media=[str(file_path)]))
-            if result.error:
-                return "Invalid speaker: " + str(result.error)
+            assert not result.error, "Invalid speaker: " + str(result.error)
         if "asr" in self.handlers:
             result = await self.handlers["asr"].process(HandlerMessage(media=[str(file_path)]))
             if result.error:
@@ -88,15 +86,15 @@ class BaseChannel(ABC):
             self.logger.exception("Audio transcription failed")
             return ""
 
-    async def text_to_tts(self, content: str) -> bytes | None:
+    async def text_to_speech(self, content: str) -> dict:
         """Convert text to speech and return the audio file path."""
         if "tts" in self.handlers:
             result = await self.handlers["tts"].process(HandlerMessage(content=content))
             if result.error:
                 self.logger.exception("TTS failed: " + str(result.error))
-                return None
+                return {}
             return result.media[0]
-        return None
+        return {}
 
     async def login(self, force: bool = False) -> bool:
         """
