@@ -1720,7 +1720,6 @@ class WebSocketChannel(BaseChannel):
             raise
 
     async def send(self, msg: OutboundMessage) -> None:
-        print(f"[TMINFO] sending msg(tts: {self._enable_tts}) {msg}", flush=True)
         if msg.metadata.get("_runtime_model_updated"):
             await self.send_runtime_model_updated(
                 model_name=msg.metadata.get("model"),
@@ -1794,25 +1793,8 @@ class WebSocketChannel(BaseChannel):
             "chat_id": msg.chat_id,
             "text": wire_text,
         }
-        # Add media from message or generate TTS audio for final messages
+        # Add media from message
         media_list = list(msg.media) if msg.media else []
-
-        # If TTS is enabled and this is a final message (not intermediate), generate audio
-        if (
-            self._enable_tts
-            and text
-            and not media_list
-            and not msg.metadata.get("_progress")
-            and not msg.metadata.get("_tool_hint")
-            and not msg.metadata.get("_turn_end")
-        ):
-            result = await self.text_to_speech(text)
-            print(f"[TMINFO] tts result {result}", flush=True)
-            if result:
-                temp_file = get_media_dir("websocket") / f"tts_{hash(text)}.{result['format']}"
-                temp_file.write_bytes(result["datas"])
-                media_list.append(str(temp_file))
-            print(f"[TMINFO] media_list {media_list}", flush=True)
 
         if media_list:
             payload["media"] = media_list
@@ -1917,6 +1899,28 @@ class WebSocketChannel(BaseChannel):
             rewritten = self._rewrite_local_markdown_images(full_text)
             if rewritten != full_text:
                 body["text"] = rewritten
+
+            # If TTS is enabled and this is a final message with text content, generate audio
+            if (
+                self._enable_tts
+                and full_text.strip()
+                and not meta.get("_progress")
+                and not meta.get("_tool_hint")
+            ):
+                result = await self.text_to_speech(full_text)
+                if result:
+                    temp_file = (
+                        get_media_dir("websocket") / f"tts{hash(full_text)}.{result['format']}"
+                    )
+                    temp_file.write_bytes(result["datas"])
+                    body["media"] = [str(temp_file)]
+                    urls: list[dict[str, str]] = []
+                    signed = self._sign_or_stage_media_path(Path(str(temp_file)))
+                    if signed is not None:
+                        urls.append(signed)
+                    if urls:
+                        body["media_urls"] = urls
+                    print(f"[TMINFO] media_list in send_delta {body.get('media')}", flush=True)
         else:
             body = {
                 "event": "delta",

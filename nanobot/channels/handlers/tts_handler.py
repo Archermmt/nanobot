@@ -93,7 +93,7 @@ class BaseTTSHandler(BaseHandler):
         while max_repeat_time > 0:
             try:
                 # Get raw audio bytes from TTS
-                audio_bytes = await self._text_to_speak(text, None)
+                audio_bytes = await self._text_to_speak(text)
                 if not audio_bytes:
                     max_repeat_time -= 1
                     continue
