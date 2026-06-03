@@ -61,6 +61,7 @@ export function AttachmentTile({ attachment, className, inline = false, variant 
         <video
           src={attachment.url}
           controls
+          autoPlay
           preload="auto"
           className={cn(
             "block w-full bg-black",
@@ -83,6 +84,7 @@ export function AttachmentTile({ attachment, className, inline = false, variant 
         <audio
           src={attachment.url}
           controls
+          autoPlay
           preload="auto"
           className={cn(
             "block w-full",
