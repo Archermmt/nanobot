@@ -13,22 +13,14 @@ class HandlerMessage:
     media: list[str] = field(default_factory=list)  # Media URLs
     metadata: dict[str, Any] = field(default_factory=dict)  # Channel-specific data
     error: str | None = None
-    channel: str | None = None  # Channel name
-    chat_id: str | None = None  # Chat ID
-    session_key_override: str | None = None  # Optional override for session key
-
-    @property
-    def session_key(self) -> str:
-        """Unique key for session identification."""
-        if self.session_key_override:
-            return self.session_key_override
-        return f"{self.channel}:{self.chat_id}" if self.channel and self.chat_id else "unknown"
 
 
 class BaseHandler(ABC):
     """Base class for all message handlers (both inbound and outbound)."""
 
     _registry: Dict[str, Type["BaseHandler"]] = {}
+    name: str = ""  # Handler identifier (to be set by subclasses)
+    config_cls: Any = None  # Pydantic config class (to be set by subclasses)
 
     @classmethod
     def register(cls):
@@ -50,6 +42,12 @@ class BaseHandler(ABC):
                 raise TypeError(
                     f"Subclass {subclass.__name__} must define handler_type() class method"
                 )
+            if not getattr(subclass, "name", None):
+                raise TypeError(f"Subclass {subclass.__name__} must define name class attribute")
+            if not getattr(subclass, "config_cls", None):
+                raise TypeError(
+                    f"Subclass {subclass.__name__} must define config_cls class attribute"
+                )
             h_type = subclass.handler_type()
             cls._registry[h_type] = subclass
             return subclass
@@ -60,7 +58,6 @@ class BaseHandler(ABC):
     def get_registered_type(cls, handler_type: str) -> Type["BaseHandler"] | None:
         """
         Get a registered handler class by handler type.
-        The message type is obtained from the subclass's msg_type() class method.
 
         Args:
             handler_type: The handler type to look up

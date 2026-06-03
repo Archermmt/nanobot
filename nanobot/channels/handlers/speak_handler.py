@@ -1,27 +1,34 @@
 """Speak handler for speaker verification using voiceprint recognition."""
 
-import base64
 import json
-import os
 from abc import ABC, abstractmethod
 from pathlib import Path
 
 from loguru import logger
 
-from nanobot.bus.events import InboundMessage
 from nanobot.channels.handlers.base_handler import BaseHandler, HandlerMessage
 from nanobot.channels.handlers.utils.log import CaptureOutput
-from nanobot.channels.handlers.utils.media import (
-    get_audio_bytes,
-    get_media_dir,
-    pcm_to_wav,
-    webm_to_wav,
-)
-from nanobot.config.schema import SpeakHandlerConfig
+from nanobot.channels.handlers.utils.media import pcm_to_wav, webm_to_wav
+from nanobot.config.paths import get_media_dir
+from nanobot.config.schema import Base
+
+
+class SpeakHandlerConfig(Base):
+    """Configuration for Speaker Verification handler."""
+
+    enabled: bool = False
+    handler_type: str = "we_speak"
+    depends_folder: str = "~/.nanobot/depends/speak"  # Folder for speaker reference audio files
+    speaker: str = ""  # Reference speaker audio file name (relative to depends_folder)
+    threshold: float = 0.9  # Similarity threshold for speaker verification
+    separate_speaker: bool = False  # Enable speech separation for multi-speaker scenarios
 
 
 class BaseSpeakHandler(BaseHandler, ABC):
     """Base class for speaker verification handlers."""
+
+    name = "speak"
+    config_cls = SpeakHandlerConfig
 
     def __init__(self, config: SpeakHandlerConfig):
         # Load reference speaker embedding in subclass
@@ -33,50 +40,50 @@ class BaseSpeakHandler(BaseHandler, ABC):
             self.voice_config = json.load(f).get(config.speaker, {})
 
     @abstractmethod
-    def _verify_speaker(
-        self, audio_bytes: bytes, audio_format: str = "audio/wav", msg: InboundMessage | None = None
-    ) -> tuple[float, InboundMessage]:
+    def _verify_speaker(self, file_path: str | Path) -> float:
         """
         Verify if the audio matches the reference speaker.
 
         Args:
-            audio_bytes: Base64 encoded audio data
-            audio_format: Audio format of the input media data (default: "audio/wav")
-            msg: Optional InboundMessage to modify based on verification result
+            file_path: Path to the audio file
 
         Returns:
-            Tuple of (similarity_score, modified_message)
+            Similarity score (0.0 to 1.0)
         """
         pass
 
     async def process(self, msg: HandlerMessage) -> HandlerMessage:
         """
-        Process an audio message for speaker verification.
+        Process an audio file for speaker verification.
 
         Args:
-            msg: HandlerMessage with audio media
+            msg: HandlerMessage with audio file path in media[0]
 
         Returns:
             Modified HandlerMessage with speaker verification result
         """
-
         if self.threshold == 0.0:
             return msg
-        audio_format = msg.metadata.get("file_type", "audio/wav")
-        audio_bytes, audio_format = get_audio_bytes(msg.media[0], audio_format)
 
-        def _mark_failed(msg, err):
-            msg.content, msg.media = "Speaker verify failed: " + str(err), []
-            msg.metadata.update({"msg_type": "text", "_warning_msg": "speaker_not_verify"})
-            return msg
+        # Input is guaranteed to be a file path string
+        file_path = msg.media[0]
+        if isinstance(file_path, dict):
+            file_path = file_path.get("data", "")
 
         try:
+            path = Path(file_path)
+            if not path.exists():
+                msg.error = f"Audio file not found: {file_path}"
+                return msg
+
             with CaptureOutput():
-                score, msg = self._verify_speaker(audio_bytes, audio_format, msg)
+                score = self._verify_speaker(path)
+
             if score < self.threshold:
-                msg = _mark_failed(msg, f"{score:.2f}<{self.threshold}")
+                msg.error = f"Speaker verification failed: {score:.2f}<{self.threshold}"
         except Exception as e:
-            msg = _mark_failed(msg, e)
+            msg.error = f"Speaker verification error: {e}"
+
         return msg
 
 
@@ -116,43 +123,42 @@ class WeSpeakHandler(BaseSpeakHandler):
                     logger.error(f"Failed to extract reference speaker embedding: {e}")
         logger.debug(f"Loaded reference speaker embedding from {ref_audios}")
 
-    def _verify_speaker(
-        self, audio_bytes: bytes, audio_format: str = "audio/wav", msg: InboundMessage | None = None
-    ) -> tuple[float, InboundMessage]:
+    def _verify_speaker(self, file_path: str | Path) -> float:
         """
-        Verify speaker using WeSpeaker from raw audio data.
+        Verify speaker using WeSpeaker from audio file.
 
         Args:
-            audio_bytes: Base64 encoded audio data
-            audio_format: Audio format of the input audio data (default: "audio/wav")
-            msg: Optional InboundMessage to modify based on verification result
+            file_path: Path to the audio file
 
         Returns:
-            Tuple of (similarity_score, modified_message)
+            Similarity score (0.0 to 1.0)
         """
         if not self.ref_embs:
             logger.warning("Cannot verify speaker - no reference embedding available")
-            if msg:
-                msg.content = "Speaker verification disabled - no reference embedding"
-            return 0.0, msg or InboundMessage(content="")
+            return 0.0
 
-        media_dir = get_media_dir()
-        speaker_file = media_dir / "speaker.wav"
-        if audio_format == "audio/webm":
-            speaker_file = webm_to_wav(audio_bytes, output_file=speaker_file)
-        elif audio_format == "audio/pcm":
-            speaker_file = pcm_to_wav(audio_bytes, output_file=speaker_file)
+        path = Path(file_path)
+        output_file = get_media_dir() / "speaker.wav"
+        audio_bytes = path.read_bytes()
+        # Detect audio format from file extension or content
+        suffix, converted = path.suffix.lower(), None
+        if suffix == ".webm":
+            converted = webm_to_wav(audio_bytes, output_file=output_file)
+            assert converted, "Failed to convert webm to wav"
+        elif suffix in [".pcm", ".raw"]:
+            converted = pcm_to_wav(audio_bytes, output_file=output_file)
+            assert converted, "Failed to convert pcm to wav"
+        if converted and converted.exists():
+            emb = self.speaker.extract_embedding(converted)
+            converted.unlink()
         else:
-            speaker_file.write_bytes(audio_bytes)
-        emb = self.speaker.extract_embedding(speaker_file)
+            emb = self.speaker.extract_embedding(path)
         # Compute max score across all reference embeddings
         max_score = 0.0
         for ref_emb in self.ref_embs:
             score = self.speaker.compute_cosine_score(ref_emb.flatten(), emb.flatten())
             max_score = max(max_score, score)
-        if speaker_file.exists():
-            speaker_file.unlink()
-        return max_score, msg or InboundMessage(content="")
+        return max_score
 
 
 @BaseSpeakHandler.register()
@@ -202,37 +208,39 @@ class SbrainSpeakHandler(BaseSpeakHandler):
                 self.ref_audios.append(voice_entry["audio"])
         logger.debug(f"Loaded reference speaker audio from {self.ref_audios}")
 
-    def _verify_speaker(
-        self, audio_bytes: bytes, audio_format: str = "audio/wav", msg: InboundMessage | None = None
-    ) -> tuple[float, InboundMessage]:
+    def _verify_speaker(self, file_path: str | Path) -> float:
         """
-        Verify speaker using SpeechBrain from raw audio data with speech separation.
+        Verify speaker using SpeechBrain from audio file with speech separation.
 
         Args:
-            audio_bytes: Base64 encoded audio data
-            audio_format: Audio format of the input audio data (default: "audio/wav")
-            msg: Optional InboundMessage to modify based on verification result
+            file_path: Path to the audio file
 
         Returns:
-            Tuple of (similarity_score, modified_message)
+            Similarity score (0.0 to 1.0)
         """
         import torchaudio
 
         if not self.ref_audios:
             logger.warning("Cannot verify speaker - no reference audio available")
-            if msg:
-                msg.content = "Speaker verification disabled - no reference audio"
-            return 0.0, msg or InboundMessage(content="")
+            return 0.0
 
-        media_dir = get_media_dir()
-        speaker_file, separated_files = media_dir / "speaker.wav", []
-        # Convert audio to wav format
-        if audio_format == "audio/webm":
+        path = Path(file_path)
+        speaker_file = get_media_dir() / "speaker.wav"
+        separated_files = []
+        audio_bytes = path.read_bytes()
+
+        # Detect audio format and convert if needed
+        suffix = path.suffix.lower()
+        if suffix in [".webm"]:
             speaker_file = webm_to_wav(audio_bytes, output_file=speaker_file)
-        elif audio_format == "audio/pcm":
+            assert speaker_file, "Failed to convert webm to wav"
+        elif suffix in [".pcm", ".raw"]:
             speaker_file = pcm_to_wav(audio_bytes, output_file=speaker_file)
+            assert speaker_file, "Failed to convert pcm to wav"
         else:
+            # Assume it's already a WAV or compatible format
             speaker_file.write_bytes(audio_bytes)
+
         # Separate voices if enabled
         separated_files = []
         if self.separator:
@@ -240,7 +248,7 @@ class SbrainSpeakHandler(BaseSpeakHandler):
                 est_sources = self.separator.separate_file(path=str(speaker_file))
                 # Save each separated source and verify against reference
                 for i in range(est_sources.shape[2]):
-                    sep_file = media_dir / f"speech_{i}.wav"
+                    sep_file = get_media_dir() / f"speech_{i}.wav"
                     # Save separated source as mono 8kHz WAV
                     torchaudio.save(str(sep_file), est_sources[:, :, i].detach().cpu(), 8000)
                     separated_files.append(sep_file)
@@ -252,31 +260,15 @@ class SbrainSpeakHandler(BaseSpeakHandler):
             separated_files = [speaker_file]
         # Verify each separated source against all reference audios
         max_score = 0.0
-        best_source_idx = -1
         for idx, sep_file in enumerate(separated_files):
             for ref_audio_path in self.ref_audios:
                 score, _ = self.verification.verify_files(ref_audio_path, str(sep_file))
                 score = (float(score) + 1) / 2
-                if score > max_score:
-                    max_score = score
-                    best_source_idx = idx
+                max_score = max(max_score, score)
 
-        # Set the best matching separated source to msg.media
-        if msg and best_source_idx >= 0 and max_score > 0:
-            best_source_file = separated_files[best_source_idx]
-            # Read the best source file and encode as base64
-            with open(best_source_file, "rb") as f:
-                best_audio_data = f.read()
-            # Create data URL for the separated audio
-            audio_data_url = (
-                f"data:audio/wav;base64,{base64.b64encode(best_audio_data).decode('utf-8')}"
-            )
-            msg.media = [audio_data_url]
-            msg.metadata["file_type"] = "audio/wav"
-            logger.debug(f"Selected source {best_source_idx} with score {max_score:.2f}")
         if speaker_file.exists():
             speaker_file.unlink()
         for sep_file in separated_files:
             if sep_file.exists():
                 sep_file.unlink()
-        return max_score, msg or InboundMessage(content="")
+        return max_score

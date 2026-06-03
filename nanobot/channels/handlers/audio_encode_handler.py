@@ -7,11 +7,22 @@ from loguru import logger
 from nanobot.channels.handlers.base_handler import BaseHandler, HandlerMessage
 from nanobot.channels.handlers.utils.log import CaptureOutput
 from nanobot.channels.handlers.utils.media import audio_bytes_to_data_stream, get_audio_bytes
-from nanobot.config.schema import AudioEncodeHandlerConfig
+from nanobot.config.schema import Base
+
+
+class AudioEncodeHandlerConfig(Base):
+    """Configuration for Audio Decode handler."""
+
+    enabled: bool = False
+    handler_type: str = "opus_encode"
+    sample_rate: int = 16000  # Target sample rate for decoding
 
 
 class BaseAudioEncodeHandler(BaseHandler):
     """Base class for audio encoding handlers."""
+
+    name = "audio_encode"
+    config_cls = AudioEncodeHandlerConfig
 
     @classmethod
     def handler_type(cls) -> str:

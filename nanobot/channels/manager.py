@@ -72,10 +72,9 @@ class ChannelManager:
         self.channels: dict[str, BaseChannel] = {}
         self._dispatch_task: asyncio.Task | None = None
         self._origin_reply_fingerprints: dict[tuple[str, str, str], str] = {}
-        self._handlers: dict[str, Any] = {}
+        self._handlers = self._init_handlers()
 
         self._init_channels()
-        self._init_handlers()
 
     def _init_channels(self) -> None:
         """Initialize channels discovered via pkgutil scan + entry_points plugins."""
@@ -139,6 +138,7 @@ class ChannelManager:
                 channel.show_reasoning = self._resolve_bool_override(
                     section, "show_reasoning", self.config.channels.show_reasoning
                 )
+                channel.handlers = self._handlers
                 self.channels[name] = channel
                 logger.info("{} channel enabled", cls.display_name)
             except Exception as e:
@@ -147,44 +147,41 @@ class ChannelManager:
         self._validate_allow_from()
 
     def _init_handlers(self) -> None:
-        """Initialize message handlers from channel config."""
+        """Initialize message handlers discovered via handler module scan."""
         from nanobot.channels.handlers.base_handler import BaseHandler
+        from nanobot.channels.handlers.registry import discover_handler_configs
 
         handlers_config = self.config.channels.handlers
-        if not handlers_config:
-            logger.debug("No handlers configured")
-            return
+        extra = getattr(handlers_config, "__pydantic_extra__", None) or {}
+        handlers: dict[str, Any] = {}
 
-        for handler_name, handler_cfg in handlers_config.items():
-            if not isinstance(handler_cfg, dict):
-                logger.warning("Handler {} config is not a dict, skipping", handler_name)
-                continue
-
-            enabled = handler_cfg.get("enabled", False)
-            if not enabled:
-                logger.debug("Handler {} is disabled, skipping", handler_name)
-                continue
-
-            handler_type = handler_cfg.get("handler_type")
-            if not handler_type:
-                logger.warning("Handler {} missing handler_type, skipping", handler_name)
-                continue
-
+        for h_name, config_cls in discover_handler_configs().items():
+            raw = extra.get(h_name, {})
             try:
-                handler_cls = BaseHandler.get_registered_type(handler_type)
-                if handler_cls:
-                    self._handlers[handler_name] = handler_cls(handler_cfg)
-                    logger.info("Handler {} ({}) initialized", handler_name, handler_type)
+                h_cfg = config_cls(**(raw if isinstance(raw, dict) else {}))
+            except Exception as e:
+                logger.warning("Failed to parse config for handler {}: {}", h_name, e)
+                continue
+
+            if not h_cfg.enabled:
+                logger.debug("Handler {} is disabled, skipping", h_name)
+                continue
+            try:
+                h_cls = BaseHandler.get_registered_type(h_cfg.handler_type)
+                if h_cls:
+                    handlers[h_name] = h_cls(h_cfg)
+                    logger.debug("Handler {} ({}) initialized", h_name, h_cfg.handler_type)
                 else:
                     logger.warning(
-                        "Handler type {} not found for handler {}", handler_type, handler_name
+                        "Handler type {} not found for handler {}", h_name, h_cfg.handler_type
                     )
             except Exception as e:
-                logger.exception("Failed to initialize handler {}: {}", handler_name, e)
+                logger.exception("Failed to initialize handler {}: {}", h_name, e)
 
-        if self._handlers:
-            handler_info = {k: type(v).__name__ for k, v in self._handlers.items()}
-            logger.info("Initialized handlers: {}", handler_info)
+        if handlers:
+            handler_info = {k: type(v).__name__ for k, v in handlers.items()}
+            logger.info("Use handlers: {}", handler_info)
+        return handlers
 
     def _resolve_transcription_key(self, provider: str) -> str:
         """Pick the API key for the configured transcription provider."""

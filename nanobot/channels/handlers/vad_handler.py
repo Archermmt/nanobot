@@ -10,14 +10,27 @@ from typing import List
 import numpy as np
 from loguru import logger
 
-from nanobot.bus.events import InboundMessage, OutboundMessage
 from nanobot.channels.handlers.base_handler import BaseHandler, HandlerMessage
-from nanobot.config.schema import VADHandlerConfig
-from nanobot.utils.message import RetType
+from nanobot.config.schema import Base
+
+
+class VADHandlerConfig(Base):
+    """Configuration for VAD (Voice Activity Detection) handler."""
+
+    enabled: bool = False
+    handler_type: str = "silero_vad"
+    audio_format: str = "opus"  # opus or pcm
+    model: str = "~/.nanobot/models/silero_vad"  # Path to Silero VAD model directory
+    threshold: float = 0.5  # High threshold for voice detection
+    threshold_low: float = 0.2  # Low threshold for voice detection
+    min_silence_duration_ms: int = 1000  # Silence duration in ms to consider speech ended
 
 
 class BaseVADHandler(BaseHandler, ABC):
     """Base class for voice activity detection handlers."""
+
+    name = "vad"
+    config_cls = VADHandlerConfig
 
     def __init__(self, config: VADHandlerConfig):
         try:
@@ -68,7 +81,7 @@ class BaseVADHandler(BaseHandler, ABC):
 
         def _ignore_msg(msg):
             msg.content, msg.media = "", []
-            msg.metadata["ret_type"] = RetType.IGNORE
+            msg.metadata["ret_type"] = "ignore"
             return msg
 
         if msg.content == "/vad_reset":

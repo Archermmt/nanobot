@@ -10,6 +10,7 @@ from loguru import logger
 
 from nanobot.bus.events import InboundMessage, OutboundMessage
 from nanobot.bus.queue import MessageBus
+from nanobot.channels.handlers.base_handler import HandlerMessage
 from nanobot.pairing import (
     PAIRING_CODE_META_KEY,
     format_pairing_reply,
@@ -36,6 +37,7 @@ class BaseChannel(ABC):
     send_progress: bool = True
     send_tool_hints: bool = False
     show_reasoning: bool = True
+    handlers: dict[str, Any] = {}
 
     def __init__(self, config: Any, bus: MessageBus):
         """
@@ -49,55 +51,52 @@ class BaseChannel(ABC):
         self.logger = logger.bind(channel=self.name)
         self.bus = bus
         self._running = False
-        self._transcription_provider = None
-
-    def setup(self):
-        """
-        Set up the channel, e.g. create transcription provider.
-        """
-        self._transcription_provider = self._create_transcribe_provider()
-
-    def _create_transcribe_provider(self) -> Any:
-        """Get or create a transcription provider based on configuration."""
-        try:
-            if self.transcription_provider == "openai" and self.transcription_api_key:
-                from nanobot.providers.transcription import OpenAITranscriptionProvider
-
-                return OpenAITranscriptionProvider(
-                    api_key=self.transcription_api_key,
-                    api_base=self.transcription_api_base or None,
-                    language=self.transcription_language or None,
-                )
-            if self.transcription_provider == "groq" and self.transcription_api_key:
-                from nanobot.providers.transcription import GroqTranscriptionProvider
-
-                return GroqTranscriptionProvider(
-                    api_key=self.transcription_api_key,
-                    api_base=self.transcription_api_base or None,
-                    language=self.transcription_language or None,
-                )
-            if self.transcription_provider == "funasr":
-                from nanobot.providers.transcription import FunAsrProvider
-
-                return FunAsrProvider(
-                    model=self.transcription_model or None,
-                    language=self.transcription_language or None,
-                )
-        except Exception as e:
-            self.logger.exception(f"Failed to create transcription provider: {e}")
-        return None
 
     async def transcribe_audio(self, file_path: str | Path) -> str:
-        """Transcribe an audio file via Whisper (OpenAI, Groq) or FunASR. Returns empty string on failure."""
-        provider = self._transcription_provider
-        try:
-            if not provider:
-                self.logger.warning("Transcription provider not initialized")
+        """Transcribe an audio file via Whisper (OpenAI or Groq). Returns empty string on failure."""
+        if "speak" in self.handlers:
+            result = await self.handlers["speak"].process(HandlerMessage(media=[str(file_path)]))
+            if result.error:
+                return "Invalid speaker: " + str(result.error)
+        if "asr" in self.handlers:
+            result = await self.handlers["asr"].process(HandlerMessage(media=[str(file_path)]))
+            if result.error:
+                self.logger.exception("Audio transcription failed: " + str(result.error))
                 return ""
+            return result.content
+        if not self.transcription_api_key:
+            return ""
+        try:
+            if self.transcription_provider == "openai":
+                from nanobot.providers.transcription import OpenAITranscriptionProvider
+
+                provider = OpenAITranscriptionProvider(
+                    api_key=self.transcription_api_key,
+                    api_base=self.transcription_api_base or None,
+                    language=self.transcription_language or None,
+                )
+            else:
+                from nanobot.providers.transcription import GroqTranscriptionProvider
+
+                provider = GroqTranscriptionProvider(
+                    api_key=self.transcription_api_key,
+                    api_base=self.transcription_api_base or None,
+                    language=self.transcription_language or None,
+                )
             return await provider.transcribe(file_path)
         except Exception:
             self.logger.exception("Audio transcription failed")
             return ""
+
+    async def text_to_tts(self, content: str) -> bytes | None:
+        """Convert text to speech and return the audio file path."""
+        if "tts" in self.handlers:
+            result = await self.handlers["tts"].process(HandlerMessage(content=content))
+            if result.error:
+                self.logger.exception("TTS failed: " + str(result.error))
+                return None
+            return result.media[0]
+        return None
 
     async def login(self, force: bool = False) -> bool:
         """

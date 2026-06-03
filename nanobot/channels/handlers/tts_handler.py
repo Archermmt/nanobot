@@ -3,7 +3,6 @@
 import base64
 import io
 import json
-import os
 import time
 import wave
 from pathlib import Path
@@ -11,15 +10,29 @@ from pathlib import Path
 import numpy as np
 from loguru import logger
 
-from nanobot.bus.events import OutboundMessage
 from nanobot.channels.handlers.base_handler import BaseHandler, HandlerMessage
 from nanobot.channels.handlers.utils.log import CaptureOutput
-from nanobot.config.schema import TTSHandlerConfig
-from nanobot.utils.text_utils import check_emoji, clean_markdown
+from nanobot.channels.handlers.utils.text_utils import check_emoji, clean_markdown
+from nanobot.config.schema import Base
+
+
+class TTSHandlerConfig(Base):
+    """Configuration for TTS (Text-to-Speech) handler."""
+
+    enabled: bool = False
+    handler_type: str = "edge_tts"
+    depends_folder: str = "~/.nanobot/depends/tts"  # Depends folder for voice configuration
+    model: str | None = None  # Model name for TTS service (e.g., cosyvoice-v3.5-plus for Qwen TTS)
+    voice: str = "zh-CN-XiaoxiaoNeural"
+    audio_format: str = "opus"  # Edge TTS returns mp3 format
+    sample_rate: int = 16000
 
 
 class BaseTTSHandler(BaseHandler):
     """Base class for text-to-speech message handlers."""
+
+    name = "tts"
+    config_cls = TTSHandlerConfig
 
     def __init__(self, config: TTSHandlerConfig | None = None):
         """
@@ -43,31 +56,24 @@ class BaseTTSHandler(BaseHandler):
         Process a text message and convert it to speech.
 
         Args:
-            msg: The message to process
+            msg: The message with text content to convert
 
         Returns:
-            The processed message with audio data added
+            The processed message with audio file path in media[0]
         """
         if not msg.content:
             return msg
 
         try:
             # Generate TTS audio from text
-            audio_datas = await self._to_tts_datas(msg.content)
-            if audio_datas:
-                # Add audio data to message
-                msg.media.extend(audio_datas)
-                msg.metadata.update(
-                    {"msg_type": "audio", "file_type": "audio/" + str(self.audio_format)}
-                )
+            msg.media = None
+            audio_bytes = await self._to_tts_datas(msg.content)
+            if audio_bytes:
+                msg.media = [audio_bytes]
             else:
-                msg.content = "Failed to convert to speech"
-                msg.metadata["_warning_msg"] = "tts_failed"
+                msg.error = "Failed to convert to speech"
         except Exception as e:
-            # If TTS fails, keep original text message
-            msg.content = "Failed to convert to speech: " + str(e)
-            msg.metadata["_warning_msg"] = "tts_failed"
-
+            msg.error = f"TTS conversion failed: {e}"
         return msg
 
     async def _to_tts_datas(self, text: str) -> bytes | None:
@@ -91,22 +97,21 @@ class BaseTTSHandler(BaseHandler):
                 if not audio_bytes:
                     max_repeat_time -= 1
                     continue
-                return [audio_bytes]
+                return audio_bytes
             except Exception as e:
                 logger.error(f"TTS conversion error: {e}")
                 max_repeat_time -= 1
         return audio_bytes
 
-    async def _text_to_speak(self, text, output_file):
+    async def _text_to_speak(self, text: str) -> bytes | None:
         """
         Convert text to speech using TTS service. To be implemented by subclasses.
 
         Args:
             text: Text content to convert
-            output_file: Optional output file path (can be None)
 
         Returns:
-            Audio bytes or None if output_file is provided
+            Audio bytes or None if failed
         """
         raise NotImplementedError("Subclasses must implement _text_to_speak method")
 
@@ -119,32 +124,20 @@ class EdgeTTSHandler(BaseTTSHandler):
     def handler_type(cls) -> str:
         return "edge_tts"
 
-    async def _text_to_speak(self, text, output_file):
+    async def _text_to_speak(self, text: str) -> bytes | None:
         import edge_tts
 
         try:
             communicate = edge_tts.Communicate(text, voice=self.voice)
-            if output_file:
-                # 确保目录存在并创建空文件
-                os.makedirs(os.path.dirname(output_file), exist_ok=True)
-                with open(output_file, "wb") as f:
-                    pass
-
-                # 流式写入音频数据
-                with open(output_file, "ab") as f:  # 改为追加模式避免覆盖
-                    async for chunk in communicate.stream():
-                        if chunk["type"] == "audio":  # 只处理音频数据块
-                            f.write(chunk["data"])
-            else:
-                # 返回音频二进制数据
-                audio_bytes = b""
-                async for chunk in communicate.stream():
-                    if chunk["type"] == "audio":
-                        audio_bytes += chunk["data"]
-                return audio_bytes
+            # Return audio binary data
+            audio_bytes = b""
+            async for chunk in communicate.stream():
+                if chunk["type"] == "audio":
+                    audio_bytes += chunk["data"]
+            return audio_bytes
         except Exception as e:
             error_msg = f"Edge TTS 请求失败：{e}"
-            raise Exception(error_msg)  # 抛出异常，让调用方捕获
+            raise Exception(error_msg)
 
 
 @BaseTTSHandler.register()
@@ -188,16 +181,15 @@ class F5TTSHandler(BaseTTSHandler):
             self.ref_audio, self.ref_text = preprocess_ref_audio_text(ref_audio, ref_text)
         logger.info(f"✅ F5 TTS: Reference voice registered from {ref_audio}")
 
-    async def _text_to_speak(self, text, output_file):
+    async def _text_to_speak(self, text: str) -> bytes | None:
         """
         Convert text to speech using F5 TTS with voice cloning.
 
         Args:
             text: Text content to convert
-            output_file: Optional output file path (can be None)
 
         Returns:
-            Audio bytes or None if output_file is provided
+            Audio bytes or None if failed
         """
 
         try:
@@ -215,16 +207,7 @@ class F5TTSHandler(BaseTTSHandler):
 
             # Convert numpy array to WAV bytes
             wav_bytes = self._wav_bytes(wav, sr)
-
-            if output_file:
-                # Save to output file
-                os.makedirs(os.path.dirname(output_file), exist_ok=True)
-                with open(output_file, "wb") as f:
-                    f.write(wav_bytes)
-                return None
-            else:
-                # Return raw WAV bytes
-                return wav_bytes
+            return wav_bytes
 
         except Exception as e:
             error_msg = f"F5 TTS conversion failed: {str(e)}"
@@ -272,6 +255,8 @@ class QwenTTSHandler(BaseTTSHandler):
         self.voice_service = VoiceEnrollmentService()
         self._qwen_audio_format = self._get_audio_format()
         # Check if API key is configured
+        import os
+
         assert os.getenv("DASHSCOPE_API_KEY"), (
             "Qwen TTS: DASHSCOPE_API_KEY environment variable not set"
         )
@@ -291,16 +276,15 @@ class QwenTTSHandler(BaseTTSHandler):
             ref_audio = self.depends_folder / first_voice["audio"]
             self._clone_voice(str(ref_audio))
 
-    async def _text_to_speak(self, text, output_file):
+    async def _text_to_speak(self, text: str) -> bytes | None:
         """
         Convert text to speech using Qwen TTS with optional voice cloning.
 
         Args:
             text: Text content to convert
-            output_file: Optional output file path (can be None)
 
         Returns:
-            Audio bytes or None if output_file is provided
+            Audio bytes or None if failed
         """
         try:
             from dashscope.audio.tts_v2 import SpeechSynthesizer
@@ -310,16 +294,7 @@ class QwenTTSHandler(BaseTTSHandler):
             )
             # Synthesize speech
             audio_data = synthesizer.call(text)
-
-            if output_file:
-                # Save to output file
-                os.makedirs(os.path.dirname(output_file), exist_ok=True)
-                with open(output_file, "wb") as f:
-                    f.write(audio_data)
-                return None
-            else:
-                # Return raw audio bytes
-                return audio_data
+            return audio_data
 
         except Exception as e:
             error_msg = f"Qwen TTS conversion failed: {str(e)}"

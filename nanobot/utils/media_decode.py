@@ -11,10 +11,6 @@ import base64
 import mimetypes
 import re
 import uuid
-import io
-import os
-import subprocess
-import tempfile
 from pathlib import Path
 
 from nanobot.utils.helpers import safe_filename
@@ -63,82 +59,3 @@ def save_base64_data_url(
     dest = media_dir / safe_filename(filename)
     dest.write_bytes(raw)
     return str(dest)
-
-
-def webm_to_wav(
-    audio_bytes: bytes = None, input_file: Path = None, output_file: Path = None
-) -> io.BytesIO | Path | None:
-    """
-    Convert non-WAV audio to WAV format using ffmpeg.
-
-    Args:
-        audio_bytes: Raw audio data bytes (optional if input_file is provided)
-        input_file: Path to input audio file (optional if audio_bytes is provided)
-        output_file: Path to output WAV file (optional, returns BytesIO if not provided)
-
-    Returns:
-        BytesIO object with WAV data, or Path if output_file is specified, or None if conversion fails
-
-    Note:
-        Either audio_bytes or input_file must be provided, but not both.
-    """
-    # Validate input parameters
-    if audio_bytes is None and input_file is None:
-        raise ValueError("Either audio_bytes or input_file must be provided")
-    if audio_bytes is not None and input_file is not None:
-        raise ValueError("Cannot provide both audio_bytes and input_file")
-
-    in_path, out_path = None, None
-    try:
-        # Prepare input file
-        if input_file is not None:
-            # Use the provided input file directly
-            in_path = str(input_file)
-        else:
-            # Create temporary input file from audio_bytes
-            with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as tmp_in:
-                tmp_in.write(audio_bytes)
-                in_path = tmp_in.name
-
-        # Create temporary output file for WAV
-        if output_file:
-            out_path = str(output_file)
-        else:
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_out:
-                out_path = tmp_out.name
-        # Use ffmpeg to convert to WAV
-        subprocess.run(
-            [
-                "ffmpeg",
-                "-i",
-                in_path,
-                "-ar",
-                "16000",
-                "-ac",
-                "1",
-                "-f",
-                "wav",
-                "-y",
-                out_path,
-            ],
-            capture_output=True,
-            check=True,
-        )
-        if output_file:
-            return output_file
-        # Read converted WAV file
-        with open(out_path, "rb") as f:
-            wav_io = io.BytesIO(f.read())
-        return wav_io
-    except subprocess.CalledProcessError as e:
-        return None
-    except FileNotFoundError:
-        return None
-    except Exception as e:
-        return None
-    finally:
-        # Cleanup temporary files
-        if in_path and os.path.exists(in_path):
-            os.unlink(in_path)
-        if not output_file and out_path and os.path.exists(out_path):
-            os.unlink(out_path)

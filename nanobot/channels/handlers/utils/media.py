@@ -116,7 +116,7 @@ def opus_to_wav(opus_data, sample_rate: int = 16000):
         if decoder is not None:
             try:
                 del decoder
-            except Exception as e:
+            except Exception:
                 pass
 
 
@@ -168,23 +168,40 @@ def pcm_to_wav(
         return None
 
 
-def webm_to_wav(audio_bytes: bytes, output_file: Path = None) -> io.BytesIO | Path | None:
+def webm_to_wav(
+    audio_bytes: bytes = None, input_file: Path = None, output_file: Path = None
+) -> io.BytesIO | Path | None:
     """
     Convert non-WAV audio to WAV format using ffmpeg.
 
     Args:
-        audio_bytes: Raw audio data bytes
+        audio_bytes: Raw audio data bytes (optional if input_file is provided)
+        input_file: Path to input audio file (optional if audio_bytes is provided)
+        output_file: Path to output WAV file (optional, returns BytesIO if not provided)
 
     Returns:
-        BytesIO object with WAV data, or None if conversion fails
+        BytesIO object with WAV data, or Path if output_file is specified, or None if conversion fails
+
+    Note:
+        Either audio_bytes or input_file must be provided, but not both.
     """
+    # Validate input parameters
+    if audio_bytes is None and input_file is None:
+        raise ValueError("Either audio_bytes or input_file must be provided")
+    if audio_bytes is not None and input_file is not None:
+        raise ValueError("Cannot provide both audio_bytes and input_file")
 
     in_path, out_path = None, None
     try:
-        # Create temporary input file
-        with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as tmp_in:
-            tmp_in.write(audio_bytes)
-            in_path = tmp_in.name
+        # Prepare input file
+        if input_file is not None:
+            # Use the provided input file directly
+            in_path = str(input_file)
+        else:
+            # Create temporary input file from audio_bytes
+            with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as tmp_in:
+                tmp_in.write(audio_bytes)
+                in_path = tmp_in.name
 
         # Create temporary output file for WAV
         if output_file:
@@ -216,14 +233,11 @@ def webm_to_wav(audio_bytes: bytes, output_file: Path = None) -> io.BytesIO | Pa
         with open(out_path, "rb") as f:
             wav_io = io.BytesIO(f.read())
         return wav_io
-    except subprocess.CalledProcessError as e:
-        logger.error(f"FFmpeg conversion failed: {e.stderr.decode() if e.stderr else e}")
+    except subprocess.CalledProcessError:
         return None
     except FileNotFoundError:
-        logger.error("FFmpeg not found. Please install ffmpeg to convert non-WAV audio.")
         return None
-    except Exception as e:
-        logger.error(f"Audio conversion error: {e}")
+    except Exception:
         return None
     finally:
         # Cleanup temporary files
@@ -231,76 +245,6 @@ def webm_to_wav(audio_bytes: bytes, output_file: Path = None) -> io.BytesIO | Pa
             os.unlink(in_path)
         if not output_file and out_path and os.path.exists(out_path):
             os.unlink(out_path)
-
-
-def get_media_dir() -> Path:
-    """
-    Returns:
-        Path: The path to the media directory
-    """
-    media_dir = Path.home() / ".nanobot" / "media"
-    media_dir.mkdir(parents=True, exist_ok=True)
-    return media_dir
-
-
-def save_media(
-    media_data: str,
-    filename: str | None = None,
-    media_dir: Path | None = None,
-    target_type: str = "",
-) -> tuple[Path, str]:
-    """
-    Save media file to specified directory
-
-    Args:
-        media_data: Base64 encoded media data (with data URI prefix)
-        media_dir: Directory path to save the file
-        filename: Filename, auto-generated if None
-
-    Returns:
-        tuple[Path, str]: (file path, MIME type)
-    """
-
-    # Parse data URI
-    header, b64_data = media_data.split(",", 1)
-    mime_type = header.split(";")[0].replace("data:", "")
-
-    if not media_dir:
-        media_dir = get_media_dir()
-
-    # Decode base64
-    file_data = base64.b64decode(b64_data)
-    ext_map = {
-        "image/jpeg": ".jpg",
-        "image/png": ".png",
-        "image/gif": ".gif",
-        "image/webp": ".webp",
-        "audio/webm": ".webm",
-        "audio/mp3": ".mp3",
-        "audio/aac": ".aac",
-        "audio/ogg": ".ogg",
-        "audio/wav": ".wav",
-        "video/mp4": ".mp4",
-    }
-    if target_type:
-        ext = ext_map.get(target_type, ".bin")
-    else:
-        ext = ext_map.get(mime_type, ".bin")
-
-    if not filename:
-        filename = f"media{ext}"
-    if not filename.endswith(ext):
-        # Split from the right to get the last dot
-        parts = filename.rsplit(".", 1)
-        filename = parts[0] + ext if len(parts) > 1 else filename + ext
-
-    file_path = media_dir / filename
-    if mime_type == "audio/webm" and target_type == "audio/wav":
-        file_path = webm_to_wav(file_data, file_path)
-    else:
-        file_path.write_bytes(file_data)
-    logger.debug("Saved base64 media to {}", file_path)
-    return file_path, filename
 
 
 def pcm_to_data_stream(

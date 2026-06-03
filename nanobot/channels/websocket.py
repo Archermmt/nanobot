@@ -157,6 +157,7 @@ class WebSocketConfig(Base):
     ping_timeout_s: float = Field(default=20.0, ge=5.0, le=300.0)
     ssl_certfile: str = ""
     ssl_keyfile: str = ""
+    enable_tts: bool = False  # Enable TTS for final messages
 
     @field_validator("unix_socket_path")
     @classmethod
@@ -559,8 +560,7 @@ class WebSocketChannel(BaseChannel):
         # file, nothing else. The secret regenerates on restart so links
         # become self-expiring (callers just refresh the session list).
         self._media_secret: bytes = secrets.token_bytes(32)
-
-    # -- Subscription bookkeeping -------------------------------------------
+        self._enable_tts = config.enable_tts
 
     def _attach(self, connection: Any, chat_id: str) -> None:
         """Idempotently subscribe *connection* to *chat_id*."""
@@ -1783,10 +1783,28 @@ class WebSocketChannel(BaseChannel):
             "chat_id": msg.chat_id,
             "text": wire_text,
         }
-        if msg.media:
-            payload["media"] = msg.media
+        # Add media from message or generate TTS audio for final messages
+        media_list = list(msg.media) if msg.media else []
+
+        # If TTS is enabled and this is a final message (not intermediate), generate audio
+        if (
+            self._enable_tts
+            and text
+            and not media_list
+            and not msg.metadata.get("_progress")
+            and not msg.metadata.get("_tool_hint")
+            and not msg.metadata.get("_turn_end")
+        ):
+            audio_bytes = await self.text_to_tts(text)
+            if audio_bytes:
+                temp_file = get_media_dir("websocket") / f"tts_{hash(text)}.wav"
+                temp_file.write_bytes(audio_bytes)
+                media_list.append(str(temp_file))
+
+        if media_list:
+            payload["media"] = media_list
             urls: list[dict[str, str]] = []
-            for entry in msg.media:
+            for entry in media_list:
                 signed = self._sign_or_stage_media_path(Path(entry))
                 if signed is not None:
                     urls.append(signed)
