@@ -1901,6 +1901,7 @@ class WebSocketChannel(BaseChannel):
                 body["text"] = rewritten
 
             # If TTS is enabled and this is a final message with text content, generate audio
+            # and send a complete message event (not just stream_end) so frontend can handle media
             if (
                 self._enable_tts
                 and full_text.strip()
@@ -1913,14 +1914,29 @@ class WebSocketChannel(BaseChannel):
                         get_media_dir("websocket") / f"tts{hash(full_text)}.{result['format']}"
                     )
                     temp_file.write_bytes(result["datas"])
-                    body["media"] = [str(temp_file)]
+                    # Send a complete message event with media after stream_end
+                    media_list = [str(temp_file)]
                     urls: list[dict[str, str]] = []
                     signed = self._sign_or_stage_media_path(Path(str(temp_file)))
                     if signed is not None:
                         urls.append(signed)
+                    message_body: dict[str, Any] = {
+                        "event": "message",
+                        "chat_id": chat_id,
+                        "text": rewritten if rewritten != full_text else full_text,
+                        "media": media_list,
+                    }
                     if urls:
-                        body["media_urls"] = urls
-                    print(f"[TMINFO] media_list in send_delta {body.get('media')}", flush=True)
+                        message_body["media_urls"] = urls
+                    message_raw = json.dumps(message_body, ensure_ascii=False)
+                    for connection in conns:
+                        await self._safe_send_to(connection, message_raw, label=" tts_message ")
+                    # Still send stream_end to close the stream
+                    self._try_append_webui_transcript(chat_id, body)
+                    raw = json.dumps(body, ensure_ascii=False)
+                    for connection in conns:
+                        await self._safe_send_to(connection, raw, label=" stream_end ")
+                    return
         else:
             body = {
                 "event": "delta",
