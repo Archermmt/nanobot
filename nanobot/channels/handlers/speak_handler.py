@@ -75,10 +75,9 @@ class BaseSpeakHandler(BaseHandler, ABC):
             if not path.exists():
                 msg.error = f"Audio file not found: {file_path}"
                 return msg
-
             with CaptureOutput():
                 score = self._verify_speaker(path)
-
+            msg.metadata.update({"score": score, "threshold": self.threshold})
             if score < self.threshold:
                 msg.error = f"Speaker verification failed: {score:.2f}<{self.threshold}"
         except Exception as e:
@@ -138,7 +137,7 @@ class WeSpeakHandler(BaseSpeakHandler):
             return 0.0
 
         path = Path(file_path)
-        output_file = get_media_dir() / "speaker.wav"
+        output_file = get_media_dir("temp") / "speaker.wav"
         audio_bytes = path.read_bytes()
         # Detect audio format from file extension or content
         suffix, converted = path.suffix.lower(), None
@@ -225,7 +224,7 @@ class SbrainSpeakHandler(BaseSpeakHandler):
             return 0.0
 
         path = Path(file_path)
-        speaker_file = get_media_dir() / "speaker.wav"
+        speaker_file = get_media_dir("temp") / "speaker.wav"
         separated_files = []
         audio_bytes = path.read_bytes()
 
@@ -248,7 +247,7 @@ class SbrainSpeakHandler(BaseSpeakHandler):
                 est_sources = self.separator.separate_file(path=str(speaker_file))
                 # Save each separated source and verify against reference
                 for i in range(est_sources.shape[2]):
-                    sep_file = get_media_dir() / f"speech_{i}.wav"
+                    sep_file = get_media_dir("temp") / f"speech_{i}.wav"
                     # Save separated source as mono 8kHz WAV
                     torchaudio.save(str(sep_file), est_sources[:, :, i].detach().cpu(), 8000)
                     separated_files.append(sep_file)

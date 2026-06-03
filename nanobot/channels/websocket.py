@@ -1720,6 +1720,7 @@ class WebSocketChannel(BaseChannel):
             raise
 
     async def send(self, msg: OutboundMessage) -> None:
+        print(f"[TMINFO] sending msg(tts: {self._enable_tts}) {msg}", flush=True)
         if msg.metadata.get("_runtime_model_updated"):
             await self.send_runtime_model_updated(
                 model_name=msg.metadata.get("model"),
@@ -1806,10 +1807,12 @@ class WebSocketChannel(BaseChannel):
             and not msg.metadata.get("_turn_end")
         ):
             result = await self.text_to_speech(text)
+            print(f"[TMINFO] tts result {result}", flush=True)
             if result:
                 temp_file = get_media_dir("websocket") / f"tts_{hash(text)}.{result['format']}"
                 temp_file.write_bytes(result["datas"])
                 media_list.append(str(temp_file))
+            print(f"[TMINFO] media_list {media_list}", flush=True)
 
         if media_list:
             payload["media"] = media_list
