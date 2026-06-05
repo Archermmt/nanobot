@@ -602,6 +602,8 @@
       },
       "camera": {
         "error": "Failed to access camera. Please check camera permissions.",
+        "preview": "Camera preview",
+        "resize": "Resize camera preview",
         "startCamera": "Start camera",
         "stopCamera": "Stop camera"
       },

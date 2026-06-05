@@ -601,6 +601,8 @@
       },
       "camera": {
         "error": "无法访问摄像头。请检查摄像头权限。",
+        "preview": "摄像头预览",
+        "resize": "调整摄像头预览大小",
         "startCamera": "打开摄像头",
         "stopCamera": "关闭摄像头"
       },
