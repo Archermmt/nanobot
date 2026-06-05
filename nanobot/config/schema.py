@@ -290,6 +290,29 @@ class HeartbeatConfig(Base):
     keep_recent_messages: int = 8
 
 
+class CleanupDirConfig(Base):
+    """One directory entry for the periodic cleanup job."""
+
+    path: str
+    max_keep: int = Field(default=100, ge=1)
+
+
+class CleanupConfig(Base):
+    """Periodic directory cleanup configuration."""
+
+    _MINUTE_MS = 60_000
+
+    enabled: bool = True
+    interval_m: int = Field(default=10, ge=1)
+    dirs: list[CleanupDirConfig] = Field(default_factory=list)
+
+    def build_schedule(self) -> CronSchedule:
+        return CronSchedule(kind="every", every_ms=self.interval_m * self._MINUTE_MS)
+
+    def describe_schedule(self) -> str:
+        return f"every {self.interval_m}m, {len(self.dirs)} dir(s)"
+
+
 class ApiConfig(Base):
     """OpenAI-compatible API server configuration."""
 
@@ -304,6 +327,7 @@ class GatewayConfig(Base):
     host: str = "127.0.0.1"  # Safer default: local-only bind.
     port: int = 18790
     heartbeat: HeartbeatConfig = Field(default_factory=HeartbeatConfig)
+    cleanup: CleanupConfig = Field(default_factory=CleanupConfig)
 
 
 class MCPServerConfig(Base):

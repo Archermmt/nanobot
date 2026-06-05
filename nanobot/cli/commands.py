@@ -1059,6 +1059,28 @@ def _run_gateway(
                 logger.info("Heartbeat: silenced by post-run evaluation")
             return response
 
+        # Cleanup is a system job that removes excess files from configured directories.
+        if job.name == "cleanup":
+            cleanup_cfg = config.gateway.cleanup
+            cleaned = 0
+            for dir_cfg in cleanup_cfg.dirs:
+                dir_path = Path(dir_cfg.path).expanduser()
+                if not dir_path.is_dir():
+                    continue
+                files = sorted(
+                    (f for f in dir_path.iterdir() if f.is_file()),
+                    key=lambda f: f.stat().st_mtime,
+                    reverse=True,
+                )
+                for f in files[dir_cfg.max_keep :]:
+                    try:
+                        f.unlink()
+                        cleaned += 1
+                    except OSError:
+                        logger.warning("Cleanup: failed to delete %s", f)
+            logger.info("Cleanup: removed %d file(s)", cleaned)
+            return None
+
         reminder_note = (
             "The scheduled time has arrived. Deliver this reminder to the user now, "
             "as a brief and natural message in their language. Speak directly to them — "
@@ -1248,6 +1270,19 @@ def _run_gateway(
                 payload=CronPayload(kind="system_event"),
             )
         )
+
+    # Register Cleanup system job (idempotent on restart)
+    cleanup_cfg = config.gateway.cleanup
+    if cleanup_cfg.enabled and cleanup_cfg.dirs:
+        cron.register_system_job(
+            CronJob(
+                id="cleanup",
+                name="cleanup",
+                schedule=cleanup_cfg.build_schedule(),
+                payload=CronPayload(kind="system_event"),
+            )
+        )
+        console.print(f"[green]✓[/green] Cleanup: {cleanup_cfg.describe_schedule()}")
 
     async def _open_browser_when_ready() -> None:
         """Wait for the gateway to bind, then point the user's browser at the webui."""

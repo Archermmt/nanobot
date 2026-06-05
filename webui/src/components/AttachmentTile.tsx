@@ -1,8 +1,9 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { FileIcon, ImageIcon, PlaySquare, Volume2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { cn } from "@/lib/utils";
+import { useMediaQueue } from "@/providers/MediaQueueProvider";
 import type { UIMediaAttachment } from "@/lib/types";
 
 interface AttachmentTileProps {
@@ -81,16 +82,10 @@ export function AttachmentTile({ attachment, className, inline = false, variant 
         inline={inline}
         variant={variant}
       >
-        <audio
-          src={attachment.url}
-          controls
-          autoPlay
-          preload="auto"
-          className={cn(
-            "block w-full",
-            variant === "compact" ? "max-w-[20rem]" : "max-w-[32rem]",
-          )}
-          aria-label={attachment.name ? `${t("message.audioAttachment", { defaultValue: "Audio attachment" })}: ${attachment.name}` : t("message.audioAttachment", { defaultValue: "Audio attachment" })}
+        <AudioQueueTile
+          attachment={attachment}
+          variant={variant}
+          ariaLabel={attachment.name ? `${t("message.audioAttachment", { defaultValue: "Audio attachment" })}: ${attachment.name}` : t("message.audioAttachment", { defaultValue: "Audio attachment" })}
         />
       </AttachmentFrame>
     );
@@ -146,6 +141,63 @@ export function AttachmentTile({ attachment, className, inline = false, variant 
         {t("message.attachmentUnavailable", { defaultValue: "Attachment unavailable" })}
       </span>
     </div>
+  );
+}
+
+function AudioQueueTile({
+  attachment,
+  variant,
+  ariaLabel,
+}: {
+  attachment: UIMediaAttachment;
+  variant: "default" | "compact";
+  ariaLabel: string;
+}) {
+  const { enqueue, remove, currentId, onEnded } = useMediaQueue();
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const url = attachment.url!;
+  const isCurrentlyPlaying = currentId === url;
+  // Tracks whether the queue has granted play permission.
+  // Set to false before programmatic pause so onPause doesn't misfire.
+  const grantedPlay = useRef(false);
+
+  useEffect(() => {
+    enqueue(url, url);
+    return () => remove(url);
+  }, [url, enqueue, remove]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (isCurrentlyPlaying) {
+      grantedPlay.current = true;
+      audio.play().catch(() => {});
+    } else {
+      grantedPlay.current = false;
+      audio.pause();
+    }
+  }, [isCurrentlyPlaying]);
+
+  return (
+    <audio
+      ref={audioRef}
+      src={url}
+      controls
+      preload="auto"
+      onEnded={() => onEnded(url)}
+      onPause={() => {
+        // User-initiated pause (grantedPlay still true) → skip this item
+        if (grantedPlay.current) {
+          grantedPlay.current = false;
+          onEnded(url);
+        }
+      }}
+      className={cn(
+        "block w-full",
+        variant === "compact" ? "max-w-[20rem]" : "max-w-[32rem]",
+      )}
+      aria-label={ariaLabel}
+    />
   );
 }
 

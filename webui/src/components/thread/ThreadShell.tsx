@@ -8,6 +8,7 @@ import { ThreadViewport } from "@/components/thread/ThreadViewport";
 import { useNanobotStream, type SendImage, type SendOptions } from "@/hooks/useNanobotStream";
 import { useSessionHistory } from "@/hooks/useSessions";
 import { fetchCliApps, fetchMcpPresets, fetchSettings, listSlashCommands } from "@/lib/api";
+import { MediaQueueProvider } from "@/providers/MediaQueueProvider";
 import {
   CLI_APPS_CHANGED_EVENT,
   installedCliAppsFromPayload,
@@ -563,28 +564,30 @@ export function ThreadShell({
   );
 
   return (
-    <section className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
-      {!hideHeader ? (
-        <ThreadHeader
-          title={title}
-          onToggleSidebar={onToggleSidebar}
-          theme={theme}
-          onToggleTheme={onToggleTheme}
-          hideSidebarToggleForHostChrome={hideSidebarToggleForHostChrome}
-          minimal={!session && !loading}
+    <MediaQueueProvider sessionId={session?.key}>
+      <section className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+        {!hideHeader ? (
+          <ThreadHeader
+            title={title}
+            onToggleSidebar={onToggleSidebar}
+            theme={theme}
+            onToggleTheme={onToggleTheme}
+            hideSidebarToggleForHostChrome={hideSidebarToggleForHostChrome}
+            minimal={!session && !loading}
+          />
+        ) : null}
+        <ThreadViewport
+          messages={displayMessages}
+          isStreaming={isStreaming}
+          emptyState={emptyState}
+          composer={composer}
+          scrollToBottomSignal={scrollToBottomSignal}
+          conversationKey={historyKey}
+          showScrollToBottomButton={!!session}
+          cliApps={cliApps}
+          mcpPresets={mcpPresets}
         />
-      ) : null}
-      <ThreadViewport
-        messages={displayMessages}
-        isStreaming={isStreaming}
-        emptyState={emptyState}
-        composer={composer}
-        scrollToBottomSignal={scrollToBottomSignal}
-        conversationKey={historyKey}
-        showScrollToBottomButton={!!session}
-        cliApps={cliApps}
-        mcpPresets={mcpPresets}
-      />
-    </section>
+      </section>
+    </MediaQueueProvider>
   );
 }
