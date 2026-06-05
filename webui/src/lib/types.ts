@@ -763,4 +763,8 @@ export type Outbound =
       data_url: string;
       name?: string;
       request_id: string;
+    }
+  | {
+      type: "tts_toggle";
+      enable: boolean;
     };

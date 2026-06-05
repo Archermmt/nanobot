@@ -429,6 +429,8 @@ export function useNanobotStream(
   setMessages: React.Dispatch<React.SetStateAction<UIMessage[]>>;
   /** Transcribe audio from base64 data URL via WebSocket. */
   transcribeAudio: (dataUrl: string, name?: string) => Promise<string>;
+  /** Toggle TTS on/off via WebSocket. */
+  ttsToggle: (enable: boolean) => void;
   /** Latest transport-level fault raised since the last ``dismissStreamError``.
    * ``null`` when there is nothing to show. */
   streamError: StreamError | null;
@@ -1043,6 +1045,10 @@ export function useNanobotStream(
     setMessages,
     transcribeAudio: useCallback(
       (dataUrl: string, name?: string) => client.transcribeAudio(dataUrl, name),
+      [client],
+    ),
+    ttsToggle: useCallback(
+      (enable: boolean) => client.ttsToggle(enable),
       [client],
     ),
     streamError,

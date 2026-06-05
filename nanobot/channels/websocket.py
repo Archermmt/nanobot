@@ -158,7 +158,6 @@ class WebSocketConfig(Base):
     ping_timeout_s: float = Field(default=20.0, ge=5.0, le=300.0)
     ssl_certfile: str = ""
     ssl_keyfile: str = ""
-    enable_tts: bool = False  # Enable TTS for final messages
 
     @field_validator("unix_socket_path")
     @classmethod
@@ -561,7 +560,7 @@ class WebSocketChannel(BaseChannel):
         # file, nothing else. The secret regenerates on restart so links
         # become self-expiring (callers just refresh the session list).
         self._media_secret: bytes = secrets.token_bytes(32)
-        self._enable_tts = config.enable_tts
+        self._enable_tts = False
 
     def _attach(self, connection: Any, chat_id: str) -> None:
         """Idempotently subscribe *connection* to *chat_id*."""
@@ -986,6 +985,21 @@ class WebSocketChannel(BaseChannel):
                 chat_id="__transcription__",
                 request_id=envelope.get("request_id", ""),
                 error=f"transcription failed: {str(e)}",
+            )
+
+    async def _handle_tts_toggle(self, connection: Any, envelope: dict[str, Any]) -> None:
+        """Handle TTS toggle request via WebSocket."""
+        try:
+            enable = envelope.get("enable", False)
+            self._enable_tts = enable
+            logger.info("TTS toggled: {}", "enabled" if enable else "disabled")
+        except Exception as e:
+            logger.exception("TTS toggle failed")
+            await self._send_event(
+                connection,
+                "error",
+                chat_id="__system__",
+                error=str(e),
             )
 
     def _handle_webui_sidebar_state(self, request: WsRequest) -> Response:
@@ -1526,10 +1540,13 @@ class WebSocketChannel(BaseChannel):
         client_id: str,
         envelope: dict[str, Any],
     ) -> None:
-        """Route one typed inbound envelope (``new_chat`` / ``attach`` / ``message`` / ``transcribe_audio``)."""
+        """Route one typed inbound envelope (``new_chat`` / ``attach`` / ``message`` / ``transcribe_audio`` / ``tts_toggle``)."""
         t = envelope.get("type")
         if t == "transcribe_audio":
             await self._handle_transcribe_audio(connection, envelope)
+            return
+        if t == "tts_toggle":
+            await self._handle_tts_toggle(connection, envelope)
             return
         if t == "new_chat":
             new_id = str(uuid.uuid4())

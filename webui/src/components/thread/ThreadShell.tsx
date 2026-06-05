@@ -170,6 +170,9 @@ export function ThreadShell({
   const [settings, setSettings] = useState<SettingsPayload | null>(settingsSnapshot);
   const [heroGreetingKey, setHeroGreetingKey] = useState(randomHeroGreetingKey);
   const [scrollToBottomSignal, setScrollToBottomSignal] = useState(0);
+  const [enableTts, setEnableTts] = useState(false);
+  const [isCameraOn, setIsCameraOn] = useState(false);
+  const cameraStreamRef = useRef<MediaStream | null>(null);
   const pendingFirstRef = useRef<PendingFirstMessage | null>(null);
   const messageCacheRef = useRef<Map<string, UIMessage[]>>(new Map());
   /** Last chatId we associated with the in-memory thread (for cache-on-switch). */
@@ -196,6 +199,7 @@ export function ThreadShell({
     stop,
     setMessages,
     transcribeAudio,
+    ttsToggle,
     streamError,
     dismissStreamError,
   } = useNanobotStream(chatId, initial, hasPendingToolCalls, handleTurnEnd);
@@ -519,6 +523,14 @@ export function ThreadShell({
           pendingQueueKey={chatId}
           token={token}
           onTranscribe={transcribeAudio}
+          enableTts={enableTts}
+          onToggleTts={() => {
+            setEnableTts(prev => {
+              const newValue = !prev;
+              ttsToggle(newValue);
+              return newValue;
+            });
+          }}
         />
       ) : (
         <ThreadComposer
@@ -574,6 +586,32 @@ export function ThreadShell({
             onToggleTheme={onToggleTheme}
             hideSidebarToggleForHostChrome={hideSidebarToggleForHostChrome}
             minimal={!session && !loading}
+            isCameraOn={isCameraOn}
+            onToggleCamera={async () => {
+              if (isCameraOn) {
+                if (cameraStreamRef.current) {
+                  cameraStreamRef.current.getTracks().forEach(track => track.stop());
+                  cameraStreamRef.current = null;
+                }
+                setIsCameraOn(false);
+              } else {
+                try {
+                  const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                  cameraStreamRef.current = stream;
+                  setIsCameraOn(true);
+                } catch (error) {
+                  console.error("Failed to access camera:", error);
+                }
+              }
+            }}
+            enableTts={enableTts}
+            onToggleTts={() => {
+              setEnableTts(prev => {
+                const newValue = !prev;
+                ttsToggle(newValue);
+                return newValue;
+              });
+            }}
           />
         ) : null}
         <ThreadViewport

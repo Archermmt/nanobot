@@ -600,6 +600,15 @@
         "stopRecording": "Stop recording",
         "sendRecording": "Send recording"
       },
+      "camera": {
+        "error": "Failed to access camera. Please check camera permissions.",
+        "startCamera": "Start camera",
+        "stopCamera": "Stop camera"
+      },
+      "tts": {
+        "enableTts": "Enable TTS",
+        "disableTts": "Disable TTS"
+      },
       "transcription": {
         "error": "Failed to transcribe audio. Please try again.",
         "empty": "Recording is empty, cannot send."

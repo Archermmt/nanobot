@@ -378,6 +378,14 @@ export class NanobotClient {
     });
   }
 
+  /** Toggle TTS on/off. */
+  ttsToggle(enable: boolean): void {
+    this.queueSend({
+      type: "tts_toggle",
+      enable,
+    });
+  }
+
   setWorkspaceScope(chatId: string, workspaceScope: WorkspaceScopePayload): void {
     this.knownChats.add(chatId);
     this.queueSend({
