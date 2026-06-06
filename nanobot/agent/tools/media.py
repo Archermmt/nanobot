@@ -224,7 +224,7 @@ class MediaTool(Tool):
         source_images: list[str] | None = None,
         provider: str = "openrouter",
         created_at: datetime | None = None,
-        media_path: str | None = None,
+        media_path: str = "",
     ) -> dict[str, Any]:
         """Store generated media artifacts.
 
@@ -248,19 +248,6 @@ class MediaTool(Tool):
         )
 
         now = created_at or datetime.now().astimezone()
-        art_path = Path(media_path)
-        art_path.parent.mkdir(parents=True, exist_ok=True)
-        metadata_path = art_path.with_suffix(".json")
-        # Create metadata
-        metadata: dict[str, Any] = {
-            "id": art_path.stem,
-            "path": str(media_path),
-            "prompt": prompt,
-            "model": model,
-            "provider": provider,
-            "source_images": list(source_images or []),
-            "created_at": now.isoformat(),
-        }
 
         if media_type == "image":
             from nanobot.utils.artifacts import _MIME_EXTENSIONS
@@ -279,6 +266,29 @@ class MediaTool(Tool):
                 raise ArtifactError(f"unsupported video MIME type: {mime}")
         else:
             raise ValueError(f"Unsupported media type: {media_type}")
+
+        # If media_path is not provided, generate a temporary path
+        if not media_path:
+            import time
+
+            timestamp = int(time.time() * 1000)  # millisecond timestamp
+            art_path = get_media_dir(media_type) / f"{timestamp}{ext}"
+        else:
+            art_path = Path(media_path)
+
+        art_path.parent.mkdir(parents=True, exist_ok=True)
+        metadata_path = art_path.with_suffix(".json")
+        # Create metadata
+        metadata: dict[str, Any] = {
+            "id": art_path.stem,
+            "path": str(art_path),
+            "prompt": prompt,
+            "model": model,
+            "provider": provider,
+            "source_images": list(source_images or []),
+            "created_at": now.isoformat(),
+        }
+
         # Write the media data
         art_path.write_bytes(raw)
         metadata["mime"] = mime
@@ -313,15 +323,8 @@ class MediaTool(Tool):
             return await self._execute_analyze(
                 media_type=media_type, media_path=media_path, prompt=prompt
             )
-
-        # Calculate media_dir based on media_type
-        media_dir = get_media_dir() / media_type
-        media_dir.mkdir(parents=True, exist_ok=True)
-
-        # If media_path is not absolute, prepend media_dir
-        if media_path and not Path(media_path).is_absolute():
-            media_path = str(media_dir / media_path)
-
+        if media_path:
+            media_path = str(self._get_media_path(media_path, media_type))
         if media_type == "image":
             return await self._execute_image(
                 mode=mode,
@@ -335,8 +338,7 @@ class MediaTool(Tool):
             return await self._execute_video(
                 mode=mode,
                 prompt=prompt,
-                video_path=media_path,
-                media_dir=media_dir,
+                media_path=media_path,
                 resolution=resolution or self.config.default_video_resolution,
                 ratio=ratio or self.config.default_video_ratio,
                 duration=duration or self.config.default_video_duration,
@@ -362,7 +364,7 @@ class MediaTool(Tool):
         if media_type not in extensions:
             return f"Error: Invalid media_type '{media_type}'. Must be 'image', 'video', 'audio', 'html', or 'mesh'."
 
-        media_dir = get_media_dir() / media_type
+        media_dir = get_media_dir(media_type)
         if not media_dir.exists():
             return f"No {media_type} files found. Directory does not exist: {media_dir}"
 
@@ -391,24 +393,38 @@ class MediaTool(Tool):
 
         return result.strip()
 
-    def _get_media_path(self, media_path: str, media_type: str) -> Path:
-        """Get the absolute path for a media file."""
+    def _get_media_path(self, media_path: str, media_type: str, check_exist: bool = False) -> str:
+        """Get the absolute path for a media file.
+
+        Args:
+            media_path: Media file path (relative or absolute)
+            media_type: Media type (image/video/audio)
+            check_exist: If True, check if file exists and raise error if not
+
+        Returns:
+            Absolute path as string
+        """
         path = Path(media_path)
         if not path.is_absolute():
             path = get_media_dir(media_type) / path
-        return path
+
+        if check_exist and not path.exists():
+            raise FileNotFoundError(f"Media file not found: {path}")
+
+        return str(path)
 
     async def _execute_display(self, media_path: str, media_type: str) -> str:
         """Execute media display."""
-        media_path_obj = self._get_media_path(media_path, media_type)
-        if not media_path_obj.exists():
-            return f"Error: Media file not found: {media_path_obj}"
+        try:
+            media_path = self._get_media_path(media_path, media_type, check_exist=True)
+        except FileNotFoundError as e:
+            return f"Error: {e}"
 
         artifacts = [
             {
                 "type": media_type,
-                "path": str(media_path_obj),
-                "mime": mimetypes.guess_type(str(media_path_obj))[0] or "application/octet-stream",
+                "path": media_path,
+                "mime": mimetypes.guess_type(media_path)[0] or "application/octet-stream",
             }
         ]
 
@@ -458,14 +474,11 @@ class MediaTool(Tool):
                 media_path=media_path,
                 **kwargs,
             )
-        elif mode == "edit":
-            if not ref_media:
-                return "Error: ref_media is required for image editing."
+        if mode == "edit":
             try:
                 resolved_ref = self._resolve_reference_image(ref_media)
             except ImageGenerationError as e:
                 return f"Error: {e}"
-
             return await self._execute_image_generate(
                 prompt=prompt,
                 reference_images=[resolved_ref],
@@ -474,8 +487,7 @@ class MediaTool(Tool):
                 media_path=media_path,
                 **kwargs,
             )
-        else:
-            return f"Error: Invalid mode '{mode}' for image. Must be 'list', 'display', 'generate', or 'edit'."
+        return f"Error: Invalid mode '{mode}' for image. Must be 'list', 'display', 'generate', or 'edit'."
 
     async def _execute_image_generate(
         self,
@@ -504,7 +516,7 @@ class MediaTool(Tool):
                 model=self.config.image_model or "",
                 source_images=reference_images,
                 provider=self.config.media_provider,
-                media_path=media_path if media_path else None,
+                media_path=media_path,
             )
             return self._generate_result("image", [artifact])
         except (ArtifactError, ImageGenerationError, OSError) as exc:
@@ -514,8 +526,7 @@ class MediaTool(Tool):
         self,
         mode: str,
         prompt: str = "",
-        video_path: str = "",
-        media_dir: Path | None = None,
+        media_path: str = "",
         resolution: str = "1080P",
         ratio: str = "16:9",
         duration: int = 5,
@@ -527,14 +538,10 @@ class MediaTool(Tool):
         **kwargs: Any,
     ) -> str:
         """Execute video operations."""
-        video_path_obj = self._get_media_path(video_path or "generated.mp4", "video")
-
         if mode == "generate":
-            if not video_path_obj.exists():
-                video_path_obj = media_dir / "generated.mp4" if media_dir else video_path_obj
             return await self._execute_video_generate(
                 prompt=prompt,
-                video_path=video_path_obj,
+                media_path=media_path,
                 resolution=resolution,
                 ratio=ratio,
                 duration=duration,
@@ -545,15 +552,12 @@ class MediaTool(Tool):
                 seed=seed,
                 **kwargs,
             )
-        elif mode == "edit":
-            return "Error: Video editing is not yet supported. Please use generate mode to create new videos."
-        else:
-            return f"Error: Invalid mode '{mode}' for video. Must be 'list', 'display', 'generate', or 'edit'."
+        return f"Error: Invalid mode '{mode}' for video. Must be 'list', 'display', 'generate', or 'edit'."
 
     async def _execute_video_generate(
         self,
         prompt: str,
-        video_path: Path,
+        media_path: str = "",
         resolution: str = "1080P",
         ratio: str = "16:9",
         duration: int = 5,
@@ -590,7 +594,7 @@ class MediaTool(Tool):
                 prompt=prompt,
                 model=model,
                 provider=self.config.media_provider,
-                media_path=str(video_path),
+                media_path=media_path,
             )
             return self._generate_result("video", [artifact])
         except (ArtifactError, ValueError, TimeoutError, OSError) as exc:
@@ -619,13 +623,14 @@ class MediaTool(Tool):
             )
 
         # Validate media path
-        media_path_obj = self._get_media_path(media_path, media_type)
-        if not media_path_obj.exists():
-            return f"Error: Media file not found: {media_path_obj}"
+        try:
+            media_path = self._get_media_path(media_path, media_type, check_exist=True)
+        except FileNotFoundError as e:
+            return f"Error: {e}"
 
         # Encode media file to base64 data URL
         try:
-            media_data = self._encode_media_to_data_url(str(media_path_obj), media_type)
+            media_data = self._encode_media_to_data_url(media_path, media_type)
         except Exception as e:
             return f"Error encoding media file: {str(e)}"
 
@@ -660,7 +665,7 @@ class MediaTool(Tool):
         if content_type == "text":
             # For HTML and mesh, read as text
             try:
-                text_content = media_path_obj.read_text(encoding="utf-8", errors="ignore")
+                text_content = Path(media_path).read_text(encoding="utf-8", errors="ignore")
                 content.append({"type": "text", "text": text_content[:10000]})  # Limit size
             except Exception as e:
                 return f"Error reading text content: {str(e)}"
