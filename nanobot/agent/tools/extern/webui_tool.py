@@ -7,6 +7,7 @@ from typing import Any
 
 from nanobot.config.paths import get_media_dir
 from nanobot.utils.artifacts import decode_image_data_url
+from nanobot.utils.media_decode import save_media
 
 from .extern_tool import ExternTool
 
@@ -61,56 +62,11 @@ class WebUITool(ExternTool):
 
         result = await self.wait_for_result(_checker)
         print(f"[TMINFO] WebUI tool '{self._name}' received result: {result}", flush=True)
-
-        # Handle image data: save to local path and build artifact metadata
         if "image_data" in result:
-            image_data_url = result["image_data"]
-
-            # Decode the image data URL
-            raw_bytes, mime_type = decode_image_data_url(image_data_url)
-
-            # Determine file extension from MIME type
-            mime_to_ext = {
-                "image/jpeg": ".jpg",
-                "image/png": ".png",
-                "image/gif": ".gif",
-                "image/webp": ".webp",
-            }
-            ext = mime_to_ext.get(mime_type, ".jpg")
-
-            # Generate media path
-            media_dir = get_media_dir("websocket")
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"{self._name}_{timestamp}{ext}"
-            media_path = media_dir / filename
-
-            # Save the image file
-            media_path.write_bytes(raw_bytes)
-
-            # Build artifact metadata (similar to media.py store_artifacts)
-            artifact_metadata = {
-                "id": media_path.stem,
-                "path": str(media_path),
-                "mime": mime_type,
-                "created_at": datetime.now().astimezone().isoformat(),
-            }
-
-            # Build result with artifact info (similar to media.py _generate_result)
-            result_with_artifact = json.dumps(
-                {
-                    "artifacts": [artifact_metadata],
-                    "next_step": (
-                        "Use this artifact path as reference_image for follow-up operations. "
-                        "Call the message tool with the artifact path in the media parameter "
-                        "to deliver the image to the provider."
-                    ),
-                },
-                ensure_ascii=False,
-            )
-            print(f"[TMINFO] result_with_artifact {result_with_artifact}", flush=True)
-
-            return result_with_artifact
-
+            result["image"] = save_media(
+                result.pop("image_data"), self.name + ".jpg", media_dir=get_media_dir("websocket")
+            )[0]
+        print(f"[TMINFO] WebUI tool '{self._name}' final result: {result}", flush=True)
         return str(result)
 
 

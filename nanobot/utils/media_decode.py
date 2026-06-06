@@ -22,6 +22,7 @@ from typing import Any, Callable
 import numpy as np
 from loguru import logger
 
+from nanobot.config.paths import get_media_dir
 from nanobot.utils.helpers import safe_filename
 
 DEFAULT_MAX_BYTES = 10 * 1024 * 1024
@@ -364,3 +365,63 @@ def audio_bytes_to_data_stream(
     audio = audio.set_channels(1).set_frame_rate(sample_rate).set_sample_width(2)
     raw_data = audio.raw_data
     pcm_to_data_stream(raw_data, is_opus, callback, sample_rate, opus_encoder)
+
+
+def save_media(
+    media_data: str,
+    filename: str | None = None,
+    media_dir: Path | None = None,
+    target_type: str = "",
+) -> tuple[Path, str]:
+    """
+    Save media file to specified directory
+
+    Args:
+        media_data: Base64 encoded media data (with data URI prefix)
+        media_dir: Directory path to save the file
+        filename: Filename, auto-generated if None
+
+    Returns:
+        tuple[Path, str]: (file path, MIME type)
+    """
+
+    # Parse data URI
+    header, b64_data = media_data.split(",", 1)
+    mime_type = header.split(";")[0].replace("data:", "")
+
+    if not media_dir:
+        media_dir = get_media_dir()
+
+    # Decode base64
+    file_data = base64.b64decode(b64_data)
+    ext_map = {
+        "image/jpeg": ".jpg",
+        "image/png": ".png",
+        "image/gif": ".gif",
+        "image/webp": ".webp",
+        "audio/webm": ".webm",
+        "audio/mp3": ".mp3",
+        "audio/aac": ".aac",
+        "audio/ogg": ".ogg",
+        "audio/wav": ".wav",
+        "video/mp4": ".mp4",
+    }
+    if target_type:
+        ext = ext_map.get(target_type, ".bin")
+    else:
+        ext = ext_map.get(mime_type, ".bin")
+
+    if not filename:
+        filename = f"media{ext}"
+    if not filename.endswith(ext):
+        # Split from the right to get the last dot
+        parts = filename.rsplit(".", 1)
+        filename = parts[0] + ext if len(parts) > 1 else filename + ext
+
+    file_path = media_dir / filename
+    if mime_type == "audio/webm" and target_type == "audio/wav":
+        file_path = webm_to_wav(file_data, file_path)
+    else:
+        file_path.write_bytes(file_data)
+    logger.debug("Saved base64 media to {}", file_path)
+    return file_path, filename

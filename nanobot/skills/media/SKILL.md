@@ -11,9 +11,9 @@ This is the master guide for all media-related operations in nanobot. It provide
 ## Overview
 
 The media system supports three types of media:
-- **Images** 🖼️ - Listing, display, generation, and editing
-- **Audio** 🎵 - Listing and playback
-- **Videos** 🎬 - Listing, display, generation, and editing
+- **Images** 🖼️ - Listing, display, generation, editing, and analysis
+- **Audio** 🎵 - Listing, playback, and analysis
+- **Videos** 🎬 - Listing, display, generation, and analysis
 
 All media operations use the same `media` tool but with different `media_type` parameters:
 - `"image"` for image operations
@@ -36,16 +36,18 @@ When you need to work with media, follow this decision tree:
 - **Show image to user**: `mode="display"`
 - **Create image from text**: `mode="generate"`
 - **Modify existing image**: `mode="edit"`
+- **Analyze image content**: `mode="analyze"` (OCR, description, visual QA)
 
 #### For Audio (`media_type="audio"`):
 - **List available audio files**: `mode="list"`
 - **Play audio to user**: `mode="display"`
+- **Analyze audio content**: `mode="analyze"` (transcription, description)
 
 #### For Videos (`media_type="video"`):
 - **List available videos**: `mode="list"`
 - **Show video to user**: `mode="display"`
 - **Create video from text**: `mode="generate"`
-- **Modify existing video**: `mode="edit"` (currently not supported)
+- **Analyze video content**: `mode="analyze"` (description, action recognition)
 
 ## Important Rules
 
@@ -85,6 +87,12 @@ This prevents unnecessary generation when suitable media already exists.
    - Images: PNG, JPG, JPEG, GIF, WEBP, BMP, SVG
    - Audio: MP3, WAV, OGG, AAC, FLAC, M4A, WMA
    - Videos: MP4, AVI, MOV, MKV, WEBM
+
+5. **Analyze mode uses multimodal LLM**:
+   - Analyze mode sends media files to the provider for AI-powered analysis
+   - Supports custom prompts/questions for targeted analysis
+   - Works with all media types (images, audio, videos)
+   - Examples: "What objects are in this image?", "Transcribe this audio", "Describe the actions in this video"
 
 ## When to Read Detailed Documentation
 

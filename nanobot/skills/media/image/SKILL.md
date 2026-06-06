@@ -1,12 +1,12 @@
 ---
 name: image
-description: Unified tool for listing, displaying, generating, and editing images. Supports four modes: list for showing available images, display for showing images to users, generate for creating images from text prompts, and edit for modifying existing images based on reference images.
+description: Unified tool for listing, displaying, generating, editing, and analyzing images. Supports five modes: list for showing available images, display for showing images to users, generate for creating images from text prompts, edit for modifying existing images based on reference images, and analyze for AI-powered image analysis using multimodal LLM.
 metadata: {"nanobot":{"emoji":"🖼️"}}
 ---
 
 # Image Skill
 
-Unified tool for listing, displaying, generating, and editing images using the `media` tool with `media_type="image"`. Supports four modes: list, display, image generation from text prompts, and editing images with reference images.
+Unified tool for listing, displaying, generating, editing, and analyzing images using the `media` tool with `media_type="image"`. Supports five modes: list, display, image generation from text prompts, editing images with reference images, and AI-powered image analysis.
 
 ## Features
 
@@ -14,6 +14,7 @@ Unified tool for listing, displaying, generating, and editing images using the `
 - Display images to users by sending them to the frontend
 - Generate images from text prompts using AI models
 - Edit images based on reference images and text prompts
+- Analyze images using multimodal LLM (OCR, description, visual QA)
 - Support multiple image formats: PNG, JPG, JPEG, GIF, WEBP, BMP, SVG
 - Base64 encoding for image processing and transmission
 
@@ -28,6 +29,7 @@ The image skill uses the `media` tool. When using this tool, the `media_type` pa
   - `display`: Show an image to the user.
   - `generate`: Create an image from a text prompt.
   - `edit`: Modify an existing image based on a text prompt and a reference image.
+  - `analyze`: Analyze image content using multimodal LLM (OCR, object detection, visual QA).
 - `media_path` (string):
   - In `display`/`edit` mode: Absolute path to the image file.
   - In `generate` mode: File name where the generated image will be saved.
@@ -37,8 +39,10 @@ The image skill uses the `media` tool. When using this tool, the `media_type` pa
   - In `display` mode: Caption to display with the image.
   - In `generate` mode: Text prompt describing the desired image content (max 800 characters).
   - In `edit` mode: Description of how to modify the reference image (e.g., "Add a hat to the cat").
+  - In `analyze` mode: Analysis question or instruction (e.g., "What objects are in this image?", "Read the text in this image", "Describe the scene").
 - `ref_media` (string):
   - In `edit` mode: Absolute path to the reference image file that will be modified. Must exist locally.
+  - In `analyze` mode: Optional absolute path to the image file if not using `media_path`.
 - `size` (string): [Generate mode] Output resolution, e.g., "1024*1024". Default is "1024*1024".
 - `negative_prompt` (string): [Generate mode] Negative prompt describing what should NOT appear.
 - `count` (integer): [Generate mode] Number of images to generate (1-6). Default is 1.
@@ -79,6 +83,22 @@ Change the color of the cat in `cat.png` to yellow:
 Put a hat on the cat in `cat.png`:
 ```json
 {"name": "media", "arguments": {"media_type": "image", "mode": "edit", "prompt": "Put a hat to the head of cat in the image", "media_path": "cat_edit_with_hat.png", "ref_media": "/path/to/cat.png"}}
+```
+
+### Analyze Mode
+Analyze what's in an image:
+```json
+{"name": "media", "arguments": {"media_type": "image", "mode": "analyze", "media_path": "/path/to/image.jpg", "prompt": "What objects are in this image?"}}
+```
+
+Perform OCR on an image:
+```json
+{"name": "media", "arguments": {"media_type": "image", "mode": "analyze", "media_path": "/path/to/document.jpg", "prompt": "Read all the text in this image"}}
+```
+
+Describe a scene:
+```json
+{"name": "media", "arguments": {"media_type": "image", "mode": "analyze", "media_path": "/path/to/scene.jpg", "prompt": "Describe the scene in detail, including colors, objects, and atmosphere"}}
 ```
 
 ## Important Rules

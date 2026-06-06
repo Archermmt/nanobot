@@ -490,6 +490,7 @@ class AgentLoop:
             image_generation_provider_configs=self._image_generation_provider_configs,
             timezone=self.context.timezone or "UTC",
             workspace_sandbox=self.workspace_scopes.sandbox_status,
+            provider=self.provider,
         )
         loader = ToolLoader()
         registered = loader.load(ctx, self.tools)

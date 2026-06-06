@@ -1,18 +1,19 @@
 ---
 name: video
-description: Unified tool for listing, displaying, and generating videos. Supports three modes: list for showing available videos, display for showing videos to users, and generate for creating videos from text prompts.
+description: Unified tool for listing, displaying, generating, and analyzing videos. Supports four modes: list for showing available videos, display for showing videos to users, generate for creating videos from text prompts, and analyze for AI-powered video analysis using multimodal LLM.
 metadata: {"nanobot":{"emoji":"🎬"}}
 ---
 
 # Video Skill
 
-Unified tool for listing, displaying, and generating videos using the `media` tool with `media_type="video"`. Supports three modes: list, display, and video generation from text prompts.
+Unified tool for listing, displaying, generating, and analyzing videos using the `media` tool with `media_type="video"`. Supports four modes: list, display, video generation from text prompts, and AI-powered video analysis.
 
 ## Features
 
 - List all available video files in the media directory
 - Display videos to users by sending them to the frontend
 - Generate videos from text prompts using AI models
+- Analyze videos using multimodal LLM (description, action recognition)
 - Support multiple video formats: MP4, AVI, MOV, MKV, WEBM
 - Base64 encoding for video processing and transmission
 
@@ -26,6 +27,7 @@ The video skill uses the `media` tool. When using this tool, the `media_type` pa
   - `list`: List all available video files in the media directory.
   - `display`: Show a video to the user.
   - `generate`: Create a video from a text prompt.
+  - `analyze`: Analyze video content using multimodal LLM (action recognition, scene description).
 - `media_path` (string):
   - In `display` mode: Absolute path to the video file.
   - In `generate` mode: File name where the generated video will be saved.
@@ -34,6 +36,7 @@ The video skill uses the `media` tool. When using this tool, the `media_type` pa
 - `prompt` (string):
   - In `display` mode: Caption to display with the video.
   - In `generate` mode: Text prompt describing the desired video content (max 5000 characters). Can include multi-shot narratives with timestamps (e.g., "Shot 1 [0-3s] Wide shot: Rainy street. Shot 2 [3-6s] Medium shot: Person enters building.").
+  - In `analyze` mode: Analysis question or instruction (e.g., "What actions are happening in this video?", "Describe the scene", "What is the person doing?").
 - `ref_media` (string):
   - In `generate` mode: URL or path of audio file to use as background music for the video. Supports HTTP/HTTPS URLs or local file paths. Formats: wav, mp3. Duration: 2-30 seconds. File size: max 15MB.
 - `resolution` (string): [Generate mode] Output video resolution. Options: "720P", "1080P" (default). Note: Resolution directly affects cost.
@@ -77,6 +80,22 @@ Create a landscape video:
 Create a video with background music:
 ```json
 {"name": "media", "arguments": {"media_type": "video", "mode": "generate", "prompt": "A dancing robot in a futuristic city", "media_path": "dancing_robot.mp4", "ref_media": "background_music.mp3"}}
+```
+
+### Analyze Mode
+Analyze actions in a video:
+```json
+{"name": "media", "arguments": {"media_type": "video", "mode": "analyze", "media_path": "/path/to/video.mp4", "prompt": "What actions are happening in this video?"}}
+```
+
+Describe a video scene:
+```json
+{"name": "media", "arguments": {"media_type": "video", "mode": "analyze", "media_path": "/path/to/scene.mp4", "prompt": "Describe the scene in detail, including environment, people, and activities"}}
+```
+
+Identify objects in a video:
+```json
+{"name": "media", "arguments": {"media_type": "video", "mode": "analyze", "media_path": "/path/to/video.mp4", "prompt": "List all objects visible in this video"}}
 ```
 
 ## Important Rules

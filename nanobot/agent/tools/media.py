@@ -52,15 +52,15 @@ class MediaToolConfig(Base):
             enum=["image", "video", "audio", "html", "mesh"],
         ),
         mode=StringSchema(
-            "Operation mode. For image: 'list', 'display', 'generate', 'edit'. "
-            "For video: 'list', 'display', 'generate'. "
-            "For audio/html/mesh: 'list', 'display'.",
+            "Operation mode. For image: 'list', 'display', 'generate', 'edit', 'analyze'. "
+            "For video: 'list', 'display', 'generate', 'analyze'. "
+            "For audio/html/mesh: 'list', 'display', 'analyze'.",
         ),
         prompt=StringSchema(
-            "[Image/Video display/generate] Text prompt, caption, or generation instruction.",
+            "[Image/Video display/generate/analyze] Text prompt, caption, generation instruction, or analysis question.",
         ),
         media_path=StringSchema(
-            "[Image/Video display] Path to the media file. "
+            "[Image/Video display/analyze] Path to the media file. "
             "[Image/Video generate] File name where generated media will be saved.",
         ),
         size=StringSchema(
@@ -117,6 +117,7 @@ class MediaTool(Tool):
             workspace=ctx.workspace,
             config=ctx.config.media,
             image_provider_configs=ctx.image_generation_provider_configs,
+            provider=ctx.provider,
         )
 
     def __init__(
@@ -125,10 +126,12 @@ class MediaTool(Tool):
         workspace: str | Path,
         config: MediaToolConfig,
         image_provider_configs: dict[str, ProviderConfig] | None = None,
+        provider: Any | None = None,
     ) -> None:
         self.workspace = Path(workspace).expanduser()
         self.config = config
         self.image_provider_configs = image_provider_configs or {}
+        self.provider = provider
 
     @property
     def name(self) -> str:
@@ -139,18 +142,29 @@ class MediaTool(Tool):
         return (
             "Unified tool for handling different types of media (images, videos, audio, html, mesh). "
             "Supports five media types:\n"
-            "- image: List, display, generate, or edit images\n"
+            "- image: List, display, generate, edit, or analyze images\n"
             "  * list: List all available image files in the media directory\n"
             "  * display: Display images to users through WebSocket channel\n"
             "  * generate: Generate images from text prompts using configured image provider\n"
             "  * edit: Edit an existing image using text prompts\n"
-            "- video: List, display, or generate videos\n"
+            "  * analyze: Analyze images using multimodal LLM (OCR, description, visual QA)\n"
+            "- video: List, display, generate, or analyze videos\n"
             "  * list: List all available video files in the media directory\n"
             "  * display: Display videos to users through WebSocket channel\n"
             "  * generate: Generate videos from text prompts using configured video provider\n"
-            "- audio: List or display audio files\n"
+            "  * analyze: Analyze videos using multimodal LLM\n"
+            "- audio: List, display, or analyze audio files\n"
             "  * list: List all available audio files in the media directory\n"
             "  * display: Play an audio file by sending it as media\n"
+            "  * analyze: Analyze audio content using multimodal LLM\n"
+            "- html: List, display, or analyze HTML content\n"
+            "  * list: List all available HTML files\n"
+            "  * display: Render HTML content\n"
+            "  * analyze: Analyze HTML content structure and meaning\n"
+            "- mesh: List, display, or analyze 3D mesh files\n"
+            "  * list: List all available mesh files\n"
+            "  * display: Display 3D mesh models\n"
+            "  * analyze: Analyze 3D mesh properties and structure\n"
             "The media_type parameter determines which type of media to process."
         )
 
@@ -295,6 +309,10 @@ class MediaTool(Tool):
             return await self._execute_list(media_type=media_type)
         if mode == "display":
             return await self._execute_display(media_path=media_path, media_type=media_type)
+        if mode == "analyze":
+            return await self._execute_analyze(
+                media_type=media_type, media_path=media_path, prompt=prompt
+            )
 
         # Calculate media_dir based on media_type
         media_dir = get_media_dir() / media_type
@@ -377,7 +395,7 @@ class MediaTool(Tool):
         """Get the absolute path for a media file."""
         path = Path(media_path)
         if not path.is_absolute():
-            path = get_media_dir() / media_type / path
+            path = get_media_dir(media_type) / path
         return path
 
     async def _execute_display(self, media_path: str, media_type: str) -> str:
@@ -579,3 +597,121 @@ class MediaTool(Tool):
             return f"Error: {exc}"
         except Exception as e:
             return f"Error: Generation failed - {str(e)}"
+
+    async def _execute_analyze(self, media_type: str, media_path: str, prompt: str = "") -> str:
+        """Execute media analysis using multimodal LLM.
+
+        This is a generic analyze function that works for all media types.
+        It encodes the media file and sends it to the provider for analysis.
+
+        Args:
+            media_type: Type of media (image, video, audio, html, mesh)
+            media_path: Path to the media file to analyze
+            prompt: Analysis question or instruction
+
+        Returns:
+            Analysis result from the multimodal LLM
+        """
+        if self.provider is None:
+            return (
+                "Error: Provider not configured for analyze mode. "
+                "The tool needs access to a multimodal LLM provider."
+            )
+
+        # Validate media path
+        media_path_obj = self._get_media_path(media_path, media_type)
+        if not media_path_obj.exists():
+            return f"Error: Media file not found: {media_path_obj}"
+
+        # Encode media file to base64 data URL
+        try:
+            media_data = self._encode_media_to_data_url(str(media_path_obj), media_type)
+        except Exception as e:
+            return f"Error encoding media file: {str(e)}"
+
+        # Determine content type based on media type
+        content_type_map = {
+            "image": "image_url",
+            "video": "video_url",
+            "audio": "audio_url",
+            "html": "text",
+            "mesh": "text",
+        }
+
+        content_type = content_type_map.get(media_type)
+        if content_type is None:
+            return f"Error: Unsupported media type for analysis: {media_type}"
+
+        # Build message content
+        content: list[dict[str, Any]] = []
+
+        # Add prompt/question
+        if prompt:
+            content.append({"type": "text", "text": prompt})
+        else:
+            content.append(
+                {
+                    "type": "text",
+                    "text": f"Please analyze this {media_type} file and provide a detailed description.",
+                }
+            )
+
+        # Add media content
+        if content_type == "text":
+            # For HTML and mesh, read as text
+            try:
+                text_content = media_path_obj.read_text(encoding="utf-8", errors="ignore")
+                content.append({"type": "text", "text": text_content[:10000]})  # Limit size
+            except Exception as e:
+                return f"Error reading text content: {str(e)}"
+        else:
+            # For image, video, audio, use data URL
+            content.append({"type": content_type, content_type: {"url": media_data}})
+
+        # Build messages for multimodal chat
+        messages = [
+            {
+                "role": "system",
+                "content": f"You are a multimodal AI assistant capable of analyzing {media_type} files.",
+            },
+            {"role": "user", "content": content},
+        ]
+
+        # Call provider's chat method with multimodal mode
+        response = await self.provider.chat(messages=messages)
+        if response and response.content:
+            return response.content
+        return f"Error: No analysis result for {media_path}."
+
+    def _encode_media_to_data_url(self, media_path: str, media_type: str) -> str:
+        """Encode media file to base64 data URL.
+
+        Args:
+            media_path: Path to the media file
+            media_type: Type of media (image, video, audio)
+
+        Returns:
+            Base64 encoded data URL string
+        """
+        import base64
+
+        path = Path(media_path)
+        if not path.exists():
+            raise FileNotFoundError(f"Media file not found: {media_path}")
+
+        # Get MIME type
+        mime_type = mimetypes.guess_type(str(path))[0]
+        if mime_type is None:
+            # Default MIME types based on media_type
+            default_mimes = {
+                "image": "image/png",
+                "video": "video/mp4",
+                "audio": "audio/mpeg",
+            }
+            mime_type = default_mimes.get(media_type, "application/octet-stream")
+
+        # Read and encode file
+        with open(path, "rb") as f:
+            encoded = base64.b64encode(f.read()).decode("utf-8")
+
+        return f"data:{mime_type};base64,{encoded}"
