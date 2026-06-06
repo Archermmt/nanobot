@@ -24,7 +24,7 @@ export function ActivityEvidencePreview({ evidence, className }: ActivityEvidenc
           attachment={item.attachment}
           variant="compact"
           className={cn(
-            item.attachment.kind === "image" || item.attachment.kind === "video"
+            item.attachment.kind === "image" || item.attachment.kind === "video" || item.attachment.kind === "audio"
               ? "max-w-[min(100%,20rem)]"
               : "max-w-[14rem]",
           )}

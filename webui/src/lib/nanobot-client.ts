@@ -9,6 +9,7 @@ import type {
   GoalStateWsPayload,
   WorkspaceScopePayload,
 } from "./types";
+import { handleToolCallMessage, getWebUITools } from "../tools/webui-tools";
 
 /** WebSocket readyState constants, referenced by value to stay portable
  * across runtimes that don't expose a global ``WebSocket`` (tests, SSR). */
@@ -133,6 +134,8 @@ export class NanobotClient {
   private currentUrl: string;
   private status_: ConnectionStatus = "idle";
   private readyChatId: string | null = null;
+  // Track whether tools have been registered for this connection
+  private toolsRegistered = false;
   // Set by ``close()`` so the onclose handler knows the drop was intentional
   // and must not schedule a reconnect or flip status back to "reconnecting".
   private intentionallyClosed = false;
@@ -342,6 +345,63 @@ export class NanobotClient {
     this.queueSend(frame);
   }
 
+  /** Request audio transcription via WebSocket. Returns a promise that resolves with the transcribed text. */
+  transcribeAudio(dataUrl: string, name: string = "audio.webm"): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const requestId = `transcribe-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      
+      // Set up one-time handler for the response
+      const handler = (event: InboundEvent) => {
+        if (event.event === "transcribe_result" && event.request_id === requestId) {
+          unsubscribe();
+          if (event.error) {
+            reject(new Error(event.error));
+          } else {
+            resolve(event.text || "");
+          }
+        }
+      };
+      
+      // Listen on a special internal chat ID for transcription results
+      const unsubscribe = this.onChat("__transcription__", handler);
+      
+      // Send the transcription request
+      this.queueSend({
+        type: "transcribe_audio",
+        data_url: dataUrl,
+        name,
+        request_id: requestId,
+      });
+      
+      // Timeout after 30 seconds
+      setTimeout(() => {
+        unsubscribe();
+        reject(new Error("Transcription timeout"));
+      }, 30000);
+    });
+  }
+
+  /** Toggle TTS on/off. */
+  ttsToggle(enable: boolean): void {
+    this.queueSend({
+      type: "tts_toggle",
+      enable,
+    });
+  }
+
+  /** Register WebUI tools with backend on connection initialization. */
+  registerWebUITools(): void {
+    const tools = getWebUITools();
+    console.log("[NanobotClient] 🛠️ Registering WebUI tools:", tools.length, "tools");
+    
+    // Send tool registration as a dedicated message type (similar to transcribe_audio)
+    this.queueSend({
+      type: "register_extern_tools",
+      chat_id: this.readyChatId || "__system__",
+      tools: tools,
+    } as Outbound & { type: "register_extern_tools"; tools: any[] });
+  }
+
   setWorkspaceScope(chatId: string, workspaceScope: WorkspaceScopePayload): void {
     this.knownChats.add(chatId);
     this.queueSend({
@@ -368,7 +428,7 @@ export class NanobotClient {
     }
     // Flush anything queued during reconnect.
     const queued = this.sendQueue.splice(0);
-    for (const frame of queued) this.rawSend(frame);
+    for (const frame of queued) this.rawSend(frame);    
   }
 
   private handleMessage(ev: MessageEvent): void {
@@ -393,6 +453,12 @@ export class NanobotClient {
     if (parsed.event === "ready") {
       this.readyChatId = parsed.chat_id;
       this.knownChats.add(parsed.chat_id);
+      
+      // Register WebUI tools after receiving ready event (only once per connection)
+      if (!this.toolsRegistered) {
+        this.toolsRegistered = true;
+        this.registerWebUITools();
+      }
       return;
     }
 
@@ -404,6 +470,19 @@ export class NanobotClient {
         this.pendingNewChat = null;
       }
       this.dispatch(parsed.chat_id, parsed);
+      return;
+    }
+
+    // Handle tool call messages from backend
+    if (parsed.event === "tool_call" || (parsed as any).type === "tool_call") {
+      // Convert type-based message to event-based format for handleToolCall
+      const toolCallEvent = {
+        event: "tool_call" as const,
+        chat_id: (parsed as any).chat_id || this.readyChatId || "__system__",
+        name: (parsed as any).name,
+        kwargs: (parsed as any).kwargs,
+      };
+      this.handleToolCall(toolCallEvent);
       return;
     }
 
@@ -460,6 +539,41 @@ export class NanobotClient {
     }
   }
 
+  /** Handle tool call messages from backend and send result back */
+  private async handleToolCall(parsed: InboundEvent & { event: "tool_call" }): Promise<void> {
+    try {
+      // Use the webui-tools handler to process the tool call
+      await handleToolCallMessage(
+        {
+          type: "tool_call",
+          name: parsed.name,
+          kwargs: parsed.kwargs,
+        },
+        (response) => {
+          // Send the result back to backend
+          this.queueSend({
+            type: "tool_call_result",
+            name: response.name,
+            kwargs: response.kwargs,
+            result: response.result,
+          });
+        }
+      );
+    } catch (error) {
+      console.error("[NanobotClient] ❌ Failed to handle tool call:", error);
+      // Send error response
+      this.queueSend({
+        type: "tool_call_result",
+        name: parsed.name,
+        kwargs: parsed.kwargs,
+        result: {
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      });
+    }
+  }
+
   private dispatch(chatId: string, ev: InboundEvent): void {
     const handlers = this.chatHandlers.get(chatId);
     if (handlers !== undefined && handlers.size > 0) {
@@ -482,6 +596,8 @@ export class NanobotClient {
 
   private handleClose(event?: { code?: number }): void {
     this.socket = null;
+    // Reset toolsRegistered flag so we can re-register on reconnect
+    this.toolsRegistered = false;
     if (this.pendingNewChat) {
       clearTimeout(this.pendingNewChat.timer);
       this.pendingNewChat.reject(new Error("socket closed"));

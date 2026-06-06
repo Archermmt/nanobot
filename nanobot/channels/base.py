@@ -10,6 +10,7 @@ from loguru import logger
 
 from nanobot.bus.events import InboundMessage, OutboundMessage
 from nanobot.bus.queue import MessageBus
+from nanobot.channels.handlers.base_handler import HandlerMessage
 from nanobot.pairing import (
     PAIRING_CODE_META_KEY,
     format_pairing_reply,
@@ -35,6 +36,7 @@ class BaseChannel(ABC):
     send_progress: bool = True
     send_tool_hints: bool = False
     show_reasoning: bool = True
+    handlers: dict[str, Any] = {}
 
     def __init__(self, config: Any, bus: MessageBus):
         """
@@ -51,11 +53,21 @@ class BaseChannel(ABC):
 
     async def transcribe_audio(self, file_path: str | Path) -> str:
         """Transcribe an audio file via Whisper (OpenAI or Groq). Returns empty string on failure."""
+        if "speak" in self.handlers:
+            result = await self.handlers["speak"].process(HandlerMessage(media=[str(file_path)]))
+            assert not result.error, "Invalid speaker: " + str(result.error)
+        if "asr" in self.handlers:
+            result = await self.handlers["asr"].process(HandlerMessage(media=[str(file_path)]))
+            if result.error:
+                self.logger.exception("Audio transcription failed: " + str(result.error))
+                return ""
+            return result.content
         if not self.transcription_api_key:
             return ""
         try:
             if self.transcription_provider == "openai":
                 from nanobot.providers.transcription import OpenAITranscriptionProvider
+
                 provider = OpenAITranscriptionProvider(
                     api_key=self.transcription_api_key,
                     api_base=self.transcription_api_base or None,
@@ -63,6 +75,7 @@ class BaseChannel(ABC):
                 )
             else:
                 from nanobot.providers.transcription import GroqTranscriptionProvider
+
                 provider = GroqTranscriptionProvider(
                     api_key=self.transcription_api_key,
                     api_base=self.transcription_api_base or None,
@@ -72,6 +85,16 @@ class BaseChannel(ABC):
         except Exception:
             self.logger.exception("Audio transcription failed")
             return ""
+
+    async def text_to_speech(self, content: str) -> dict:
+        """Convert text to speech and return the audio file path."""
+        if "tts" in self.handlers:
+            result = await self.handlers["tts"].process(HandlerMessage(content=content))
+            if result.error:
+                self.logger.exception("TTS failed: " + str(result.error))
+                return {}
+            return result.media[0]
+        return {}
 
     async def login(self, force: bool = False) -> bool:
         """
@@ -115,7 +138,9 @@ class BaseChannel(ABC):
         """
         pass
 
-    async def send_delta(self, chat_id: str, delta: str, metadata: dict[str, Any] | None = None) -> None:
+    async def send_delta(
+        self, chat_id: str, delta: str, metadata: dict[str, Any] | None = None
+    ) -> None:
         """Deliver a streaming text chunk.
 
         Override in subclasses to enable streaming. Implementations should
@@ -178,7 +203,11 @@ class BaseChannel(ABC):
     def supports_streaming(self) -> bool:
         """True when config enables streaming AND this subclass implements send_delta."""
         cfg = self.config
-        streaming = cfg.get("streaming", False) if isinstance(cfg, dict) else getattr(cfg, "streaming", False)
+        streaming = (
+            cfg.get("streaming", False)
+            if isinstance(cfg, dict)
+            else getattr(cfg, "streaming", False)
+        )
         return bool(streaming) and type(self).send_delta is not BaseChannel.send_delta
 
     def is_allowed(self, sender_id: str) -> bool:
@@ -219,8 +248,7 @@ class BaseChannel(ABC):
                     )
                 )
                 self.logger.info(
-                    "Sent pairing code {} to sender {} in chat {}",
-                    code, sender_id, chat_id,
+                    "Sent pairing code {} to sender {} in chat {}", code, sender_id, chat_id
                 )
             else:
                 self.logger.warning(

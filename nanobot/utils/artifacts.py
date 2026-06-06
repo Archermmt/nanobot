@@ -15,12 +15,23 @@ from nanobot.config.paths import get_media_dir
 from nanobot.utils.helpers import detect_image_mime, ensure_dir
 
 _DATA_IMAGE_RE = re.compile(r"^data:(image/[A-Za-z0-9.+-]+);base64,(.*)$", re.DOTALL)
+_DATA_VIDEO_RE = re.compile(r"^data:(video/[A-Za-z0-9.+-]+);base64,(.*)$", re.DOTALL)
 _MIME_EXTENSIONS = {
     "image/png": ".png",
     "image/jpeg": ".jpg",
     "image/webp": ".webp",
     "image/gif": ".gif",
 }
+
+_VIDEO_MIME_EXTENSIONS = {
+    "video/mp4": ".mp4",
+    "video/avi": ".avi",
+    "video/mov": ".mov",
+    "video/wmv": ".wmv",
+    "video/flv": ".flv",
+    "video/mkv": ".mkv",
+}
+
 
 class ArtifactError(ValueError):
     """Raised when an artifact cannot be safely decoded or stored."""
@@ -43,6 +54,25 @@ def decode_image_data_url(data_url: str) -> tuple[bytes, str]:
         raise ArtifactError("unsupported or unrecognized image data")
     if declared_mime != detected_mime:
         declared_mime = detected_mime
+    return raw, declared_mime
+
+
+def decode_video_data_url(data_url: str) -> tuple[bytes, str]:
+    """Decode a base64 video data URL and return ``(bytes, mime)``."""
+    match = _DATA_VIDEO_RE.match(data_url.strip())
+    if match is None:
+        raise ArtifactError("expected a base64 video data URL")
+
+    declared_mime, encoded = match.groups()
+    try:
+        raw = base64.b64decode(encoded, validate=True)
+    except binascii.Error as exc:
+        raise ArtifactError("invalid base64 video payload") from exc
+
+    # Validate that the MIME type is a supported video format
+    if declared_mime not in _VIDEO_MIME_EXTENSIONS:
+        raise ArtifactError(f"unsupported video MIME type: {declared_mime}")
+
     return raw, declared_mime
 
 

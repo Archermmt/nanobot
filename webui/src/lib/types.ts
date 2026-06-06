@@ -22,7 +22,7 @@ export interface UIImage {
   name?: string;
 }
 
-export type UIMediaKind = "image" | "video" | "file";
+export type UIMediaKind = "image" | "video" | "audio" | "file";
 
 export interface UIMediaAttachment {
   kind: UIMediaKind;
@@ -686,7 +686,19 @@ export type InboundEvent =
       scope?: "metadata" | "thread" | string;
       workspace_scope?: WorkspaceScopePayload;
     }
-  | { event: "error"; chat_id?: string; detail?: string; reason?: string };
+  | {
+      event: "tool_call";
+      chat_id: string;
+      name: string;
+      kwargs: Record<string, any>;
+    }
+  | { event: "error"; chat_id?: string; detail?: string; reason?: string }
+  | {
+      event: "transcribe_result";
+      request_id: string;
+      text?: string;
+      error?: string;
+    };
 
 /** Base64-encoded image attached to an outbound ``message`` envelope.
  *
@@ -751,4 +763,25 @@ export type Outbound =
       /** Marks messages sent by the embedded WebUI, without changing the
        * generic websocket protocol for other clients. */
       webui?: true;
+    }
+  | {
+      type: "transcribe_audio";
+      data_url: string;
+      name?: string;
+      request_id: string;
+    }
+  | {
+      type: "tts_toggle";
+      enable: boolean;
+    }
+  | {
+      type: "tool_call_result";
+      name: string;
+      kwargs: Record<string, any>;
+      result: Record<string, any>;
+    }
+  | {
+      type: "register_extern_tools";
+      chat_id: string;
+      tools: any[];
     };

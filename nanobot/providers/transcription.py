@@ -1,11 +1,15 @@
-"""Voice transcription providers (Groq and OpenAI Whisper)."""
+"""Voice transcription providers (Groq, OpenAI Whisper, and FunASR)."""
 
 import asyncio
+import io
 import os
+import shutil
 from pathlib import Path
 
 import httpx
 from loguru import logger
+
+from nanobot.utils.media_decode import webm_to_wav
 
 _TRANSCRIPTIONS_PATH = "audio/transcriptions"
 

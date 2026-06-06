@@ -1,5 +1,15 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import { useTranslation } from "react-i18next";
+import { Grip, X } from "lucide-react";
 
 import { ThreadComposer } from "@/components/thread/ThreadComposer";
 import { ThreadHeader } from "@/components/thread/ThreadHeader";
@@ -8,6 +18,7 @@ import { ThreadViewport } from "@/components/thread/ThreadViewport";
 import { useNanobotStream, type SendImage, type SendOptions } from "@/hooks/useNanobotStream";
 import { useSessionHistory } from "@/hooks/useSessions";
 import { fetchCliApps, fetchMcpPresets, fetchSettings, listSlashCommands } from "@/lib/api";
+import { MediaQueueProvider } from "@/providers/MediaQueueProvider";
 import {
   CLI_APPS_CHANGED_EVENT,
   installedCliAppsFromPayload,
@@ -133,6 +144,186 @@ interface PendingFirstMessage {
   options?: SendOptions;
 }
 
+const CAMERA_PREVIEW_DEFAULT_SIZE = { width: 320, height: 200 };
+const CAMERA_PREVIEW_MIN_SIZE = { width: 220, height: 140 };
+const CAMERA_PREVIEW_MARGIN = 16;
+
+interface CameraPreviewPosition {
+  x: number;
+  y: number;
+}
+
+interface CameraPreviewSize {
+  width: number;
+  height: number;
+}
+
+interface CameraPreviewInteraction {
+  mode: "drag" | "resize";
+  pointerX: number;
+  pointerY: number;
+  position: CameraPreviewPosition;
+  size: CameraPreviewSize;
+}
+
+function clampCameraPreviewPosition(
+  position: CameraPreviewPosition,
+  size: CameraPreviewSize,
+): CameraPreviewPosition {
+  if (typeof window === "undefined") return position;
+  const maxX = Math.max(CAMERA_PREVIEW_MARGIN, window.innerWidth - size.width - CAMERA_PREVIEW_MARGIN);
+  const maxY = Math.max(CAMERA_PREVIEW_MARGIN, window.innerHeight - size.height - CAMERA_PREVIEW_MARGIN);
+  return {
+    x: Math.min(Math.max(CAMERA_PREVIEW_MARGIN, position.x), maxX),
+    y: Math.min(Math.max(CAMERA_PREVIEW_MARGIN, position.y), maxY),
+  };
+}
+
+function FloatingCameraPreview({
+  stream,
+  onClose,
+}: {
+  stream: MediaStream;
+  onClose: () => void;
+}) {
+  const { t } = useTranslation();
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const interactionRef = useRef<CameraPreviewInteraction | null>(null);
+  const [position, setPosition] = useState<CameraPreviewPosition>(() => {
+    if (typeof window === "undefined") {
+      return { x: CAMERA_PREVIEW_MARGIN, y: CAMERA_PREVIEW_MARGIN };
+    }
+    return {
+      x: Math.max(
+        CAMERA_PREVIEW_MARGIN,
+        window.innerWidth - CAMERA_PREVIEW_DEFAULT_SIZE.width - 24,
+      ),
+      y: Math.max(
+        CAMERA_PREVIEW_MARGIN,
+        window.innerHeight - CAMERA_PREVIEW_DEFAULT_SIZE.height - 112,
+      ),
+    };
+  });
+  const [size, setSize] = useState<CameraPreviewSize>(CAMERA_PREVIEW_DEFAULT_SIZE);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.srcObject = stream;
+    void video.play().catch(() => undefined);
+    return () => {
+      video.srcObject = null;
+    };
+  }, [stream]);
+
+  useEffect(() => {
+    const handlePointerMove = (event: PointerEvent) => {
+      const interaction = interactionRef.current;
+      if (!interaction) return;
+      const deltaX = event.clientX - interaction.pointerX;
+      const deltaY = event.clientY - interaction.pointerY;
+      if (interaction.mode === "drag") {
+        setPosition(clampCameraPreviewPosition({
+          x: interaction.position.x + deltaX,
+          y: interaction.position.y + deltaY,
+        }, size));
+        return;
+      }
+
+      const nextSize = {
+        width: Math.max(CAMERA_PREVIEW_MIN_SIZE.width, interaction.size.width + deltaX),
+        height: Math.max(CAMERA_PREVIEW_MIN_SIZE.height, interaction.size.height + deltaY),
+      };
+      setSize(nextSize);
+      setPosition((current) => clampCameraPreviewPosition(current, nextSize));
+    };
+    const handlePointerUp = () => {
+      interactionRef.current = null;
+    };
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp);
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+    };
+  }, [size]);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setPosition((current) => clampCameraPreviewPosition(current, size));
+    };
+    window.addEventListener("resize", handleResize);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+    };
+  }, [size]);
+
+  const startInteraction = (
+    event: ReactPointerEvent,
+    mode: CameraPreviewInteraction["mode"],
+  ) => {
+    event.preventDefault();
+    interactionRef.current = {
+      mode,
+      pointerX: event.clientX,
+      pointerY: event.clientY,
+      position,
+      size,
+    };
+  };
+
+  const style = {
+    left: position.x,
+    top: position.y,
+    width: size.width,
+    height: size.height,
+  } satisfies CSSProperties;
+
+  return (
+    <div
+      className="fixed z-50 overflow-hidden rounded-lg border border-border/70 bg-background/95 shadow-2xl shadow-black/25 backdrop-blur"
+      style={style}
+      aria-label={t("thread.composer.camera.preview", { defaultValue: "Camera preview" })}
+    >
+      <div
+        className="absolute inset-x-0 top-0 z-10 flex h-9 cursor-move items-center justify-between bg-black/55 px-2 text-white"
+        onPointerDown={(event) => startInteraction(event, "drag")}
+      >
+        <div className="flex min-w-0 items-center gap-1.5 text-[12px] font-medium">
+          <Grip className="h-3.5 w-3.5 shrink-0" />
+          <span className="truncate">
+            {t("thread.composer.camera.preview", { defaultValue: "Camera preview" })}
+          </span>
+        </div>
+        <button
+          type="button"
+          className="flex h-6 w-6 items-center justify-center rounded-full text-white/80 hover:bg-white/15 hover:text-white"
+          aria-label={t("thread.composer.camera.stopCamera")}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={onClose}
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+      <video
+        ref={videoRef}
+        className="h-full w-full bg-black object-cover"
+        autoPlay
+        muted
+        playsInline
+      />
+      <button
+        type="button"
+        className="absolute bottom-1.5 right-1.5 z-10 h-5 w-5 cursor-nwse-resize rounded-sm border border-white/30 bg-black/45"
+        aria-label={t("thread.composer.camera.resize", { defaultValue: "Resize camera preview" })}
+        onPointerDown={(event) => startInteraction(event, "resize")}
+      >
+        <span className="absolute bottom-1 right-1 h-2.5 w-2.5 border-b-2 border-r-2 border-white/80" />
+      </button>
+    </div>
+  );
+}
+
 export function ThreadShell({
   session,
   title,
@@ -169,6 +360,10 @@ export function ThreadShell({
   const [settings, setSettings] = useState<SettingsPayload | null>(settingsSnapshot);
   const [heroGreetingKey, setHeroGreetingKey] = useState(randomHeroGreetingKey);
   const [scrollToBottomSignal, setScrollToBottomSignal] = useState(0);
+  const [enableTts, setEnableTts] = useState(false);
+  const [isCameraOn, setIsCameraOn] = useState(false);
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+  const cameraStreamRef = useRef<MediaStream | null>(null);
   const pendingFirstRef = useRef<PendingFirstMessage | null>(null);
   const messageCacheRef = useRef<Map<string, UIMessage[]>>(new Map());
   /** Last chatId we associated with the in-memory thread (for cache-on-switch). */
@@ -194,6 +389,8 @@ export function ThreadShell({
     send,
     stop,
     setMessages,
+    transcribeAudio,
+    ttsToggle,
     streamError,
     dismissStreamError,
   } = useNanobotStream(chatId, initial, hasPendingToolCalls, handleTurnEnd);
@@ -480,6 +677,32 @@ export function ThreadShell({
     [send, withWorkspaceScope],
   );
 
+  const stopCamera = useCallback(() => {
+    if (cameraStreamRef.current) {
+      cameraStreamRef.current.getTracks().forEach((track) => track.stop());
+      cameraStreamRef.current = null;
+    }
+    setCameraStream(null);
+    setIsCameraOn(false);
+  }, []);
+
+  const toggleCamera = useCallback(async () => {
+    if (isCameraOn) {
+      stopCamera();
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      cameraStreamRef.current = stream;
+      setCameraStream(stream);
+      setIsCameraOn(true);
+    } catch (error) {
+      console.error("Failed to access camera:", error);
+    }
+  }, [isCameraOn, stopCamera]);
+
+  useEffect(() => stopCamera, [stopCamera]);
+
   const composer = (
     <>
       {streamError ? (
@@ -515,6 +738,16 @@ export function ThreadShell({
           workspaceError={workspaceError}
           onWorkspaceScopeChange={onWorkspaceScopeChange}
           pendingQueueKey={chatId}
+          token={token}
+          onTranscribe={transcribeAudio}
+          enableTts={enableTts}
+          onToggleTts={() => {
+            setEnableTts(prev => {
+              const newValue = !prev;
+              ttsToggle(newValue);
+              return newValue;
+            });
+          }}
         />
       ) : (
         <ThreadComposer
@@ -541,6 +774,7 @@ export function ThreadShell({
           workspaceScopeDisabled={workspaceScopeDisabled}
           workspaceError={workspaceError}
           onWorkspaceScopeChange={onWorkspaceScopeChange}
+          onTranscribe={transcribeAudio}
         />
       )}
     </>
@@ -559,28 +793,46 @@ export function ThreadShell({
   );
 
   return (
-    <section className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
-      {!hideHeader ? (
-        <ThreadHeader
-          title={title}
-          onToggleSidebar={onToggleSidebar}
-          theme={theme}
-          onToggleTheme={onToggleTheme}
-          hideSidebarToggleForHostChrome={hideSidebarToggleForHostChrome}
-          minimal={!session && !loading}
+    <MediaQueueProvider sessionId={session?.key}>
+      <section className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+        {!hideHeader ? (
+          <ThreadHeader
+            title={title}
+            onToggleSidebar={onToggleSidebar}
+            theme={theme}
+            onToggleTheme={onToggleTheme}
+            hideSidebarToggleForHostChrome={hideSidebarToggleForHostChrome}
+            minimal={!session && !loading}
+            isCameraOn={isCameraOn}
+            onToggleCamera={toggleCamera}
+            enableTts={enableTts}
+            onToggleTts={() => {
+              setEnableTts(prev => {
+                const newValue = !prev;
+                ttsToggle(newValue);
+                return newValue;
+              });
+            }}
+          />
+        ) : null}
+        {cameraStream ? (
+          <FloatingCameraPreview
+            stream={cameraStream}
+            onClose={stopCamera}
+          />
+        ) : null}
+        <ThreadViewport
+          messages={displayMessages}
+          isStreaming={isStreaming}
+          emptyState={emptyState}
+          composer={composer}
+          scrollToBottomSignal={scrollToBottomSignal}
+          conversationKey={historyKey}
+          showScrollToBottomButton={!!session}
+          cliApps={cliApps}
+          mcpPresets={mcpPresets}
         />
-      ) : null}
-      <ThreadViewport
-        messages={displayMessages}
-        isStreaming={isStreaming}
-        emptyState={emptyState}
-        composer={composer}
-        scrollToBottomSignal={scrollToBottomSignal}
-        conversationKey={historyKey}
-        showScrollToBottomButton={!!session}
-        cliApps={cliApps}
-        mcpPresets={mcpPresets}
-      />
-    </section>
+      </section>
+    </MediaQueueProvider>
   );
 }

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import binascii
+import os
 import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -248,9 +249,7 @@ class OpenRouterImageGenerationClient(ImageGenerationProvider):
     """Small async client for OpenRouter Chat Completions image generation."""
 
     provider_name = "openrouter"
-    missing_key_message = (
-        "OpenRouter API key is not configured. Set providers.openrouter.apiKey."
-    )
+    missing_key_message = "OpenRouter API key is not configured. Set providers.openrouter.apiKey."
 
     def _default_base_url(self) -> str:
         return "https://openrouter.ai/api/v1"
@@ -339,9 +338,7 @@ class AIHubMixImageGenerationClient(ImageGenerationProvider):
     """Small async client for AIHubMix unified image generation."""
 
     provider_name = "aihubmix"
-    missing_key_message = (
-        "AIHubMix API key is not configured. Set providers.aihubmix.apiKey."
-    )
+    missing_key_message = "AIHubMix API key is not configured. Set providers.aihubmix.apiKey."
     default_timeout = _AIHUBMIX_TIMEOUT_S
 
     def _default_base_url(self) -> str:
@@ -532,9 +529,7 @@ class OllamaImageGenerationClient(ImageGenerationProvider):
         image_size: str | None = None,
     ) -> GeneratedImageResponse:
         if reference_images:
-            raise ImageGenerationError(
-                "Ollama image generation does not support reference images"
-            )
+            raise ImageGenerationError("Ollama image generation does not support reference images")
 
         width, height = _ollama_dimensions(aspect_ratio, image_size)
         body: dict[str, Any] = {
@@ -585,9 +580,7 @@ class GeminiImageGenerationClient(ImageGenerationProvider):
     """Async client for Gemini/Imagen image generation via the Generative Language API."""
 
     provider_name = "gemini"
-    missing_key_message = (
-        "Gemini API key is not configured. Set providers.gemini.apiKey."
-    )
+    missing_key_message = "Gemini API key is not configured. Set providers.gemini.apiKey."
     default_timeout = _GEMINI_DEFAULT_TIMEOUT_S
 
     def _default_base_url(self) -> str:
@@ -655,7 +648,9 @@ class GeminiImageGenerationClient(ImageGenerationProvider):
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
             detail = _http_error_detail(response)
-            logger.error("Gemini Imagen generation failed (HTTP {}): {}", response.status_code, detail)
+            logger.error(
+                "Gemini Imagen generation failed (HTTP {}): {}", response.status_code, detail
+            )
             raise ImageGenerationError(
                 f"Gemini Imagen generation failed (HTTP {response.status_code}): {detail}"
             ) from exc
@@ -704,7 +699,9 @@ class GeminiImageGenerationClient(ImageGenerationProvider):
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
             detail = _http_error_detail(response)
-            logger.error("Gemini image generation failed (HTTP {}): {}", response.status_code, detail)
+            logger.error(
+                "Gemini image generation failed (HTTP {}): {}", response.status_code, detail
+            )
             raise ImageGenerationError(
                 f"Gemini image generation failed (HTTP {response.status_code}): {detail}"
             ) from exc
@@ -809,9 +806,7 @@ class MiniMaxImageGenerationClient(ImageGenerationProvider):
     """Async client for MiniMax image generation API."""
 
     provider_name = "minimax"
-    missing_key_message = (
-        "MiniMax API key is not configured. Set providers.minimax.apiKey."
-    )
+    missing_key_message = "MiniMax API key is not configured. Set providers.minimax.apiKey."
     default_timeout = _MINIMAX_TIMEOUT_S
 
     def _default_base_url(self) -> str:
@@ -941,9 +936,7 @@ class OpenAIImageGenerationClient(ImageGenerationProvider):
     """OpenAI Images API using an API key (``providers.openai.apiKey``)."""
 
     provider_name = "openai"
-    missing_key_message = (
-        "OpenAI API key is not configured. Set providers.openai.apiKey."
-    )
+    missing_key_message = "OpenAI API key is not configured. Set providers.openai.apiKey."
 
     def _default_base_url(self) -> str:
         return "https://api.openai.com/v1"
@@ -997,7 +990,9 @@ class OpenAIImageGenerationClient(ImageGenerationProvider):
 
         body.update(self.extra_body)
 
-        logger.info("OpenAI Images API request: POST {}/images/generations body={}", self.api_base, body)
+        logger.info(
+            "OpenAI Images API request: POST {}/images/generations body={}", self.api_base, body
+        )
 
         response = await self._http_post(
             f"{self.api_base}/images/generations",
@@ -1015,8 +1010,11 @@ class OpenAIImageGenerationClient(ImageGenerationProvider):
             ) from exc
 
         payload = response.json()
-        logger.info("OpenAI Images API response ({}): {}", response.status_code,
-                       {k: v for k, v in payload.items() if k != "data"})
+        logger.info(
+            "OpenAI Images API response ({}): {}",
+            response.status_code,
+            {k: v for k, v in payload.items() if k != "data"},
+        )
 
         client = self._client
         owns_client = client is None
@@ -1047,10 +1045,7 @@ class CodexImageGenerationClient(ImageGenerationProvider):
     """
 
     provider_name = "openai_codex"
-    missing_key_message = (
-        "Codex OAuth token is unavailable. "
-        "Log in with Codex subscription first."
-    )
+    missing_key_message = "Codex OAuth token is unavailable. Log in with Codex subscription first."
 
     def _default_base_url(self) -> str:
         return "https://chatgpt.com/backend-api"
@@ -1115,8 +1110,11 @@ class CodexImageGenerationClient(ImageGenerationProvider):
         }
         body.update(self.extra_body)
 
-        logger.info("Codex Responses API request: POST {}/codex/responses body={}",
-                       self.api_base, {k: v for k, v in body.items() if k != "input"})
+        logger.info(
+            "Codex Responses API request: POST {}/codex/responses body={}",
+            self.api_base,
+            {k: v for k, v in body.items() if k != "input"},
+        )
 
         response = await self._http_post(
             f"{self.api_base}/codex/responses",
@@ -1231,12 +1229,18 @@ def _codex_responses_images_from_payload(payload: dict[str, Any]) -> list[str]:
             continue
         result = item.get("result")
         if isinstance(result, str):
-            images.append(result if result.startswith("data:image/") else _b64_image_data_url(result))
+            images.append(
+                result if result.startswith("data:image/") else _b64_image_data_url(result)
+            )
             continue
         if isinstance(result, dict):
             image_url = result.get("image_url") or result.get("image") or ""
             if isinstance(image_url, str):
-                images.append(image_url if image_url.startswith("data:image/") else _b64_image_data_url(image_url))
+                images.append(
+                    image_url
+                    if image_url.startswith("data:image/")
+                    else _b64_image_data_url(image_url)
+                )
     return images
 
 
@@ -1344,9 +1348,7 @@ class StepFunImageGenerationClient(ImageGenerationProvider):
     """
 
     provider_name = "stepfun"
-    missing_key_message = (
-        "StepFun API key is not configured. Set providers.stepfun.apiKey."
-    )
+    missing_key_message = "StepFun API key is not configured. Set providers.stepfun.apiKey."
     default_timeout = 120.0
 
     def _default_base_url(self) -> str:
@@ -1401,9 +1403,7 @@ class StepFunImageGenerationClient(ImageGenerationProvider):
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
             detail = response.text[:500]
-            raise ImageGenerationError(
-                f"StepFun image generation failed: {detail}"
-            ) from exc
+            raise ImageGenerationError(f"StepFun image generation failed: {detail}") from exc
 
         payload = response.json()
         images = _stepfun_images_from_payload(payload)
@@ -1489,9 +1489,7 @@ class ZhipuImageGenerationClient(ImageGenerationProvider):
             raise ImageGenerationError(self.missing_key_message)
 
         if reference_images:
-            raise ImageGenerationError(
-                "Zhipu image generation does not support reference images"
-            )
+            raise ImageGenerationError("Zhipu image generation does not support reference images")
 
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -1589,11 +1587,178 @@ async def _zhipu_images_from_payload(
 
 
 # ---------------------------------------------------------------------------
+# DashScope (Alibaba Cloud) image generation
+# ---------------------------------------------------------------------------
+
+_DASHSCOPE_TIMEOUT_S = 60.0
+
+
+class DashScopeImageGenerationClient(ImageGenerationProvider):
+    """Async client for Alibaba Cloud DashScope Qwen-Image API.
+
+    Supports:
+    - Text-to-image via qwen-image-max (default model)
+    - Image editing with reference images
+    - Aspect ratio / size selection
+    - Negative prompts
+    - Watermark control
+    - Prompt extension
+    """
+
+    provider_name = "dashscope"
+    missing_key_message = (
+        "DashScope API key is not configured. Set providers.dashscope.apiKey "
+        "or DASHSCOPE_API_KEY environment variable."
+    )
+    default_timeout = _DASHSCOPE_TIMEOUT_S
+
+    def _default_base_url(self) -> str:
+        return "https://dashscope.aliyuncs.com/api/v1"
+
+    def _resolve_base_url(self, api_base: str | None) -> str:
+        region = os.getenv("DASHSCOPE_REGION", "beijing").lower()
+        if region == "singapore":
+            return "https://dashscope-intl.aliyuncs.com/api/v1"
+        return self._default_base_url()
+
+    async def generate(
+        self,
+        *,
+        prompt: str,
+        model: str,
+        reference_images: list[str] | None = None,
+        aspect_ratio: str | None = None,
+        image_size: str | None = None,
+    ) -> GeneratedImageResponse:
+        if not self.api_key:
+            raise ImageGenerationError(self.missing_key_message)
+
+        # Build content items
+        content_items: list[dict[str, Any]] = []
+        refs = list(reference_images or [])
+        if refs:
+            # Add reference images for image editing
+            for ref_path in refs:
+                content_items.append({"image": image_path_to_data_url(ref_path)})
+        content_items.append({"text": prompt})
+
+        # Resolve size
+        size = self._resolve_size(aspect_ratio, image_size)
+
+        # Build payload
+        payload: dict[str, Any] = {
+            "model": model,
+            "input": {"messages": [{"role": "user", "content": content_items}]},
+            "parameters": {
+                "size": size,
+                "prompt_extend": True,
+                "watermark": False,
+            },
+        }
+        payload["parameters"].update(self.extra_body)
+
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.api_key}",
+            **self.extra_headers,
+        }
+
+        url = f"{self.api_base}/services/aigc/multimodal-generation/generation"
+        response = await self._http_post(url, headers=headers, body=payload)
+
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            detail = _http_error_detail(response)
+            logger.error(
+                "DashScope image generation failed (HTTP {}): {}",
+                response.status_code,
+                detail,
+            )
+            raise ImageGenerationError(
+                f"DashScope image generation failed (HTTP {response.status_code}): {detail}"
+            ) from exc
+
+        data = response.json()
+        images = await _dashscope_images_from_payload(data)
+
+        self._require_images(images, data)
+
+        return GeneratedImageResponse(images=images, content="", raw=data)
+
+    def _resolve_size(self, aspect_ratio: str | None, image_size: str | None) -> str:
+        """Resolve aspect ratio / image_size to DashScope size string.
+
+        DashScope expects size in format 'width*height' (e.g., '1024*1024').
+        """
+        if image_size and "*" in image_size:
+            return image_size
+        if image_size and "x" in image_size.lower():
+            # Convert '1024x1024' to '1024*1024'
+            return image_size.replace("x", "*").replace("X", "*")
+        if aspect_ratio:
+            # Map common aspect ratios to sizes
+            ratio_map = {
+                "1:1": "1024*1024",
+                "16:9": "1536*864",
+                "9:16": "864*1536",
+                "4:3": "1365*1024",
+                "3:4": "1024*1365",
+            }
+            return ratio_map.get(aspect_ratio, "1024*1024")
+        return "1024*1024"
+
+
+async def _dashscope_images_from_payload(payload: dict[str, Any]) -> list[str]:
+    """Extract image data URLs from DashScope API response.
+
+    DashScope returns image URLs in output.choices[].message.content[].image.
+    We download and re-encode as base64 data URLs.
+    """
+    images: list[str] = []
+    output = payload.get("output", {})
+    choices = output.get("choices", [])
+
+    if not choices:
+        return images
+
+    # Collect all image URLs
+    image_urls: list[str] = []
+    for choice in choices:
+        if not isinstance(choice, dict):
+            continue
+        message = choice.get("message", {})
+        content = message.get("content", [])
+        if not isinstance(content, list):
+            continue
+        for item in content:
+            if isinstance(item, dict) and "image" in item:
+                img_url = item["image"]
+                if isinstance(img_url, str) and img_url:
+                    image_urls.append(img_url)
+
+    if not image_urls:
+        return images
+
+    # Download all images
+    async with httpx.AsyncClient(timeout=_DASHSCOPE_TIMEOUT_S) as client:
+        for img_url in image_urls:
+            try:
+                data_url = await _download_image_data_url(client, img_url)
+                images.append(data_url)
+            except Exception as exc:
+                logger.warning("Failed to download DashScope image: {}", exc)
+
+    return images
+
+
+# ---------------------------------------------------------------------------
 # Provider registration
 # ---------------------------------------------------------------------------
 
 register_image_gen_provider(AIHubMixImageGenerationClient)
 register_image_gen_provider(CodexImageGenerationClient)
+register_image_gen_provider(DashScopeImageGenerationClient)
 register_image_gen_provider(GeminiImageGenerationClient)
 register_image_gen_provider(OllamaImageGenerationClient)
 register_image_gen_provider(MiniMaxImageGenerationClient)

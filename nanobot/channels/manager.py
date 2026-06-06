@@ -40,6 +40,7 @@ _BOOL_CAMEL_ALIASES: dict[str, str] = {
     "show_reasoning": "showReasoning",
 }
 
+
 class ChannelManager:
     """
     Manages chat channels and coordinates message routing.
@@ -71,6 +72,7 @@ class ChannelManager:
         self.channels: dict[str, BaseChannel] = {}
         self._dispatch_task: asyncio.Task | None = None
         self._origin_reply_fingerprints: dict[tuple[str, str, str], str] = {}
+        self._handlers = self._init_handlers()
 
         self._init_channels()
 
@@ -128,14 +130,15 @@ class ChannelManager:
                 channel.transcription_api_base = transcription_base
                 channel.transcription_language = transcription_language
                 channel.send_progress = self._resolve_bool_override(
-                    section, "send_progress", self.config.channels.send_progress,
+                    section, "send_progress", self.config.channels.send_progress
                 )
                 channel.send_tool_hints = self._resolve_bool_override(
-                    section, "send_tool_hints", self.config.channels.send_tool_hints,
+                    section, "send_tool_hints", self.config.channels.send_tool_hints
                 )
                 channel.show_reasoning = self._resolve_bool_override(
-                    section, "show_reasoning", self.config.channels.show_reasoning,
+                    section, "show_reasoning", self.config.channels.show_reasoning
                 )
+                channel.handlers = self._handlers
                 self.channels[name] = channel
                 logger.info("{} channel enabled", cls.display_name)
             except Exception as e:
@@ -143,8 +146,48 @@ class ChannelManager:
 
         self._validate_allow_from()
 
+    def _init_handlers(self) -> None:
+        """Initialize message handlers discovered via handler module scan."""
+        from nanobot.channels.handlers.base_handler import BaseHandler
+        from nanobot.channels.handlers.registry import discover_handler_configs
+
+        handlers_config = self.config.channels.handlers
+        extra = getattr(handlers_config, "__pydantic_extra__", None) or {}
+        handlers: dict[str, Any] = {}
+
+        for h_name, config_cls in discover_handler_configs().items():
+            raw = extra.get(h_name, {})
+            try:
+                h_cfg = config_cls(**(raw if isinstance(raw, dict) else {}))
+            except Exception as e:
+                logger.warning("Failed to parse config for handler {}: {}", h_name, e)
+                continue
+
+            if not h_cfg.enabled:
+                logger.debug("Handler {} is disabled, skipping", h_name)
+                continue
+            try:
+                h_cls = BaseHandler.get_registered_type(h_cfg.handler_type)
+                if h_cls:
+                    handlers[h_name] = h_cls(h_cfg)
+                    logger.debug("Handler {} ({}) initialized", h_name, h_cfg.handler_type)
+                else:
+                    logger.warning(
+                        "Handler type {} not found for handler {}", h_name, h_cfg.handler_type
+                    )
+            except Exception as e:
+                logger.exception("Failed to initialize handler {}: {}", h_name, e)
+
+        if handlers:
+            handler_info = {k: v.handler_type() for k, v in handlers.items()}
+            logger.info("Use handlers: {}", handler_info)
+        return handlers
+
     def _resolve_transcription_key(self, provider: str) -> str:
         """Pick the API key for the configured transcription provider."""
+        override = getattr(self.config.channels, "transcription_api_key", None)
+        if override:
+            return override
         try:
             if provider == "openai":
                 return self.config.providers.openai.api_key
@@ -154,6 +197,9 @@ class ChannelManager:
 
     def _resolve_transcription_base(self, provider: str) -> str:
         """Pick the API base URL for the configured transcription provider."""
+        override = getattr(self.config.channels, "transcription_base_url", None)
+        if override:
+            return override
         try:
             if provider == "openai":
                 return self.config.providers.openai.api_base or ""
@@ -239,15 +285,17 @@ class ChannelManager:
         target = self.channels.get(notice.channel)
         if not target:
             return
-        asyncio.create_task(self._send_with_retry(
-            target,
-            OutboundMessage(
-                channel=notice.channel,
-                chat_id=notice.chat_id,
-                content=format_restart_completed_message(notice.started_at_raw),
-                metadata=dict(notice.metadata or {}),
-            ),
-        ))
+        asyncio.create_task(
+            self._send_with_retry(
+                target,
+                OutboundMessage(
+                    channel=notice.channel,
+                    chat_id=notice.chat_id,
+                    content=format_restart_completed_message(notice.started_at_raw),
+                    metadata=dict(notice.metadata or {}),
+                ),
+            )
+        )
 
     async def stop_all(self) -> None:
         """Stop all channels and the dispatcher."""
@@ -308,10 +356,7 @@ class ChannelManager:
                 if pending:
                     msg = pending.pop(0)
                 else:
-                    msg = await asyncio.wait_for(
-                        self.bus.consume_outbound(),
-                        timeout=1.0
-                    )
+                    msg = await asyncio.wait_for(self.bus.consume_outbound(), timeout=1.0)
 
                 if (
                     msg.metadata.get("_reasoning_delta")
@@ -332,11 +377,11 @@ class ChannelManager:
 
                 if msg.metadata.get("_progress"):
                     if msg.metadata.get("_tool_hint") and not self._should_send_progress(
-                        msg.channel, tool_hint=True,
+                        msg.channel, tool_hint=True
                     ):
                         continue
                     if not msg.metadata.get("_tool_hint") and not self._should_send_progress(
-                        msg.channel, tool_hint=False,
+                        msg.channel, tool_hint=False
                     ):
                         continue
 
@@ -366,7 +411,11 @@ class ChannelManager:
                         and not msg.metadata.get("_streamed")
                     ):
                         if self._should_suppress_outbound(msg):
-                            logger.info("Suppressing duplicate outbound message to {}:{}", msg.channel, msg.chat_id)
+                            logger.info(
+                                "Suppressing duplicate outbound message to {}:{}",
+                                msg.channel,
+                                msg.chat_id,
+                            )
                             continue
                     await self._send_with_retry(channel, msg)
                 else:
@@ -460,14 +509,17 @@ class ChannelManager:
             except Exception as e:
                 if attempt == max_attempts - 1:
                     logger.exception(
-                        "Failed to send to {} after {} attempts",
-                        msg.channel, max_attempts
+                        "Failed to send to {} after {} attempts", msg.channel, max_attempts
                     )
                     return
                 delay = _SEND_RETRY_DELAYS[min(attempt, len(_SEND_RETRY_DELAYS) - 1)]
                 logger.warning(
                     "Send to {} failed (attempt {}/{}): {}, retrying in {}s",
-                    msg.channel, attempt + 1, max_attempts, type(e).__name__, delay
+                    msg.channel,
+                    attempt + 1,
+                    max_attempts,
+                    type(e).__name__,
+                    delay,
                 )
                 try:
                     await asyncio.sleep(delay)
@@ -481,10 +533,7 @@ class ChannelManager:
     def get_status(self) -> dict[str, Any]:
         """Get status of all channels."""
         return {
-            name: {
-                "enabled": True,
-                "running": channel.is_running
-            }
+            name: {"enabled": True, "running": channel.is_running}
             for name, channel in self.channels.items()
         }
 

@@ -101,3 +101,5 @@ temp/
 *.tmp
 exp/
 .playwright-mcp/
+.claude
+AGENT.md

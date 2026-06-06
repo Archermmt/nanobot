@@ -8,6 +8,7 @@ import {
   Search,
   Server,
   Terminal,
+  Volume2,
   Wrench,
   type LucideIcon,
 } from "lucide-react";
@@ -852,6 +853,7 @@ function describeActivityGroup(
   ].map((name) => name.toLowerCase());
   const evidence = [...allToolEvidence(evidenceByLine), ...mediaEvidence];
   const hasVisualEvidence = evidence.some((item) => item.attachment.kind === "image" || item.attachment.kind === "video");
+  const hasAudioEvidence = evidence.some((item) => item.attachment.kind === "audio");
   if (hasVisualEvidence && names.some((name) => /browser|screenshot|vision|image|video/.test(name))) {
     return { title: "Vision", icon: FileImage };
   }
@@ -860,6 +862,7 @@ function describeActivityGroup(
   if (names.some((name) => /exec|shell|terminal|bash|run_cli_app|cli_anything/.test(name))) return { title: "Shell", icon: Terminal };
   if (names.some((name) => /^mcp_|mcp/.test(name))) return { title: "MCP", icon: Server };
   if (message.fileEdits?.length) return { title: "Files", icon: Layers };
+  if (hasAudioEvidence) return { title: "Audio", icon: Volume2 };
   if (evidence.length) return { title: "Media", icon: FileImage };
   return { title: "Working", icon: Layers };
 }
