@@ -57,7 +57,6 @@ export async function executeWebUITool(
 
   // Handle specific tools
   if (toolName === 'webui_camera_take_photo') {
-    console.log('[TMINFO] Executing webui_camera_take_photo tool');
     return await captureAndSendPhoto(toolArgs);
   }
 
