@@ -541,8 +541,6 @@ export class NanobotClient {
 
   /** Handle tool call messages from backend and send result back */
   private async handleToolCall(parsed: InboundEvent & { event: "tool_call" }): Promise<void> {
-    console.log("[NanobotClient] 🛠️ Received tool call:", parsed);
-    
     try {
       // Use the webui-tools handler to process the tool call
       await handleToolCallMessage(

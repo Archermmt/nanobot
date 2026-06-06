@@ -109,8 +109,6 @@ async function captureAndSendPhoto(
     // Stop camera stream
     stream.getTracks().forEach((track) => track.stop());
 
-    console.log('[WebUITools] 📸 Photo captured successfully');
-
     // Return photo data
     return {
       success: true,
@@ -133,11 +131,7 @@ export async function handleToolCallMessage(
   message: ToolCallMessage,
   sendMessage: (response: any) => void
 ): Promise<void> {
-  console.log('[WebUITools] 📥 Tool call message received:', message);
-
   const { name: toolName, kwargs: toolKwargs } = message;
-
-  console.log(`[WebUITools] 🔧 Tool call: ${toolName}`, toolKwargs);
 
   try {
     // Execute the tool
@@ -151,9 +145,7 @@ export async function handleToolCallMessage(
       result: result,
     };
 
-    console.log('[WebUITools] 📤 Sending tool call result:', replyMessage);
     sendMessage(replyMessage);
-    console.log('[WebUITools] ✅ Tool result sent');
   } catch (error) {
     console.error('[WebUITools] ❌ Tool execution failed:', error);
 

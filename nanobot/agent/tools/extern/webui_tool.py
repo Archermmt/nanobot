@@ -24,10 +24,6 @@ class WebUITool(ExternTool):
         """Setup the tool with WebSocket connection from kwargs."""
         if "websocket" in config:
             self._websocket = config["websocket"]
-        print(
-            f"[TMINFO] init with timeout: {self._timeout}, websocket: {self._websocket}, result_queue: {self._result_queue}",
-            flush=True,
-        )
 
     async def execute(self, **kwargs: Any) -> str:
         """
@@ -53,7 +49,6 @@ class WebUITool(ExternTool):
         if not self._result_queue:
             raise RuntimeError("Result queue not initialized")
         message = {"type": "tool_call", "name": self.name, "kwargs": kwargs}
-        print(f"[TMINFO] WebUI tool '{self._name}' send with message: {message}", flush=True)
         await self._websocket.send(json.dumps(message, ensure_ascii=False))
 
         # wait for result
@@ -61,12 +56,10 @@ class WebUITool(ExternTool):
             return self._name == result["tool_name"]
 
         result = await self.wait_for_result(_checker)
-        print(f"[TMINFO] WebUI tool '{self._name}' received result: {result}", flush=True)
         if "image_data" in result:
             result["image"] = save_media(
-                result.pop("image_data"), self.name + ".jpg", media_dir=get_media_dir("websocket")
+                result.pop("image_data"), self.name + ".jpg", media_dir=get_media_dir("camera")
             )[0]
-        print(f"[TMINFO] WebUI tool '{self._name}' final result: {result}", flush=True)
         return str(result)
 
 
