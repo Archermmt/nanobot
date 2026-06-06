@@ -46,9 +46,10 @@ class WebUITool(ExternTool):
             raise RuntimeError("WebSocket not initialized")
         if not self._result_queue:
             raise RuntimeError("Result queue not initialized")
-        print(f"[TMINFO] WebUI tool '{self._name}' send with kwargs: {kwargs}", flush=True)
-        message_data = {"type": "tool_call", "name": self.name, "kwargs": kwargs}
-        await self._websocket.send(json.dumps(message_data, ensure_ascii=False))
+        message = {"type": "tool_call", "name": self.name, "kwargs": kwargs}
+        print(f"[TMINFO] WebUI tool '{self._name}' send with message: {message}", flush=True)
+        await self._websocket.send(json.dumps(message, ensure_ascii=False))
+        print("[TMINFO] message send!!", flush=True)
 
         # wait for result
         def _checker(result: dict) -> bool:

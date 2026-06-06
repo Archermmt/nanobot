@@ -474,8 +474,16 @@ export class NanobotClient {
     }
 
     // Handle tool call messages from backend
-    if (parsed.event === "tool_call") {
-      this.handleToolCall(parsed);
+    if (parsed.event === "tool_call" || (parsed as any).type === "tool_call") {
+      console.log('[TMINFO] Received tool_call message, converting to event format');
+      // Convert type-based message to event-based format for handleToolCall
+      const toolCallEvent = {
+        event: "tool_call" as const,
+        chat_id: (parsed as any).chat_id || this.readyChatId || "__system__",
+        name: (parsed as any).name,
+        kwargs: (parsed as any).kwargs,
+      };
+      this.handleToolCall(toolCallEvent);
       return;
     }
 

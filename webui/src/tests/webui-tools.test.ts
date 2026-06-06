@@ -13,9 +13,9 @@ describe('WebUI Tools', () => {
       expect(tools.length).toBeGreaterThan(0);
     });
 
-    it('should include camera_take_photo tool', () => {
+    it('should include webui_camera_take_photo tool', () => {
       const tools = getWebUITools();
-      const cameraTool = tools.find((t: any) => t.name === 'camera_take_photo');
+      const cameraTool = tools.find((t: any) => t.name === 'webui_camera_take_photo');
       expect(cameraTool).toBeDefined();
       expect(cameraTool?.description).toContain('camera');
     });
@@ -28,7 +28,7 @@ describe('WebUI Tools', () => {
         .toThrow('Unknown tool: unknown_tool');
     });
 
-    it('should execute camera_take_photo tool', async () => {
+    it('should execute webui_camera_take_photo tool', async () => {
       // Mock getUserMedia
       const mockStream = {
         getTracks: vi.fn(() => [{ stop: vi.fn() }])
@@ -66,7 +66,7 @@ describe('WebUI Tools', () => {
         return originalCreateElement(tag);
       });
 
-      const result = await executeWebUITool('camera_take_photo', { question: 'test' });
+      const result = await executeWebUITool('webui_camera_take_photo', { question: 'test' });
       
       expect(result.success).toBe(true);
       expect(result.image_data).toContain('data:image/jpeg;base64');
@@ -80,7 +80,7 @@ describe('WebUI Tools', () => {
       const mockSendMessage = vi.fn();
       const message = {
         type: 'tool_call' as const,
-        name: 'camera_take_photo',
+        name: 'webui_camera_take_photo',
         kwargs: { question: 'test' }
       };
 
@@ -100,7 +100,7 @@ describe('WebUI Tools', () => {
       expect(mockSendMessage).toHaveBeenCalled();
       const response = mockSendMessage.mock.calls[0][0];
       expect(response.type).toBe('tool_call_result');
-      expect(response.name).toBe('camera_take_photo');
+      expect(response.name).toBe('webui_camera_take_photo');
       expect(response.result.success).toBe(true);
     });
 
