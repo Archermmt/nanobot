@@ -686,6 +686,12 @@ export type InboundEvent =
       scope?: "metadata" | "thread" | string;
       workspace_scope?: WorkspaceScopePayload;
     }
+  | {
+      event: "tool_call";
+      chat_id: string;
+      name: string;
+      kwargs: Record<string, any>;
+    }
   | { event: "error"; chat_id?: string; detail?: string; reason?: string }
   | {
       event: "transcribe_result";
@@ -767,4 +773,15 @@ export type Outbound =
   | {
       type: "tts_toggle";
       enable: boolean;
+    }
+  | {
+      type: "tool_call_result";
+      name: string;
+      kwargs: Record<string, any>;
+      result: Record<string, any>;
+    }
+  | {
+      type: "register_extern_tools";
+      chat_id: string;
+      tools: any[];
     };

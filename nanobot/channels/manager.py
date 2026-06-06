@@ -179,7 +179,7 @@ class ChannelManager:
                 logger.exception("Failed to initialize handler {}: {}", h_name, e)
 
         if handlers:
-            handler_info = {k: type(v).__name__ for k, v in handlers.items()}
+            handler_info = {k: v.handler_type() for k, v in handlers.items()}
             logger.info("Use handlers: {}", handler_info)
         return handlers
 

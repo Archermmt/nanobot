@@ -561,6 +561,8 @@ class WebSocketChannel(BaseChannel):
         # become self-expiring (callers just refresh the session list).
         self._media_secret: bytes = secrets.token_bytes(32)
         self._enable_tts = False
+        # Queue for receiving tool call results from frontend
+        self._tool_result_queues: dict[str, asyncio.Queue] = {}
 
     def _attach(self, connection: Any, chat_id: str) -> None:
         """Idempotently subscribe *connection* to *chat_id*."""
@@ -1000,6 +1002,120 @@ class WebSocketChannel(BaseChannel):
                 "error",
                 chat_id="__system__",
                 error=str(e),
+            )
+
+    async def _handle_tool_call_result(self, connection: Any, envelope: dict[str, Any]) -> None:
+        """Handle tool call result from frontend and put it into the result queue."""
+        try:
+            tool_name = envelope.get("name", "")
+            kwargs = envelope.get("kwargs", {})
+            result = envelope.get("result", {})
+
+            # Find the chat_id for this connection
+            chat_id = self._conn_default.get(connection)
+            if not chat_id:
+                logger.warning("No chat_id found for connection, ignoring tool result")
+                return
+
+            # Get or create result queue for this chat
+            queue = self._tool_result_queues.get(chat_id)
+            if queue is None:
+                queue = asyncio.Queue()
+                self._tool_result_queues[chat_id] = queue
+
+            # Put the result into the queue
+            ret_msg = {
+                "chat_id": chat_id,
+                "tool_name": tool_name,
+                "result": result,
+            }
+            await queue.put(ret_msg)
+            logger.debug("Tool result queued for {}: {}", chat_id, tool_name)
+        except Exception as e:
+            logger.exception("Failed to handle tool call result")
+            await self._send_event(
+                connection,
+                "error",
+                chat_id=self._conn_default.get(connection, "__system__"),
+                error=f"tool result failed: {str(e)}",
+            )
+
+    async def _handle_register_extern_tools(
+        self,
+        connection: Any,
+        client_id: str,
+        envelope: dict[str, Any],
+    ) -> None:
+        """Handle register_extern_tools envelope from frontend.
+
+        This is a dedicated message type for tool registration, similar to transcribe_audio.
+        """
+
+        try:
+            chat_id = self._conn_default.get(connection)
+            tools_data = envelope.get("tools", [])
+            if not chat_id:
+                logger.warning("No chat_id found for connection, ignoring register tool")
+                return
+            if not isinstance(tools_data, list):
+                logger.warning("Invalid tools data format, expected list")
+                return
+
+            # Convert frontend tool definitions to MCP-compatible format
+            mcp_tools = []
+            for tool in tools_data:
+                if not isinstance(tool, dict):
+                    continue
+                name = tool.get("name", "")
+                description = tool.get("description", "")
+                input_schema = {"type": "object", "properties": {}, "required": []}
+
+                # Extract inputSchema if present
+                if "inputSchema" in tool and isinstance(tool["inputSchema"], dict):
+                    schema = tool["inputSchema"]
+                    input_schema["type"] = schema.get("type", "object")
+                    input_schema["properties"] = schema.get("properties", {})
+                    input_schema["required"] = [
+                        s for s in schema.get("required", []) if isinstance(s, str)
+                    ]
+
+                mcp_tool = {
+                    "name": name,
+                    "description": description,
+                    "inputSchema": input_schema,
+                }
+                mcp_tools.append(mcp_tool)
+
+            # Create a result queue for this chat if not exists
+            if chat_id not in self._tool_result_queues:
+                self._tool_result_queues[chat_id] = asyncio.Queue()
+            # Build metadata for the inbound message
+            metadata = {
+                "type": "webui",  # Tool type identifier
+                "kwargs": {
+                    "websocket": connection,
+                    "timeout": 120,
+                    "result_queue": self._tool_result_queues[chat_id],
+                },
+                "tools": mcp_tools,
+                "remote": getattr(connection, "remote_address", None),
+            }
+
+            # Send to agent_loop via message bus
+            await self._handle_message(
+                sender_id=client_id,
+                chat_id=chat_id,
+                content="/register_extern_tools",
+                metadata=metadata,
+                is_dm=False,
+            )
+        except Exception as e:
+            logger.exception("Failed to register extern tools")
+            await self._send_event(
+                connection,
+                "error",
+                chat_id=envelope.get("chat_id", "__system__"),
+                error=f"register_extern_tools failed: {str(e)}",
             )
 
     def _handle_webui_sidebar_state(self, request: WsRequest) -> Response:
@@ -1442,6 +1558,7 @@ class WebSocketChannel(BaseChannel):
                 content = _parse_inbound_payload(raw)
                 if content is None:
                     continue
+
                 # WebSocket already authenticates at handshake time (token),
                 # so pairing is not applicable. Treat as non-DM to avoid
                 # sending pairing codes to an already-authenticated client.
@@ -1540,13 +1657,19 @@ class WebSocketChannel(BaseChannel):
         client_id: str,
         envelope: dict[str, Any],
     ) -> None:
-        """Route one typed inbound envelope (``new_chat`` / ``attach`` / ``message`` / ``transcribe_audio`` / ``tts_toggle``)."""
+        """Route one typed inbound envelope (``new_chat`` / ``attach`` / ``message`` / ``transcribe_audio`` / ``tts_toggle`` / ``tool_call_result`` / ``register_extern_tools``)."""
         t = envelope.get("type")
         if t == "transcribe_audio":
             await self._handle_transcribe_audio(connection, envelope)
             return
         if t == "tts_toggle":
             await self._handle_tts_toggle(connection, envelope)
+            return
+        if t == "tool_call_result":
+            await self._handle_tool_call_result(connection, envelope)
+            return
+        if t == "register_extern_tools":
+            await self._handle_register_extern_tools(connection, client_id, envelope)
             return
         if t == "new_chat":
             new_id = str(uuid.uuid4())
