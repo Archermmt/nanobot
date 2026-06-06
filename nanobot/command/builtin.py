@@ -661,6 +661,10 @@ async def cmd_register_extern_tools(ctx: CommandContext) -> OutboundMessage:
     if tool_class:
         for spec in metadata["tools"]:
             try:
+                # Check if tool is already registered
+                if ctx.loop.tools.has(spec["name"]):
+                    logger.debug("Skipping duplicate extern tool registration: {}", spec["name"])
+                    continue
                 tool_instance = tool_class({**spec, **kwargs, "chatId": ctx.msg.chat_id})
                 ctx.loop.tools.register(tool_instance)
                 tools.append(tool_instance.name)
@@ -670,7 +674,8 @@ async def cmd_register_extern_tools(ctx: CommandContext) -> OutboundMessage:
     else:
         logger.warning(f"ExternTool type '{tool_type}' not registered")
     content = f"Register {len(tools)} {tool_type} tools: {', '.join(tools)}"
-    logger.info(content)
+    if tools:
+        logger.info(content)
     return OutboundMessage(
         channel=ctx.msg.channel,
         chat_id=ctx.msg.chat_id,
