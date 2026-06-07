@@ -126,23 +126,47 @@ def opus_to_wav(opus_data, sample_rate: int = 16000):
 
 
 def pcm_to_wav(
-    pcm_data: bytes | list[bytes], output_file: Path = None, sample_rate: int = 16000
+    pcm_data: bytes | list[bytes] = None,
+    input_file: Path = None,
+    output_file: Path = None,
+    sample_rate: int = 16000,
 ) -> bytes | Path | None:
     """
     Convert PCM data to WAV format.
 
     Args:
         pcm_data: PCM audio data bytes or list of bytes (decoded from opus)
+        input_file: Path to PCM file. If provided, pcm_data must be None.
         output_file: Optional output file path. If None, returns bytes.
         sample_rate: Sample rate in Hz (default: 16000)
 
     Returns:
         bytes if output_file is None, otherwise Path to the output file
+
+    Note:
+        Either pcm_data or input_file must be provided, but not both.
     """
+    # Validate input parameters
+    if pcm_data is None and input_file is None:
+        raise ValueError("Either pcm_data or input_file must be provided")
+    if pcm_data is not None and input_file is not None:
+        raise ValueError("Cannot provide both pcm_data and input_file")
+
     try:
+        # Read PCM data from file if input_file is provided
+        if input_file is not None:
+            input_path = Path(input_file) if not isinstance(input_file, Path) else input_file
+            if not input_path.exists():
+                raise FileNotFoundError(f"PCM file not found: {input_path}")
+            pcm_data = input_path.read_bytes()
+            logger.debug(f"Read PCM data from file: {input_path}, size: {len(pcm_data)} bytes")
+
         # Handle list of PCM chunks
         if isinstance(pcm_data, list):
             pcm_data = b"".join(pcm_data)
+
+        if not pcm_data:
+            raise ValueError("PCM data is empty")
 
         # Create WAV header
         wav_header = bytearray()

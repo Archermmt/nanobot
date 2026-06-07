@@ -769,6 +769,7 @@ export function ThreadShell({
           workspaceError={workspaceError}
           onWorkspaceScopeChange={onWorkspaceScopeChange}
           onTranscribe={transcribeAudio}
+          onSendStreamAudio={sendRawMessage}
         />
       )}
     </>

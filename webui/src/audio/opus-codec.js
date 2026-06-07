@@ -1,3 +1,43 @@
+// Load libopus.js script dynamically
+let libopusLoaded = false;
+let libopusLoading = false;
+const libopusLoadPromise = new Promise((resolve, reject) => {
+    window.libopusResolve = resolve;
+    window.libopusReject = reject;
+});
+
+export async function ensureLibopusLoaded() {
+    if (libopusLoaded) return true;
+    if (libopusLoading) {
+        await libopusLoadPromise;
+        return libopusLoaded;
+    }
+    
+    libopusLoading = true;
+    
+    return new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = '/src/audio/libopus.js';
+        script.onload = () => {
+            // Wait a bit for Module to initialize
+            setTimeout(() => {
+                checkOpusLoaded();
+                if (window.ModuleInstance) {
+                    libopusLoaded = true;
+                    resolve(true);
+                } else {
+                    resolve(false);
+                }
+            }, 100);
+        };
+        script.onerror = (error) => {
+            libopusLoading = false;
+            reject(error);
+        };
+        document.head.appendChild(script);
+    });
+}
+
 // 检查Opus库是否已加载
 export function checkOpusLoaded() {
     try {
@@ -38,10 +78,16 @@ export function checkOpusLoaded() {
 
 // 创建一个Opus编码器
 let opusEncoder = null;
-export function initOpusEncoder() {
+export async function initOpusEncoder() {
     try {
         if (opusEncoder) {
             return opusEncoder; // 已经初始化过
+        }
+
+        // Ensure libopus.js is loaded before initializing encoder
+        const loaded = await ensureLibopusLoaded();
+        if (!loaded) {
+            return;
         }
 
         if (!window.ModuleInstance) {

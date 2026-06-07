@@ -1318,10 +1318,12 @@ export function ThreadComposer({
     [remove],
   );
 
-  const startRecording = useCallback(async () => {
+  const startRecording = useCallback(async (mode?: "normal" | "stream") => {
     try {
+      // Use provided mode or fall back to state
+      const actualMode = mode ?? recordingMode;
       // If in stream mode, use AudioClipRecorder
-      if (recordingMode === "stream" && onSendStreamAudio) {
+      if (actualMode === "stream" && onSendStreamAudio) {
         const { getAudioClipRecorder } = await import("@/audio/audioClipRecorder");
         const clipRecorder = getAudioClipRecorder();
         
@@ -1336,9 +1338,13 @@ export function ThreadComposer({
           send: (data: string) => {
             try {
               const message = JSON.parse(data);
-              onSendStreamAudio(message);
+              if (message.type === "transcribe_audio" && message.is_stream) {
+                // Remove chat_id before sending
+                delete message.chat_id;
+                onSendStreamAudio(message);
+              }
             } catch (error) {
-              console.error('Failed to parse and send stream audio:', error);
+              console.error(`Failed to parse and send stream audio:`, error);
             }
           }
         };
@@ -1381,7 +1387,7 @@ export function ThreadComposer({
         return;
       }
       
-      // Normal mode - use MediaRecorder
+      // Normal mode - use MediaRecorder (records complete audio, sends after stop)
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mediaRecorder = new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
@@ -1911,7 +1917,7 @@ export function ThreadComposer({
                     setShowModeMenu(false);
                   } else {
                     // Start recording with current mode
-                    startRecording();
+                    startRecording(recordingMode);
                   }
                 }}
                 className={cn(
@@ -1986,7 +1992,7 @@ export function ThreadComposer({
                     type="button"
                     onClick={() => {
                       setRecordingMode("normal");
-                      startRecording();
+                      startRecording("normal");
                     }}
                     onMouseEnter={() => setHoveredMode("normal")}
                     onMouseLeave={() => setHoveredMode(null)}
@@ -2003,7 +2009,7 @@ export function ThreadComposer({
                     type="button"
                     onClick={() => {
                       setRecordingMode("stream");
-                      startRecording();
+                      startRecording("stream");
                     }}
                     onMouseEnter={() => setHoveredMode("stream")}
                     onMouseLeave={() => setHoveredMode(null)}

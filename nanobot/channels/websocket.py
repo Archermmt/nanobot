@@ -41,6 +41,7 @@ from nanobot.session.goal_state import goal_state_ws_blob
 from nanobot.session.webui_turns import websocket_turn_wall_started_at
 from nanobot.utils.media_decode import (
     FileSizeExceeded,
+    pcm_to_wav,
     save_base64_data_url,
     webm_to_wav,
 )
@@ -952,14 +953,11 @@ class WebSocketChannel(BaseChannel):
                 return
 
             # Handle stream mode
-            print(f"[TMINFO] Received transcribe_audio data(stream: {is_stream}): {audio_data}")
             if is_stream:
+                print(f"\n\n[TMINFO] Received transcribe_audio stream: {audio_data}", flush=True)
                 format_type = envelope.get("format", "opus")
-                if self.check_vad(audio_data, format_type):
-                    print(f"[TMINFO] VAD detected in format {format_type}", flush=True)
-                else:
-                    print("should record data", flush=True)
-                raise Exception(f"should use vad in format {format_type}", flush=True)
+                audio_data = await self.vad_check(audio_data, format_type)
+                print("[TMINFO] get audio data from vad " + str(audio_data), flush=True)
 
             # Handle normal mode
             if not audio_data:
@@ -968,7 +966,7 @@ class WebSocketChannel(BaseChannel):
                     "transcribe_result",
                     chat_id=chat_id,
                     request_id=request_id,
-                    error="missing audio data",
+                    text="",
                 )
                 return
 
@@ -983,15 +981,17 @@ class WebSocketChannel(BaseChannel):
                     error=f"invalid audio data: {error_reason}",
                 )
                 return
-            # Convert webm to wav before transcription
-            audio_path = paths[0]
+            # Convert to wav before transcription
+            audio_path, converted = paths[0], None
+            input_path = Path(audio_path)
+            output_path = input_path.with_suffix(".wav")
             if Path(audio_path).suffix.lower() == ".webm":
-                input_path = Path(audio_path)
-                output_path = input_path.with_suffix(".wav")
                 converted = webm_to_wav(input_file=input_path, output_file=output_path)
-                if isinstance(converted, Path):
-                    audio_path = str(converted)
-                    input_path.unlink(missing_ok=True)
+            elif Path(audio_path).suffix.lower() == ".pcm":
+                converted = pcm_to_wav(input_file=input_path, output_file=output_path)
+            if isinstance(converted, Path):
+                audio_path = str(converted)
+                input_path.unlink(missing_ok=True)
 
             # Transcribe the audio
             transcription = await self.transcribe_audio(audio_path)
@@ -1676,7 +1676,6 @@ class WebSocketChannel(BaseChannel):
         """Route one typed inbound envelope (``new_chat`` / ``attach`` / ``message`` / ``transcribe_audio`` / ``tts_toggle`` / ``tool_call_result`` / ``register_extern_tools``)."""
         t = envelope.get("type")
         if t == "transcribe_audio":
-            print("[TMINFO] transcribe_audio with", envelope, flush=True)
             await self._handle_transcribe_audio(connection, envelope)
             return
         if t == "tts_toggle":

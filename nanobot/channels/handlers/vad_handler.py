@@ -1,5 +1,6 @@
 """VAD (Voice Activity Detection) handlers for voice activity detection."""
 
+import base64
 import time
 import uuid
 from abc import ABC, abstractmethod
@@ -72,43 +73,68 @@ class BaseVADHandler(BaseHandler, ABC):
         """
         Process a message for voice activity detection.
 
+        Supports two modes:
+        1. Simple mode (called from base.vad_check): Single audio chunk VAD detection
+           - Input: media=[audio_bytes_or_base64_string], metadata={"format": "opus"}
+           - Output: If voice detected, media=[base64_encoded_pcm_string]
+                     Otherwise, media=[]
+
+        2. Streaming mode (legacy): Accumulate audio chunks and detect speech start/end
+           - Input: content=audio_bytes (accumulated)
+           - Output: Modified message with accumulated PCM data when speech ends
+
         Args:
-            msg: HandlerMessage with audio media
+            msg: HandlerMessage with audio media or content
 
         Returns:
-            Modified HandlerMessage with VAD metadata
+            Modified HandlerMessage with VAD result or accumulated audio
         """
 
-        def _ignore_msg(msg):
-            msg.content, msg.media = "", []
-            msg.metadata["ret_type"] = "ignore"
+        msg.metadata["detected"] = False
+        if not msg.media:
             return msg
 
-        if msg.content == "/vad_reset":
-            self._reset_audio()
-            return _ignore_msg(msg)
+        # Extract audio data from media
+        audio_data = msg.media[0]
+        msg.media = []
 
-        if not msg.content or self._waiting_id:
-            return _ignore_msg(msg)
+        # Handle both bytes and base64 string formats
+        if isinstance(audio_data, str):
+            # Base64 encoded string (from audioClipRecorder.js)
+            try:
+                audio_bytes = base64.b64decode(audio_data)
+            except Exception as e:
+                logger.error(f"Failed to decode base64 audio data: {e}")
+                return msg
+        else:
+            # Raw bytes (from recorder.js)
+            audio_bytes = audio_data
 
-        self._asr_audio.append(msg.content)
-        audio_have_voice = self.is_vad(msg.content)
+        print(f"[TMINFO] process audio_bytes {audio_bytes}", flush=True)
+        self._asr_audio.append(audio_bytes)
+        audio_have_voice = self.is_vad(audio_bytes)
+        print(
+            f"[TMINFO] audio_have_voice {audio_have_voice}, asr_audio len {len(self._asr_audio)}, client_voice_stop {self._client_voice_stop}",
+            flush=True,
+        )
         if not audio_have_voice and not self._client_have_voice:
+            print("[TMINFO] case 1", flush=True)
             self._asr_audio = self._asr_audio[-10:]
-            return _ignore_msg(msg)
+            return msg
 
         if len(self._asr_audio) > 15 and not audio_have_voice and self._client_voice_stop:
+            print("[TMINFO] case 2", flush=True)
             pcm_data = self._asr_audio.copy()
             if self.audio_format == "opus":
                 pcm_data = self.decode_opus(pcm_data)
-            msg.content, msg.media = "", [{"data": b"".join(pcm_data)}]
-            self._waiting_id = str(uuid.uuid4())[:8]
-            msg.metadata.update(
-                {"msg_type": "audio", "file_type": "audio/pcm", "vad_id": self._waiting_id}
-            )
+            pcm_base64 = base64.b64encode(b"".join(pcm_data)).decode("ascii")
+            msg.media = [pcm_base64]
+            msg.metadata["detected"] = True
+            logger.debug(f"VAD detected voice, returning PCM base64 ({len(pcm_base64)} chars)")
             self._reset_audio()
             return msg
-        return _ignore_msg(msg)
+        print("[TMINFO] case 3", flush=True)
+        return msg
 
     def _reset_audio(self):
         """Reset the audio state."""

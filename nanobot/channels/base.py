@@ -50,6 +50,7 @@ class BaseChannel(ABC):
         self.logger = logger.bind(channel=self.name)
         self.bus = bus
         self._running = False
+        self._vad_clips = []
 
     async def transcribe_audio(self, file_path: str | Path) -> str:
         """Transcribe an audio file via Whisper (OpenAI or Groq). Returns empty string on failure."""
@@ -86,17 +87,24 @@ class BaseChannel(ABC):
             self.logger.exception("Audio transcription failed")
             return ""
 
-    async def vad_check(self, audio_data: bytes, format_type: str) -> bool:
-        """Perform voice activity detection on the given audio data."""
+    async def vad_check(self, audio_data: str, format_type: str) -> str:
+        """Perform voice activity detection on the given audio data.
+
+        Returns:
+            str: Base64 encoded PCM data if voice detected, empty string otherwise
+        """
         if "vad" in self.handlers:
             result = await self.handlers["vad"].process(
                 HandlerMessage(media=[audio_data], metadata={"format": format_type})
             )
             if result.error:
                 self.logger.exception("Vad failed: " + str(result.error))
-                return False
-            return result.metadata.get("detected", False)
-        return False
+                return ""
+            # Return first media item if exists (PCM data)
+            if result.metadata.get("detected", False):
+                return result.media[0]
+            return ""
+        return ""
 
     async def text_to_speech(self, content: str) -> dict:
         """Convert text to speech and return the audio file path."""

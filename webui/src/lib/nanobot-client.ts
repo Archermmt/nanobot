@@ -683,10 +683,13 @@ export class NanobotClient {
   }
 
   private rawSend(frame: Outbound): void {
-    if (!this.socket) return;
+    if (!this.socket) {
+      return;
+    }
     try {
-      this.socket.send(JSON.stringify(frame));
-    } catch {
+      const jsonStr = JSON.stringify(frame);
+      this.socket.send(jsonStr);
+    } catch (error) {
       // Send failure will materialize as a close; queue the frame for retry.
       this.sendQueue.push(frame);
     }

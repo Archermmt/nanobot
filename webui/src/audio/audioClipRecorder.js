@@ -39,9 +39,9 @@ export class AudioClipRecorder {
     }
 
     // Initialize encoder
-    initEncoder() {
+    async initEncoder() {
         if (!this.opusEncoder) {
-            this.opusEncoder = initOpusEncoder();
+            this.opusEncoder = await initOpusEncoder();
         }
         return this.opusEncoder;
     }
@@ -155,17 +155,21 @@ export class AudioClipRecorder {
         newBuffer.set(buffer, this.pcmDataBuffer.length);
         this.pcmDataBuffer = newBuffer;
         const samplesPerFrame = 960;
+        let frameCount = 0;
         while (this.pcmDataBuffer.length >= samplesPerFrame) {
             const frameData = this.pcmDataBuffer.slice(0, samplesPerFrame);
             this.pcmDataBuffer = this.pcmDataBuffer.slice(samplesPerFrame);
+            frameCount++;
             this.encodeAndSendOpus(frameData);
+        }
+        if (frameCount > 0) {
+            // Frames processed
         }
     }
 
     // Encode and send Opus data via WebSocket
     encodeAndSendOpus(pcmData = null) {
         if (!this.opusEncoder) {
-            console.error('Opus encoder not initialized');
             return;
         }
         try {
@@ -177,20 +181,20 @@ export class AudioClipRecorder {
                         try {
                             // Convert Uint8Array to base64 for JSON transmission
                             const base64Data = btoa(String.fromCharCode(...opusData));
-                            this.websocket.send(JSON.stringify({
+                            
+                            const message = JSON.stringify({
                                 type: 'transcribe_audio',
-                                chat_id: this.chatId || '__transcription__',
-                                data: base64Data,
+                                audio_data: base64Data,
                                 request_id: this.requestId,
                                 is_stream: true,
                                 format: 'opus'
-                            }));
+                            });
+                            
+                            this.websocket.send(message);
                         } catch (error) {
                             console.error(`WebSocket send error: ${error.message}`);
                         }
                     }
-                } else {
-                    console.error('Opus encoding failed, no valid data returned');
                 }
             }
         } catch (error) {
@@ -202,7 +206,8 @@ export class AudioClipRecorder {
     async start(chatId, requestId) {
         if (this.isRecording) return false;
         try {
-            if (!this.initEncoder()) {
+            const encoder = await this.initEncoder();
+            if (!encoder) {
                 console.error('Cannot start recording: Opus encoder initialization failed');
                 return false;
             }
