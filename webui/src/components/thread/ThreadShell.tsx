@@ -391,6 +391,8 @@ export function ThreadShell({
     setMessages,
     transcribeAudio,
     sendRawMessage,
+    onChat,
+    onGlobalEvent,
     ttsToggle,
     streamError,
     dismissStreamError,
@@ -742,6 +744,8 @@ export function ThreadShell({
           token={token}
           onTranscribe={transcribeAudio}
           onSendStreamAudio={sendRawMessage}
+          onChat={onChat}
+          onGlobalEvent={onGlobalEvent}
         />
       ) : (
         <ThreadComposer
@@ -770,6 +774,8 @@ export function ThreadShell({
           onWorkspaceScopeChange={onWorkspaceScopeChange}
           onTranscribe={transcribeAudio}
           onSendStreamAudio={sendRawMessage}
+          onChat={onChat}
+          onGlobalEvent={onGlobalEvent}
         />
       )}
     </>

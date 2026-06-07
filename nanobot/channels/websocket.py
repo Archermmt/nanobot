@@ -942,37 +942,22 @@ class WebSocketChannel(BaseChannel):
         (is_stream=true with Opus-encoded chunks).
         """
         try:
-            audio_data = envelope.get("audio_data")
-            request_id = envelope.get("request_id", "")
-            is_stream = envelope.get("is_stream", False)
-
-            # Get chat_id from connection for sending results
             chat_id = self._conn_default.get(connection)
             if not chat_id:
                 logger.warning("No chat_id found for connection, ignoring transcription request")
                 return
+            audio_data = envelope.get("audio_data")
+            request_id = envelope.get("request_id", "")
+            is_stream = envelope.get("is_stream", False)
 
             # Handle stream mode
             if is_stream:
-                format_type = envelope.get("format", "opus")
-                audio_data = await self.vad_check(audio_data, format_type)
-                if audio_data:
-                    print("[TMINFO] get audio data from vad " + str(audio_data), flush=True)
-
-            # Handle normal mode
+                audio_data = await self.vad_check(audio_data, envelope.get("format", "opus"))
             if not audio_data:
-                await self._send_event(
-                    connection,
-                    "transcribe_result",
-                    chat_id=chat_id,
-                    request_id=request_id,
-                    text="",
-                )
                 return
 
             # Save the audio file using the same logic as message media
             paths, error_reason = self._save_envelope_media([{"data_url": audio_data}])
-            print(f"[TMINFO] paths {paths}, error_reason {error_reason}", flush=True)
             if error_reason or not paths:
                 await self._send_event(
                     connection,
@@ -982,6 +967,7 @@ class WebSocketChannel(BaseChannel):
                     error=f"invalid audio data: {error_reason}",
                 )
                 return
+
             # Convert to wav before transcription
             audio_path, converted = paths[0], None
             input_path = Path(audio_path)
@@ -996,7 +982,6 @@ class WebSocketChannel(BaseChannel):
 
             # Transcribe the audio
             transcription = await self.transcribe_audio(audio_path)
-            print(f"[TMINFO] transcription {transcription}", flush=True)
             await self._send_event(
                 connection,
                 "transcribe_result",

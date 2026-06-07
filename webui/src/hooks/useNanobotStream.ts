@@ -443,6 +443,14 @@ export function useNanobotStream(
    * Used for custom message types not covered by other methods.
    */
   sendRawMessage: (message: Record<string, any>) => void;
+  /** Subscribe to events on a specific chat.
+   * Returns an unsubscribe function.
+   */
+  onChat: (chatId: string, handler: (event: any) => void) => () => void;
+  /** Subscribe to events across ALL chats.
+   * Returns an unsubscribe function.
+   */
+  onGlobalEvent: (eventName: string, handler: (event: any) => void) => () => void;
   /** Toggle TTS on/off via WebSocket. */
   ttsToggle: (enable: boolean) => void;
   /** Latest transport-level fault raised since the last ``dismissStreamError``.
@@ -1066,6 +1074,18 @@ export function useNanobotStream(
       (message: Record<string, any>) => {
         // Access the internal queueSend method via type assertion
         (client as any).queueSend(message);
+      },
+      [client],
+    ),
+    onChat: useCallback(
+      (chatId: string, handler: (event: any) => void) => {
+        return client.onChat(chatId, handler);
+      },
+      [client],
+    ),
+    onGlobalEvent: useCallback(
+      (eventName: string, handler: (event: any) => void) => {
+        return client.onGlobalEvent(eventName, handler);
       },
       [client],
     ),

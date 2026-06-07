@@ -4,6 +4,7 @@ export interface AudioClipRecorder {
     isRecording: boolean;
     audioContext: AudioContext | null;
     analyser: AnalyserNode | null;
+    requestId: string | null;
     onRecordingStart: ((duration: number) => void) | null;
     onRecordingStop: (() => void) | null;
     onVisualizerUpdate: ((dataArray: Uint8Array) => void) | null;

@@ -114,6 +114,8 @@ export class NanobotClient {
   private errorHandlers = new Set<ErrorHandler>();
   // chat_id -> handlers listening on it
   private chatHandlers = new Map<string, Set<EventHandler>>();
+  // event_name -> handlers listening globally (across all chats)
+  private globalHandlers = new Map<string, Set<EventHandler>>();
   /** Inbound frames received while no subscriber is registered (e.g. user switched away). */
   private pendingInboundByChat = new Map<string, InboundEvent[]>();
   private static readonly PENDING_INBOUND_MAX = 2000;
@@ -263,6 +265,24 @@ export class NanobotClient {
       if (!current) return;
       current.delete(handler);
       if (current.size === 0) this.chatHandlers.delete(chatId);
+    };
+  }
+
+  /** Subscribe to events across ALL chats.
+   * Returns an unsubscribe function.
+   */
+  onGlobalEvent(eventName: string, handler: EventHandler): Unsubscribe {
+    let handlers = this.globalHandlers.get(eventName);
+    if (!handlers) {
+      handlers = new Set();
+      this.globalHandlers.set(eventName, handlers);
+    }
+    handlers.add(handler);
+    return () => {
+      const current = this.globalHandlers.get(eventName);
+      if (!current) return;
+      current.delete(handler);
+      if (current.size === 0) this.globalHandlers.delete(eventName);
     };
   }
 
@@ -604,17 +624,25 @@ export class NanobotClient {
       for (const h of handlers) {
         h(ev);
       }
-      return;
+    } else {
+      let q = this.pendingInboundByChat.get(chatId);
+      if (!q) {
+        q = [];
+        this.pendingInboundByChat.set(chatId, q);
+      }
+      q.push(ev);
+      const over = q.length - NanobotClient.PENDING_INBOUND_MAX;
+      if (over > 0) {
+        q.splice(0, over);
+      }
     }
-    let q = this.pendingInboundByChat.get(chatId);
-    if (!q) {
-      q = [];
-      this.pendingInboundByChat.set(chatId, q);
-    }
-    q.push(ev);
-    const over = q.length - NanobotClient.PENDING_INBOUND_MAX;
-    if (over > 0) {
-      q.splice(0, over);
+
+    // Also dispatch to global handlers for this event type
+    const globalHandlers = this.globalHandlers.get(ev.event);
+    if (globalHandlers && globalHandlers.size > 0) {
+      for (const h of globalHandlers) {
+        h(ev);
+      }
     }
   }
 

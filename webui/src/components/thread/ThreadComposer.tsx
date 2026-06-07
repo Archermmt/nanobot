@@ -133,6 +133,14 @@ interface ThreadComposerProps {
     is_stream: boolean;
     format: string;
   }) => void;
+  /** Subscribe to events on a specific chat.
+   * Returns an unsubscribe function.
+   */
+  onChat?: (chatId: string, handler: (event: any) => void) => () => void;
+  /** Subscribe to events across ALL chats.
+   * Returns an unsubscribe function.
+   */
+  onGlobalEvent?: (eventName: string, handler: (event: any) => void) => () => void;
 }
 
 const COMMAND_ICONS: Record<string, LucideIcon> = {
@@ -678,6 +686,8 @@ export function ThreadComposer({
   token,
   onTranscribe,
   onSendStreamAudio,
+  onChat,
+  onGlobalEvent,
 }: ThreadComposerProps) {
   const { t } = useTranslation();
   const [value, setValue] = useState("");
@@ -704,6 +714,7 @@ export function ThreadComposer({
 
   const streamRequestIdRef = useRef<string | null>(null);
   const streamUnsubscribeRef = useRef<(() => void) | null>(null);
+  const shouldKeepRecordingRef = useRef(false); // Track if recording should continue after transcription
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1365,11 +1376,16 @@ export function ThreadComposer({
         };
         
         clipRecorder.onRecordingStop = () => {
-          setIsRecording(false);
-          if (recordingTimerRef.current) {
-            clearInterval(recordingTimerRef.current);
-            recordingTimerRef.current = null;
+          // Only set isRecording to false if we shouldn't keep recording
+          if (!shouldKeepRecordingRef.current) {
+            setIsRecording(false);
+            if (recordingTimerRef.current) {
+              clearInterval(recordingTimerRef.current);
+              recordingTimerRef.current = null;
+            }
           }
+          // Reset the flag
+          shouldKeepRecordingRef.current = false;
         };
         
         const started = await clipRecorder.start(chatId, requestId);
@@ -1377,6 +1393,39 @@ export function ThreadComposer({
           setIsRecording(true);
           setRecordingDuration(0);
           setAudioLevels(new Array(40).fill(0));
+          
+          // Function to set up transcription result listener
+          const setupTranscriptionListener = (currentRequestId: string) => {
+            const unsubscribe = onGlobalEvent?.("transcribe_result", (event: any) => {
+              if (event.request_id === currentRequestId) {
+                // Unsubscribe after receiving result
+                unsubscribe?.();
+                streamUnsubscribeRef.current = null;
+                
+                // If transcription is not empty, submit it
+                const text = event.text || "";
+                if (text.trim()) {
+                  // Set flag to keep recording after onSend
+                  shouldKeepRecordingRef.current = true;
+                  // Auto-submit the transcribed text
+                  onSend(text);
+                }
+                
+                // In stream mode, always continue recording with a new request_id
+                // regardless of whether the transcription was empty or not
+                const newRequestId = `transcribe-stream-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+                streamRequestIdRef.current = newRequestId;
+                clipRecorder.requestId = newRequestId;
+                
+                // Set up listener for next transcription
+                setupTranscriptionListener(newRequestId);
+              }
+            });
+            streamUnsubscribeRef.current = unsubscribe || null;
+          };
+          
+          // Set up initial listener
+          setupTranscriptionListener(requestId);
           
           // Start timer
           const startTime = Date.now();
@@ -1474,12 +1523,14 @@ export function ThreadComposer({
         streamUnsubscribeRef.current = null;
       }
       streamRequestIdRef.current = null;
+      shouldKeepRecordingRef.current = false; // Reset flag on manual stop
       
       if (recordingTimerRef.current) {
         clearInterval(recordingTimerRef.current);
         recordingTimerRef.current = null;
       }
       setIsRecording(false);
+      setRecordingMode("normal"); // Reset to normal mode after manual stop
       return;
     }
     
