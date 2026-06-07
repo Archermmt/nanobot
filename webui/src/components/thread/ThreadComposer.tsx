@@ -2033,11 +2033,11 @@ export function ThreadComposer({
                 )}
               </Button>
               
-              {/* Mode selection dropdown - shown below button on hover, hidden only when clicking outside or after stopping */}
+              {/* Mode selection dropdown - shown above button on hover, hidden only when clicking outside or after stopping */}
               {showModeMenu && !isRecording && !hideModeMenuAfterStopRef.current && (
                 <div
                   ref={modeMenuRef}
-                  className="absolute top-full left-1/2 -translate-x-1/2 mt-2 py-2 px-1 bg-popover border border-border rounded-lg shadow-lg min-w-[120px] z-50"
+                  className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 py-2 px-1 bg-popover border border-border rounded-lg shadow-lg min-w-[120px] z-50"
                 >
                   <button
                     type="button"
