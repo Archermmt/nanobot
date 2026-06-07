@@ -2,7 +2,6 @@
 
 import base64
 import time
-import uuid
 from abc import ABC, abstractmethod
 from collections import deque
 from pathlib import Path
@@ -13,6 +12,7 @@ from loguru import logger
 
 from nanobot.channels.handlers.base_handler import BaseHandler, HandlerMessage
 from nanobot.config.schema import Base
+from nanobot.utils.media_decode import pcm_to_wav
 
 
 class VADHandlerConfig(Base):
@@ -76,7 +76,7 @@ class BaseVADHandler(BaseHandler, ABC):
         Supports two modes:
         1. Simple mode (called from base.vad_check): Single audio chunk VAD detection
            - Input: media=[audio_bytes_or_base64_string], metadata={"format": "opus"}
-           - Output: If voice detected, media=[base64_encoded_pcm_string]
+           - Output: If voice detected, media=["data:audio/wav;base64,..."]
                      Otherwise, media=[]
 
         2. Streaming mode (legacy): Accumulate audio chunks and detect speech start/end
@@ -110,30 +110,22 @@ class BaseVADHandler(BaseHandler, ABC):
             # Raw bytes (from recorder.js)
             audio_bytes = audio_data
 
-        print(f"[TMINFO] process audio_bytes {audio_bytes}", flush=True)
         self._asr_audio.append(audio_bytes)
         audio_have_voice = self.is_vad(audio_bytes)
-        print(
-            f"[TMINFO] audio_have_voice {audio_have_voice}, asr_audio len {len(self._asr_audio)}, client_voice_stop {self._client_voice_stop}",
-            flush=True,
-        )
         if not audio_have_voice and not self._client_have_voice:
-            print("[TMINFO] case 1", flush=True)
             self._asr_audio = self._asr_audio[-10:]
             return msg
 
         if len(self._asr_audio) > 15 and not audio_have_voice and self._client_voice_stop:
-            print("[TMINFO] case 2", flush=True)
             pcm_data = self._asr_audio.copy()
             if self.audio_format == "opus":
                 pcm_data = self.decode_opus(pcm_data)
-            pcm_base64 = base64.b64encode(b"".join(pcm_data)).decode("ascii")
-            msg.media = [pcm_base64]
+            # Convert PCM to WAV and return as data URL
+            wav_base64 = base64.b64encode(pcm_to_wav(pcm_data)).decode("ascii")
+            msg.media = [f"data:audio/wav;base64,{wav_base64}"]
             msg.metadata["detected"] = True
-            logger.debug(f"VAD detected voice, returning PCM base64 ({len(pcm_base64)} chars)")
             self._reset_audio()
             return msg
-        print("[TMINFO] case 3", flush=True)
         return msg
 
     def _reset_audio(self):

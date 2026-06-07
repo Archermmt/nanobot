@@ -954,10 +954,10 @@ class WebSocketChannel(BaseChannel):
 
             # Handle stream mode
             if is_stream:
-                print(f"\n\n[TMINFO] Received transcribe_audio stream: {audio_data}", flush=True)
                 format_type = envelope.get("format", "opus")
                 audio_data = await self.vad_check(audio_data, format_type)
-                print("[TMINFO] get audio data from vad " + str(audio_data), flush=True)
+                if audio_data:
+                    print("[TMINFO] get audio data from vad " + str(audio_data), flush=True)
 
             # Handle normal mode
             if not audio_data:
@@ -972,6 +972,7 @@ class WebSocketChannel(BaseChannel):
 
             # Save the audio file using the same logic as message media
             paths, error_reason = self._save_envelope_media([{"data_url": audio_data}])
+            print(f"[TMINFO] paths {paths}, error_reason {error_reason}", flush=True)
             if error_reason or not paths:
                 await self._send_event(
                     connection,
@@ -995,6 +996,7 @@ class WebSocketChannel(BaseChannel):
 
             # Transcribe the audio
             transcription = await self.transcribe_audio(audio_path)
+            print(f"[TMINFO] transcription {transcription}", flush=True)
             await self._send_event(
                 connection,
                 "transcribe_result",

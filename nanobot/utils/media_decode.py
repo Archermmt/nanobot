@@ -59,9 +59,11 @@ def save_base64_data_url(
     if len(raw) > limit:
         raise FileSizeExceeded(f"File exceeds {limit // (1024 * 1024)}MB limit")
 
-    # Special handling for audio/webm to use .webm extension instead of .weba
+    # Special handling for audio formats not recognized by mimetypes
     if mime_type == "audio/webm":
         ext = ".webm"
+    elif mime_type == "audio/wav":
+        ext = ".wav"
     else:
         ext = mimetypes.guess_extension(mime_type) or ".bin"
 

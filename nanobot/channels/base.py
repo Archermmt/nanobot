@@ -91,7 +91,7 @@ class BaseChannel(ABC):
         """Perform voice activity detection on the given audio data.
 
         Returns:
-            str: Base64 encoded PCM data if voice detected, empty string otherwise
+            str: Data URL ("data:audio/wav;base64,...") if voice detected, empty string otherwise
         """
         if "vad" in self.handlers:
             result = await self.handlers["vad"].process(
