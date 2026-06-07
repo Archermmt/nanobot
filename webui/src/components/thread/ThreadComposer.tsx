@@ -694,12 +694,14 @@ export function ThreadComposer({
   const [audioLevels, setAudioLevels] = useState<number[]>([]);
   const [recordingMode, setRecordingMode] = useState<"normal" | "stream">("normal");
   const [showModeMenu, setShowModeMenu] = useState(false);
+  const [hoveredMode, setHoveredMode] = useState<"normal" | "stream" | null>(null);
+  const hideModeMenuAfterStopRef = useRef(false);
   const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const audioBlobRef = useRef<Blob | null>(null);
   const audioNameRef = useRef<string>("");
-  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+
   const streamRequestIdRef = useRef<string | null>(null);
   const streamUnsubscribeRef = useRef<(() => void) | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -714,6 +716,23 @@ export function ThreadComposer({
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const isHero = variant === "hero";
+  const modeMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close mode menu when clicking outside
+  useEffect(() => {
+    if (!showModeMenu) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (modeMenuRef.current && !modeMenuRef.current.contains(event.target as Node)) {
+        setShowModeMenu(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [showModeMenu]);
   const queuedPromptStorageKey = useMemo(
     () => queuedPromptsStorageKey(pendingQueueKey),
     [pendingQueueKey],
@@ -1505,37 +1524,7 @@ export function ThreadComposer({
     }
   }, [isRecording, onTranscribe, resizeTextarea, t, recordingMode]);
 
-  // Long press handlers for microphone button
-  const handleMicPointerDown = useCallback((event: React.PointerEvent) => {
-    if (disabled || isStreaming) return;
-    
-    // Start long press timer
-    longPressTimerRef.current = setTimeout(() => {
-      setShowModeMenu(true);
-    }, 500); // 500ms long press
-  }, [disabled, isStreaming]);
 
-  const handleMicPointerUp = useCallback(() => {
-    // Clear long press timer
-    if (longPressTimerRef.current) {
-      clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
-    }
-  }, []);
-
-  const handleMicPointerLeave = useCallback(() => {
-    // Clear long press timer and hide menu
-    if (longPressTimerRef.current) {
-      clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
-    }
-    setShowModeMenu(false);
-  }, []);
-
-  const selectRecordingMode = useCallback((mode: "normal" | "stream") => {
-    setRecordingMode(mode);
-    setShowModeMenu(false);
-  }, []);
 
   const submit = useCallback(async () => {
     let textToSend: string | null = null;
@@ -1897,20 +1886,39 @@ export function ThreadComposer({
                 isHero={isHero}
               />
             ) : null}
-            <div className="relative">
+            <div 
+              className="relative group" 
+              onMouseEnter={() => {
+                if (!isRecording && !hideModeMenuAfterStopRef.current) {
+                  setShowModeMenu(true);
+                }
+              }}
+              onMouseLeave={() => {
+                // Reset the hide flag when mouse leaves the button area
+                hideModeMenuAfterStopRef.current = false;
+              }}
+            >
               <Button
                 type="button"
                 size="icon"
                 variant="ghost"
                 disabled={disabled || isStreaming}
                 aria-label={isRecording ? t("thread.composer.stopRecording") : t("thread.composer.startRecording")}
-                onClick={isRecording ? stopRecording : startRecording}
-                onPointerDown={handleMicPointerDown}
-                onPointerUp={handleMicPointerUp}
-                onPointerLeave={handleMicPointerLeave}
+                onClick={() => {
+                  if (isRecording) {
+                    stopRecording();
+                    hideModeMenuAfterStopRef.current = true;
+                    setShowModeMenu(false);
+                  } else {
+                    // Start recording with current mode
+                    startRecording();
+                  }
+                }}
                 className={cn(
-                  "rounded-full text-muted-foreground hover:text-foreground transition-all",
-                  isRecording && "bg-red-500/10 text-red-500 hover:bg-red-500/15 hover:text-red-600 dark:bg-red-500/15 dark:hover:bg-red-500/20",
+                  "rounded-full transition-all",
+                  isRecording
+                    ? "border border-border/70 bg-card text-foreground/85 shadow-[0_3px_10px_rgba(15,23,42,0.08)] hover:bg-muted/65 hover:text-foreground"
+                    : "text-muted-foreground hover:text-foreground",
                   isHero
                     ? "h-8 w-8 border border-border/55 bg-card shadow-[0_2px_8px_rgba(15,23,42,0.05)] hover:bg-card"
                     : "h-9 w-9 border border-border/55 bg-card shadow-[0_2px_8px_rgba(15,23,42,0.05)] hover:bg-card",
@@ -1918,57 +1926,95 @@ export function ThreadComposer({
               >
                 {isRecording ? (
                   <div className="flex items-center justify-center">
-                    {/* Stop button icon - square with rounded corners */}
-                    <svg
-                      width="16"
-                      height="16"
-                      viewBox="0 0 24 24"
-                      fill="currentColor"
-                      className="transition-transform"
-                    >
-                      <rect x="6" y="6" width="12" height="12" rx="2" ry="2" />
-                    </svg>
+                    {recordingMode === "stream" ? (
+                      /* Stream mode stop button - musical rest symbol */
+                      <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="currentColor"
+                        className="transition-transform"
+                      >
+                        <path d="M12 2C10.9 2 10 2.9 10 4v8c0 .55-.45 1-1 1s-1-.45-1-1V8c0-2.21-1.79-4-4-4S0 5.79 0 8v6c0 3.31 2.69 6 6 6s6-2.69 6-6V8c0-.55.45-1 1-1s1 .45 1 1v4c0 2.21 1.79 4 4 4s4-1.79 4-4V4c0-1.1-.9-2-2-2z" />
+                      </svg>
+                    ) : (
+                      /* Normal mode stop button - square */
+                      <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="currentColor"
+                        className="transition-transform"
+                      >
+                        <rect x="6" y="6" width="12" height="12" rx="2" ry="2" />
+                      </svg>
+                    )}
                   </div>
+                ) : recordingMode === "stream" ? (
+                  /* Stream mode mic icon - wave mic */
+                  <svg
+                    width={isHero ? 18 : 16}
+                    height={isHero ? 18 : 16}
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                    <line x1="12" y1="19" x2="12" y2="23" />
+                    <line x1="8" y1="23" x2="16" y2="23" />
+                    {/* Wave indicator for stream mode */}
+                    <path d="M3 11h2" />
+                    <path d="M19 11h2" />
+                  </svg>
                 ) : (
+                  /* Normal mode mic icon */
                   <Mic className={cn(isHero ? "h-[18px] w-[18px]" : "h-4 w-4")} />
                 )}
               </Button>
               
-              {/* Mode selection dropdown */}
-              {showModeMenu && !isRecording && (
-                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 py-2 px-1 bg-popover border border-border rounded-lg shadow-lg min-w-[160px] z-50">
-                  <div className="text-xs font-medium text-muted-foreground px-2 py-1">
-                    {t("thread.composer.recordingMode", { defaultValue: "Recording Mode" })}
-                  </div>
+              {/* Mode selection dropdown - shown below button on hover, hidden only when clicking outside or after stopping */}
+              {showModeMenu && !isRecording && !hideModeMenuAfterStopRef.current && (
+                <div
+                  ref={modeMenuRef}
+                  className="absolute top-full left-1/2 -translate-x-1/2 mt-2 py-2 px-1 bg-popover border border-border rounded-lg shadow-lg min-w-[120px] z-50"
+                >
                   <button
                     type="button"
-                    onClick={() => selectRecordingMode("normal")}
+                    onClick={() => {
+                      setRecordingMode("normal");
+                      startRecording();
+                    }}
+                    onMouseEnter={() => setHoveredMode("normal")}
+                    onMouseLeave={() => setHoveredMode(null)}
                     className={cn(
                       "w-full text-left px-3 py-2 text-sm rounded-md transition-colors",
-                      recordingMode === "normal" 
+                      hoveredMode === "normal" || (hoveredMode === null && recordingMode === "normal") 
                         ? "bg-primary/10 text-primary font-medium" 
                         : "hover:bg-muted"
                     )}
                   >
-                    <div className="font-medium">{t("thread.composer.mode.normal", { defaultValue: "Normal" })}</div>
-                    <div className="text-xs text-muted-foreground mt-0.5">
-                      {t("thread.composer.mode.normal.desc", { defaultValue: "Record and transcribe after stopping" })}
-                    </div>
+                    <div className="font-medium">{t("thread.composer.mode.normal", { defaultValue: "normal" })}</div>
                   </button>
                   <button
                     type="button"
-                    onClick={() => selectRecordingMode("stream")}
+                    onClick={() => {
+                      setRecordingMode("stream");
+                      startRecording();
+                    }}
+                    onMouseEnter={() => setHoveredMode("stream")}
+                    onMouseLeave={() => setHoveredMode(null)}
                     className={cn(
                       "w-full text-left px-3 py-2 text-sm rounded-md transition-colors mt-1",
-                      recordingMode === "stream" 
+                      hoveredMode === "stream" || (hoveredMode === null && recordingMode === "stream") 
                         ? "bg-primary/10 text-primary font-medium" 
                         : "hover:bg-muted"
                     )}
                   >
-                    <div className="font-medium">{t("thread.composer.mode.stream", { defaultValue: "Stream" })}</div>
-                    <div className="text-xs text-muted-foreground mt-0.5">
-                      {t("thread.composer.mode.stream.desc", { defaultValue: "Real-time streaming transcription" })}
-                    </div>
+                    <div className="font-medium">{t("thread.composer.mode.stream", { defaultValue: "stream" })}</div>
                   </button>
                 </div>
               )}
@@ -1976,7 +2022,7 @@ export function ThreadComposer({
             <Button
               type={showStopButton ? "button" : "submit"}
               size="icon"
-              disabled={showStopButton ? disabled : !canSend && !isRecording}
+              disabled={showStopButton ? disabled : (!canSend && !isRecording) || (isRecording && recordingMode === "stream")}
               aria-label={showStopButton ? t("thread.composer.stop") : isRecording ? t("thread.composer.sendRecording") : t("thread.composer.send")}
               onClick={showStopButton ? onStop : undefined}
               className={cn(

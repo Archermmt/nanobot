@@ -72,17 +72,9 @@ class BaseASRHandler(BaseHandler):
             if not path.exists():
                 msg.error = f"Audio file not found: {file_path}"
                 return msg
-
-            # Perform ASR recognition directly on file path
             with CaptureOutput():
                 text = self._process_audio(str(path))
-
-            # Clear media and update message type
-            msg.media = []
-            if text:
-                msg.content = text
-            else:
-                msg.content = "No speech recognized"
+            msg.media, msg.content = [], text
         except Exception as e:
             msg.error = f"Audio processing error: {e}"
         return msg

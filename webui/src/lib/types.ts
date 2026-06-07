@@ -766,12 +766,11 @@ export type Outbound =
     }
   | {
       type: "transcribe_audio";
-      data_url?: string;  // For normal mode
-      data?: string;      // For stream mode (base64 encoded Opus)
-      name?: string;      // Only used in normal mode
+      audio_data: string;   // Audio data (data URL for normal mode, base64 Opus for stream mode)
+      name?: string;        // Only used in normal mode
       request_id: string;
       is_stream?: boolean;  // true for stream mode, false/undefined for normal mode
-      format?: string;    // Audio format, defaults to 'opus' for stream mode
+      format?: string;      // Audio format, defaults to 'opus' for stream mode
     }
   | {
       type: "tts_toggle";

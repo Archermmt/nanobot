@@ -941,55 +941,44 @@ class WebSocketChannel(BaseChannel):
         (is_stream=true with Opus-encoded chunks).
         """
         try:
-            data = envelope.get("data")  # Base64 encoded data (stream mode)
-            data_url = envelope.get("data_url")  # Data URL (normal mode)
+            audio_data = envelope.get("audio_data")
             request_id = envelope.get("request_id", "")
             is_stream = envelope.get("is_stream", False)
-            format_type = envelope.get("format", "opus")
 
-            # Handle stream mode
-            if is_stream:
-                # Stream mode: receive Opus-encoded chunks
-                if data is None:
-                    # End of stream - finalize transcription
-                    await self._send_event(
-                        connection,
-                        "transcribe_result",
-                        chat_id="__transcription__",
-                        request_id=request_id,
-                        text="",  # Placeholder for final result
-                    )
-                    return
-
-                # Process streaming chunk
-                logger.debug(
-                    "Received streaming audio chunk: request_id={}, format={}, size={}",
-                    request_id,
-                    format_type,
-                    len(data) if data else 0,
-                )
-                # TODO: Implement actual streaming ASR processing
-                # For now, just acknowledge receipt
+            # Get chat_id from connection for sending results
+            chat_id = self._conn_default.get(connection)
+            if not chat_id:
+                logger.warning("No chat_id found for connection, ignoring transcription request")
                 return
 
+            # Handle stream mode
+            print(f"[TMINFO] Received transcribe_audio data(stream: {is_stream}): {audio_data}")
+            if is_stream:
+                format_type = envelope.get("format", "opus")
+                if self.check_vad(audio_data, format_type):
+                    print(f"[TMINFO] VAD detected in format {format_type}", flush=True)
+                else:
+                    print("should record data", flush=True)
+                raise Exception(f"should use vad in format {format_type}", flush=True)
+
             # Handle normal mode
-            if not data_url:
+            if not audio_data:
                 await self._send_event(
                     connection,
                     "transcribe_result",
-                    chat_id="__transcription__",
+                    chat_id=chat_id,
                     request_id=request_id,
-                    error="missing data_url",
+                    error="missing audio data",
                 )
                 return
 
             # Save the audio file using the same logic as message media
-            paths, error_reason = self._save_envelope_media([{"data_url": data_url}])
+            paths, error_reason = self._save_envelope_media([{"data_url": audio_data}])
             if error_reason or not paths:
                 await self._send_event(
                     connection,
                     "transcribe_result",
-                    chat_id="__transcription__",
+                    chat_id=chat_id,
                     request_id=request_id,
                     error=f"invalid audio data: {error_reason}",
                 )
@@ -1009,15 +998,16 @@ class WebSocketChannel(BaseChannel):
             await self._send_event(
                 connection,
                 "transcribe_result",
-                chat_id="__transcription__",
+                chat_id=chat_id,
                 request_id=request_id,
                 text=transcription or "",
             )
         except Exception as e:
+            chat_id = self._conn_default.get(connection, "__system__")
             await self._send_event(
                 connection,
                 "transcribe_result",
-                chat_id="__transcription__",
+                chat_id=chat_id,
                 request_id=envelope.get("request_id", ""),
                 error=f"transcription failed: {str(e)}",
             )
@@ -1686,6 +1676,7 @@ class WebSocketChannel(BaseChannel):
         """Route one typed inbound envelope (``new_chat`` / ``attach`` / ``message`` / ``transcribe_audio`` / ``tts_toggle`` / ``tool_call_result`` / ``register_extern_tools``)."""
         t = envelope.get("type")
         if t == "transcribe_audio":
+            print("[TMINFO] transcribe_audio with", envelope, flush=True)
             await self._handle_transcribe_audio(connection, envelope)
             return
         if t == "tts_toggle":

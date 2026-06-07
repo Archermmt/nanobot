@@ -373,15 +373,16 @@ export class NanobotClient {
         }
       };
       
-      // Listen on a special internal chat ID for transcription results
-      const unsubscribe = this.onChat("__transcription__", handler);
+      // Listen on the current chat ID for transcription results
+      const chatId = this.readyChatId || "__system__";
+      const unsubscribe = this.onChat(chatId, handler);
       
       // Send the transcription request
       if (isStream) {
         // Stream mode: send base64 encoded Opus data
         this.queueSend({
           type: "transcribe_audio",
-          data: dataUrl,  // In stream mode, this is base64 encoded Opus data
+          audio_data: dataUrl,  // Base64 encoded Opus data
           request_id: requestId,
           is_stream: true,
           format,
@@ -390,7 +391,7 @@ export class NanobotClient {
         // Normal mode: send data URL
         this.queueSend({
           type: "transcribe_audio",
-          data_url: dataUrl,
+          audio_data: dataUrl,  // Data URL for normal mode
           name,
           request_id: requestId,
         });

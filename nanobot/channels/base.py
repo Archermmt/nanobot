@@ -86,6 +86,18 @@ class BaseChannel(ABC):
             self.logger.exception("Audio transcription failed")
             return ""
 
+    async def vad_check(self, audio_data: bytes, format_type: str) -> bool:
+        """Perform voice activity detection on the given audio data."""
+        if "vad" in self.handlers:
+            result = await self.handlers["vad"].process(
+                HandlerMessage(media=[audio_data], metadata={"format": format_type})
+            )
+            if result.error:
+                self.logger.exception("Vad failed: " + str(result.error))
+                return False
+            return result.metadata.get("detected", False)
+        return False
+
     async def text_to_speech(self, content: str) -> dict:
         """Convert text to speech and return the audio file path."""
         if "tts" in self.handlers:
