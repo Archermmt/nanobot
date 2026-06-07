@@ -390,6 +390,7 @@ export function ThreadShell({
     stop,
     setMessages,
     transcribeAudio,
+    sendRawMessage,
     ttsToggle,
     streamError,
     dismissStreamError,
@@ -740,14 +741,7 @@ export function ThreadShell({
           pendingQueueKey={chatId}
           token={token}
           onTranscribe={transcribeAudio}
-          enableTts={enableTts}
-          onToggleTts={() => {
-            setEnableTts(prev => {
-              const newValue = !prev;
-              ttsToggle(newValue);
-              return newValue;
-            });
-          }}
+          onSendStreamAudio={sendRawMessage}
         />
       ) : (
         <ThreadComposer

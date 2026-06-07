@@ -935,11 +935,44 @@ class WebSocketChannel(BaseChannel):
         return _http_json_response({"commands": builtin_command_palette()})
 
     async def _handle_transcribe_audio(self, connection: Any, envelope: dict[str, Any]) -> None:
-        """Handle audio transcription request via WebSocket."""
-        try:
-            data_url = envelope.get("data_url")
-            request_id = envelope.get("request_id", "")
+        """Handle audio transcription request via WebSocket.
 
+        Supports both normal mode (data_url with complete audio) and stream mode
+        (is_stream=true with Opus-encoded chunks).
+        """
+        try:
+            data = envelope.get("data")  # Base64 encoded data (stream mode)
+            data_url = envelope.get("data_url")  # Data URL (normal mode)
+            request_id = envelope.get("request_id", "")
+            is_stream = envelope.get("is_stream", False)
+            format_type = envelope.get("format", "opus")
+
+            # Handle stream mode
+            if is_stream:
+                # Stream mode: receive Opus-encoded chunks
+                if data is None:
+                    # End of stream - finalize transcription
+                    await self._send_event(
+                        connection,
+                        "transcribe_result",
+                        chat_id="__transcription__",
+                        request_id=request_id,
+                        text="",  # Placeholder for final result
+                    )
+                    return
+
+                # Process streaming chunk
+                logger.debug(
+                    "Received streaming audio chunk: request_id={}, format={}, size={}",
+                    request_id,
+                    format_type,
+                    len(data) if data else 0,
+                )
+                # TODO: Implement actual streaming ASR processing
+                # For now, just acknowledge receipt
+                return
+
+            # Handle normal mode
             if not data_url:
                 await self._send_event(
                     connection,
@@ -1004,40 +1037,38 @@ class WebSocketChannel(BaseChannel):
                 error=str(e),
             )
 
+    def _get_result_queue(self, chat_id: str) -> asyncio.Queue:
+        """Get or create the result queue for a given chat_id.
+
+        Args:
+            chat_id: The chat identifier
+
+        Returns:
+            The asyncio.Queue for storing tool results
+        """
+        queue = self._tool_result_queues.get(chat_id)
+        if queue is None:
+            queue = asyncio.Queue()
+            self._tool_result_queues[chat_id] = queue
+        return queue
+
     async def _handle_tool_call_result(self, connection: Any, envelope: dict[str, Any]) -> None:
         """Handle tool call result from frontend and put it into the result queue."""
+        chat_id = self._conn_default.get(connection)
+        if not chat_id:
+            logger.warning("No chat_id found for connection, ignoring tool result")
+            return
         try:
             tool_name = envelope.get("name", "")
-            kwargs = envelope.get("kwargs", {})
-            result = envelope.get("result", {})
-
-            # Find the chat_id for this connection
-            chat_id = self._conn_default.get(connection)
-            if not chat_id:
-                logger.warning("No chat_id found for connection, ignoring tool result")
-                return
-
-            # Get or create result queue for this chat
-            queue = self._tool_result_queues.get(chat_id)
-            if queue is None:
-                queue = asyncio.Queue()
-                self._tool_result_queues[chat_id] = queue
-
             # Put the result into the queue
-            ret_msg = {
-                "chat_id": chat_id,
-                "tool_name": tool_name,
-                "result": result,
-            }
+            ret_msg = {"tool_name": tool_name, "result": envelope.get("result", {})}
+            queue = self._get_result_queue(chat_id)
             await queue.put(ret_msg)
             logger.debug("Tool result queued for {}: {}", chat_id, tool_name)
         except Exception as e:
             logger.exception("Failed to handle tool call result")
             await self._send_event(
-                connection,
-                "error",
-                chat_id=self._conn_default.get(connection, "__system__"),
-                error=f"tool result failed: {str(e)}",
+                connection, "error", chat_id=chat_id, error=f"tool result failed: {str(e)}"
             )
 
     async def _handle_register_extern_tools(
@@ -1078,7 +1109,6 @@ class WebSocketChannel(BaseChannel):
                     input_schema["required"] = [
                         s for s in schema.get("required", []) if isinstance(s, str)
                     ]
-
                 mcp_tool = {
                     "name": name,
                     "description": description,
@@ -1086,16 +1116,12 @@ class WebSocketChannel(BaseChannel):
                 }
                 mcp_tools.append(mcp_tool)
 
-            # Create a result queue for this chat if not exists
-            if chat_id not in self._tool_result_queues:
-                self._tool_result_queues[chat_id] = asyncio.Queue()
-            # Build metadata for the inbound message
             metadata = {
                 "type": "webui",  # Tool type identifier
                 "kwargs": {
                     "websocket": connection,
                     "timeout": 120,
-                    "result_queue": self._tool_result_queues[chat_id],
+                    "result_queue": self._get_result_queue(chat_id),
                 },
                 "tools": mcp_tools,
                 "remote": getattr(connection, "remote_address", None),

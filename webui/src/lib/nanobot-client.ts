@@ -345,8 +345,19 @@ export class NanobotClient {
     this.queueSend(frame);
   }
 
-  /** Request audio transcription via WebSocket. Returns a promise that resolves with the transcribed text. */
-  transcribeAudio(dataUrl: string, name: string = "audio.webm"): Promise<string> {
+  /** Request audio transcription via WebSocket. Returns a promise that resolves with the transcribed text.
+   * 
+   * @param dataUrl - Base64 encoded audio data (for stream mode) or data URL (for normal mode)
+   * @param name - Audio file name (only used in normal mode)
+   * @param isStream - Whether this is streaming mode (Opus chunks) or normal mode (complete audio)
+   * @param format - Audio format, defaults to 'opus' for stream mode
+   */
+  transcribeAudio(
+    dataUrl: string, 
+    name: string = "audio.webm",
+    isStream: boolean = false,
+    format: string = "opus"
+  ): Promise<string> {
     return new Promise((resolve, reject) => {
       const requestId = `transcribe-${Date.now()}-${Math.random().toString(36).slice(2)}`;
       
@@ -366,12 +377,24 @@ export class NanobotClient {
       const unsubscribe = this.onChat("__transcription__", handler);
       
       // Send the transcription request
-      this.queueSend({
-        type: "transcribe_audio",
-        data_url: dataUrl,
-        name,
-        request_id: requestId,
-      });
+      if (isStream) {
+        // Stream mode: send base64 encoded Opus data
+        this.queueSend({
+          type: "transcribe_audio",
+          data: dataUrl,  // In stream mode, this is base64 encoded Opus data
+          request_id: requestId,
+          is_stream: true,
+          format,
+        });
+      } else {
+        // Normal mode: send data URL
+        this.queueSend({
+          type: "transcribe_audio",
+          data_url: dataUrl,
+          name,
+          request_id: requestId,
+        });
+      }
       
       // Timeout after 30 seconds
       setTimeout(() => {

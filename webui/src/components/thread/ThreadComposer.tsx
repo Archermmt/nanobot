@@ -113,8 +113,26 @@ interface ThreadComposerProps {
   pendingQueueKey?: string | null;
   /** API token for authentication */
   token?: string;
-  /** Transcribe audio from base64 data URL via WebSocket */
-  onTranscribe?: (dataUrl: string, name?: string) => Promise<string>;
+  /** Transcribe audio from base64 data URL via WebSocket.
+   * Supports both normal mode (data_url) and stream mode (is_stream + Opus chunks).
+   */
+  onTranscribe?: (
+    dataUrl: string,
+    name?: string,
+    isStream?: boolean,
+    format?: string
+  ) => Promise<string>;
+  /** Send a raw WebSocket message for streaming audio transcription.
+   * Used by AudioClipRecorder to send Opus-encoded chunks in real-time.
+   */
+  onSendStreamAudio?: (message: {
+    type: string;
+    chat_id: string;
+    data: string;
+    request_id: string;
+    is_stream: boolean;
+    format: string;
+  }) => void;
 }
 
 const COMMAND_ICONS: Record<string, LucideIcon> = {
@@ -659,6 +677,7 @@ export function ThreadComposer({
   pendingQueueKey = null,
   token,
   onTranscribe,
+  onSendStreamAudio,
 }: ThreadComposerProps) {
   const { t } = useTranslation();
   const [value, setValue] = useState("");
@@ -673,11 +692,16 @@ export function ThreadComposer({
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [audioLevels, setAudioLevels] = useState<number[]>([]);
+  const [recordingMode, setRecordingMode] = useState<"normal" | "stream">("normal");
+  const [showModeMenu, setShowModeMenu] = useState(false);
   const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const audioBlobRef = useRef<Blob | null>(null);
   const audioNameRef = useRef<string>("");
+  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const streamRequestIdRef = useRef<string | null>(null);
+  const streamUnsubscribeRef = useRef<(() => void) | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1277,6 +1301,68 @@ export function ThreadComposer({
 
   const startRecording = useCallback(async () => {
     try {
+      // If in stream mode, use AudioClipRecorder
+      if (recordingMode === "stream" && onSendStreamAudio) {
+        const { getAudioClipRecorder } = await import("@/audio/audioClipRecorder");
+        const clipRecorder = getAudioClipRecorder();
+        
+        // Get chatId from pendingQueueKey or use a default
+        const chatId = pendingQueueKey || "__transcription__";
+        const requestId = `transcribe-stream-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        streamRequestIdRef.current = requestId;
+        
+        // Create a simple WebSocket-like sender for the recorder
+        const fakeWebSocket = {
+          readyState: WebSocket.OPEN,
+          send: (data: string) => {
+            try {
+              const message = JSON.parse(data);
+              onSendStreamAudio(message);
+            } catch (error) {
+              console.error('Failed to parse and send stream audio:', error);
+            }
+          }
+        };
+        
+        clipRecorder.setWebSocket(fakeWebSocket as any, chatId, requestId);
+        
+        clipRecorder.onRecordingStart = (duration: number) => {
+          setRecordingDuration(Math.floor(duration));
+        };
+        
+        clipRecorder.onVisualizerUpdate = (dataArray: Uint8Array) => {
+          const normalizedLevels = [];
+          for (let i = 0; i < 40; i++) {
+            const index = Math.floor(i * dataArray.length / 40);
+            normalizedLevels.push(dataArray[index] / 255);
+          }
+          setAudioLevels(normalizedLevels);
+        };
+        
+        clipRecorder.onRecordingStop = () => {
+          setIsRecording(false);
+          if (recordingTimerRef.current) {
+            clearInterval(recordingTimerRef.current);
+            recordingTimerRef.current = null;
+          }
+        };
+        
+        const started = await clipRecorder.start(chatId, requestId);
+        if (started) {
+          setIsRecording(true);
+          setRecordingDuration(0);
+          setAudioLevels(new Array(40).fill(0));
+          
+          // Start timer
+          const startTime = Date.now();
+          recordingTimerRef.current = setInterval(() => {
+            setRecordingDuration(Math.floor((Date.now() - startTime) / 1000));
+          }, 1000);
+        }
+        return;
+      }
+      
+      // Normal mode - use MediaRecorder
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mediaRecorder = new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
@@ -1346,9 +1432,33 @@ export function ThreadComposer({
       console.error("Failed to start recording:", error);
       setInlineError(t("thread.composer.recording.error"));
     }
-  }, [t]);
+  }, [t, recordingMode, onSendStreamAudio, pendingQueueKey]);
 
   const stopRecording = useCallback(async () => {
+    // If in stream mode, stop AudioClipRecorder
+    if (recordingMode === "stream") {
+      const { getAudioClipRecorder } = await import("@/audio/audioClipRecorder");
+      const clipRecorder = getAudioClipRecorder();
+      if (clipRecorder.isRecording) {
+        clipRecorder.stop();
+      }
+      
+      // Cleanup
+      if (streamUnsubscribeRef.current) {
+        streamUnsubscribeRef.current();
+        streamUnsubscribeRef.current = null;
+      }
+      streamRequestIdRef.current = null;
+      
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+        recordingTimerRef.current = null;
+      }
+      setIsRecording(false);
+      return;
+    }
+    
+    // Normal mode - use MediaRecorder
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop();
       setIsRecording(false);
@@ -1393,7 +1503,39 @@ export function ThreadComposer({
       audioBlobRef.current = null;
       audioNameRef.current = "";
     }
-  }, [isRecording, onTranscribe, resizeTextarea, t]);
+  }, [isRecording, onTranscribe, resizeTextarea, t, recordingMode]);
+
+  // Long press handlers for microphone button
+  const handleMicPointerDown = useCallback((event: React.PointerEvent) => {
+    if (disabled || isStreaming) return;
+    
+    // Start long press timer
+    longPressTimerRef.current = setTimeout(() => {
+      setShowModeMenu(true);
+    }, 500); // 500ms long press
+  }, [disabled, isStreaming]);
+
+  const handleMicPointerUp = useCallback(() => {
+    // Clear long press timer
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }, []);
+
+  const handleMicPointerLeave = useCallback(() => {
+    // Clear long press timer and hide menu
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+    setShowModeMenu(false);
+  }, []);
+
+  const selectRecordingMode = useCallback((mode: "normal" | "stream") => {
+    setRecordingMode(mode);
+    setShowModeMenu(false);
+  }, []);
 
   const submit = useCallback(async () => {
     let textToSend: string | null = null;
@@ -1755,38 +1897,82 @@ export function ThreadComposer({
                 isHero={isHero}
               />
             ) : null}
-            <Button
-              type="button"
-              size="icon"
-              variant="ghost"
-              disabled={disabled || isStreaming}
-              aria-label={isRecording ? t("thread.composer.stopRecording") : t("thread.composer.startRecording")}
-              onClick={isRecording ? stopRecording : startRecording}
-              className={cn(
-                "rounded-full text-muted-foreground hover:text-foreground transition-all",
-                isRecording && "bg-red-500/10 text-red-500 hover:bg-red-500/15 hover:text-red-600 dark:bg-red-500/15 dark:hover:bg-red-500/20",
-                isHero
-                  ? "h-8 w-8 border border-border/55 bg-card shadow-[0_2px_8px_rgba(15,23,42,0.05)] hover:bg-card"
-                  : "h-9 w-9 border border-border/55 bg-card shadow-[0_2px_8px_rgba(15,23,42,0.05)] hover:bg-card",
-              )}
-            >
-              {isRecording ? (
-                <div className="flex items-center justify-center">
-                  {/* Stop button icon - square with rounded corners */}
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="currentColor"
-                    className="transition-transform"
+            <div className="relative">
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                disabled={disabled || isStreaming}
+                aria-label={isRecording ? t("thread.composer.stopRecording") : t("thread.composer.startRecording")}
+                onClick={isRecording ? stopRecording : startRecording}
+                onPointerDown={handleMicPointerDown}
+                onPointerUp={handleMicPointerUp}
+                onPointerLeave={handleMicPointerLeave}
+                className={cn(
+                  "rounded-full text-muted-foreground hover:text-foreground transition-all",
+                  isRecording && "bg-red-500/10 text-red-500 hover:bg-red-500/15 hover:text-red-600 dark:bg-red-500/15 dark:hover:bg-red-500/20",
+                  isHero
+                    ? "h-8 w-8 border border-border/55 bg-card shadow-[0_2px_8px_rgba(15,23,42,0.05)] hover:bg-card"
+                    : "h-9 w-9 border border-border/55 bg-card shadow-[0_2px_8px_rgba(15,23,42,0.05)] hover:bg-card",
+                )}
+              >
+                {isRecording ? (
+                  <div className="flex items-center justify-center">
+                    {/* Stop button icon - square with rounded corners */}
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="currentColor"
+                      className="transition-transform"
+                    >
+                      <rect x="6" y="6" width="12" height="12" rx="2" ry="2" />
+                    </svg>
+                  </div>
+                ) : (
+                  <Mic className={cn(isHero ? "h-[18px] w-[18px]" : "h-4 w-4")} />
+                )}
+              </Button>
+              
+              {/* Mode selection dropdown */}
+              {showModeMenu && !isRecording && (
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 py-2 px-1 bg-popover border border-border rounded-lg shadow-lg min-w-[160px] z-50">
+                  <div className="text-xs font-medium text-muted-foreground px-2 py-1">
+                    {t("thread.composer.recordingMode", { defaultValue: "Recording Mode" })}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => selectRecordingMode("normal")}
+                    className={cn(
+                      "w-full text-left px-3 py-2 text-sm rounded-md transition-colors",
+                      recordingMode === "normal" 
+                        ? "bg-primary/10 text-primary font-medium" 
+                        : "hover:bg-muted"
+                    )}
                   >
-                    <rect x="6" y="6" width="12" height="12" rx="2" ry="2" />
-                  </svg>
+                    <div className="font-medium">{t("thread.composer.mode.normal", { defaultValue: "Normal" })}</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">
+                      {t("thread.composer.mode.normal.desc", { defaultValue: "Record and transcribe after stopping" })}
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => selectRecordingMode("stream")}
+                    className={cn(
+                      "w-full text-left px-3 py-2 text-sm rounded-md transition-colors mt-1",
+                      recordingMode === "stream" 
+                        ? "bg-primary/10 text-primary font-medium" 
+                        : "hover:bg-muted"
+                    )}
+                  >
+                    <div className="font-medium">{t("thread.composer.mode.stream", { defaultValue: "Stream" })}</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">
+                      {t("thread.composer.mode.stream.desc", { defaultValue: "Real-time streaming transcription" })}
+                    </div>
+                  </button>
                 </div>
-              ) : (
-                <Mic className={cn(isHero ? "h-[18px] w-[18px]" : "h-4 w-4")} />
               )}
-            </Button>
+            </div>
             <Button
               type={showStopButton ? "button" : "submit"}
               size="icon"

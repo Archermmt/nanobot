@@ -427,8 +427,22 @@ export function useNanobotStream(
   send: (content: string, images?: SendImage[], options?: SendOptions) => void;
   stop: () => void;
   setMessages: React.Dispatch<React.SetStateAction<UIMessage[]>>;
-  /** Transcribe audio from base64 data URL via WebSocket. */
-  transcribeAudio: (dataUrl: string, name?: string) => Promise<string>;
+  /** Transcribe audio from base64 data URL via WebSocket.
+   * @param dataUrl - Base64 encoded audio data (for stream mode) or data URL (for normal mode)
+   * @param name - Audio file name (only used in normal mode)
+   * @param isStream - Whether this is streaming mode (Opus chunks) or normal mode (complete audio)
+   * @param format - Audio format, defaults to 'opus' for stream mode
+   */
+  transcribeAudio: (
+    dataUrl: string,
+    name?: string,
+    isStream?: boolean,
+    format?: string
+  ) => Promise<string>;
+  /** Send a raw outbound message via WebSocket.
+   * Used for custom message types not covered by other methods.
+   */
+  sendRawMessage: (message: Record<string, any>) => void;
   /** Toggle TTS on/off via WebSocket. */
   ttsToggle: (enable: boolean) => void;
   /** Latest transport-level fault raised since the last ``dismissStreamError``.
@@ -1044,7 +1058,15 @@ export function useNanobotStream(
     stop,
     setMessages,
     transcribeAudio: useCallback(
-      (dataUrl: string, name?: string) => client.transcribeAudio(dataUrl, name),
+      (dataUrl: string, name?: string, isStream?: boolean, format?: string) => 
+        client.transcribeAudio(dataUrl, name, isStream, format),
+      [client],
+    ),
+    sendRawMessage: useCallback(
+      (message: Record<string, any>) => {
+        // Access the internal queueSend method via type assertion
+        (client as any).queueSend(message);
+      },
       [client],
     ),
     ttsToggle: useCallback(
