@@ -153,6 +153,7 @@ const SLASH_RECENTS_LIMIT = 5;
 const QUEUED_PROMPTS_STORAGE_PREFIX = "nanobot.webui.composerQueuedGuidance.v1:";
 const QUEUED_PROMPTS_LIMIT = 20;
 const QUEUED_PROMPT_MAX_CHARS = 4000;
+const MODE_MENU_SURVIVAL_EXTENSION_RATIO = 0.3;
 
 type SlashPalettePlacement = "above" | "below";
 
@@ -691,7 +692,6 @@ export function ThreadComposer({
   const [recordingMode, setRecordingMode] = useState<"normal" | "stream">("normal");
   const [showModeMenu, setShowModeMenu] = useState(false);
   const [hoveredMode, setHoveredMode] = useState<"normal" | "stream" | null>(null);
-  const hideModeMenuAfterStopRef = useRef(false);
   const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animationFrameRef = useRef<number | null>(null);
@@ -719,21 +719,38 @@ export function ThreadComposer({
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const isHero = variant === "hero";
+  const modeButtonRef = useRef<HTMLButtonElement>(null);
   const modeMenuRef = useRef<HTMLDivElement>(null);
 
-  // Close mode menu when clicking outside
+  // Once open, the mode menu survives inside its own bounds plus a small
+  // downward extension toward the microphone button.
   useEffect(() => {
     if (!showModeMenu) return;
 
-    const handleClickOutside = (event: MouseEvent) => {
-      if (modeMenuRef.current && !modeMenuRef.current.contains(event.target as Node)) {
+    const handlePointerMove = (event: MouseEvent) => {
+      const rect = modeMenuRef.current?.getBoundingClientRect();
+      const buttonRect = modeButtonRef.current?.getBoundingClientRect();
+      if (!rect) return;
+
+      const survivalBottom = Math.max(
+        rect.bottom + rect.height * MODE_MENU_SURVIVAL_EXTENSION_RATIO,
+        buttonRect?.bottom ?? rect.bottom,
+      );
+      const insideSurvivalBounds =
+        event.clientX >= rect.left
+        && event.clientX <= rect.right
+        && event.clientY >= rect.top
+        && event.clientY <= survivalBottom;
+
+      if (!insideSurvivalBounds) {
         setShowModeMenu(false);
+        setHoveredMode(null);
       }
     };
 
-    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("mousemove", handlePointerMove);
     return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("mousemove", handlePointerMove);
     };
   }, [showModeMenu]);
   const queuedPromptStorageKey = useMemo(
@@ -1924,28 +1941,21 @@ export function ThreadComposer({
                 isHero={isHero}
               />
             ) : null}
-            <div 
-              className="relative group" 
-              onMouseEnter={() => {
-                if (!isRecording && !hideModeMenuAfterStopRef.current) {
-                  setShowModeMenu(true);
-                }
-              }}
-              onMouseLeave={() => {
-                // Reset the hide flag when mouse leaves the button area
-                hideModeMenuAfterStopRef.current = false;
-              }}
-            >
+            <div className="relative group">
               <Button
+                ref={modeButtonRef}
                 type="button"
                 size="icon"
                 variant="ghost"
                 disabled={disabled || isStreaming}
                 aria-label={isRecording ? t("thread.composer.stopRecording") : t("thread.composer.startRecording")}
+                onMouseEnter={() => {
+                  if (isRecording || disabled || isStreaming) return;
+                  setShowModeMenu(true);
+                }}
                 onClick={() => {
                   if (isRecording) {
                     stopRecording();
-                    hideModeMenuAfterStopRef.current = true;
                     setShowModeMenu(false);
                   } else {
                     // Start recording with current mode
@@ -1964,29 +1974,18 @@ export function ThreadComposer({
               >
                 {isRecording ? (
                   <div className="flex items-center justify-center">
-                    {recordingMode === "stream" ? (
-                      /* Stream mode stop button - quarter rest (𝄽) */
-                      <svg
-                        width="16"
-                        height="16"
-                        viewBox="0 0 24 24"
-                        fill="currentColor"
-                        className="transition-transform"
-                      >
-                        <path d="M10.6 3c-.3 0-.6.3-.6.6 0 1.5 1.8 2.6 1.8 4.4 0 .7-.3 1.2-.8 1.7l-2.6 2.6c-.7.7-1 1.6-1 2.5 0 1.2.7 2.2 1.7 2.7-.5.5-.8 1.2-.8 1.9 0 .2.2.4.4.4.1 0 .2 0 .3-.1.5-.7 1.3-1.1 2.2-1.1.8 0 1.6.4 2 1 .1.1.2.1.3.1.2 0 .4-.2.4-.4 0-1.2-.9-2.2-2.1-2.6l2.5-2.5c.7-.7 1.1-1.5 1.1-2.4 0-1.6-1.3-2.7-1.3-4.3 0-1.2 1.4-2.1 1.4-3.4 0-.3-.3-.6-.6-.6-.1 0-.2 0-.3.1-.4.5-1.1.9-1.9.9s-1.5-.4-1.9-.9c-.1-.1-.2-.1-.3-.1z" />
-                      </svg>
-                    ) : (
-                      /* Normal mode stop button - square */
-                      <svg
-                        width="16"
-                        height="16"
-                        viewBox="0 0 24 24"
-                        fill="currentColor"
-                        className="transition-transform"
-                      >
-                        <rect x="6" y="6" width="12" height="12" rx="2" ry="2" />
-                      </svg>
-                    )}
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="currentColor"
+                      className={cn(
+                        "transition-transform",
+                        recordingMode === "stream" && "stream-recording-stop-breathe",
+                      )}
+                    >
+                      <rect x="6" y="6" width="12" height="12" rx="2" ry="2" />
+                    </svg>
                   </div>
                 ) : recordingMode === "stream" ? (
                   /* Stream mode mic icon - wave mic */
@@ -2014,8 +2013,8 @@ export function ThreadComposer({
                 )}
               </Button>
               
-              {/* Mode selection dropdown - shown above button on hover, hidden only when clicking outside or after stopping */}
-              {showModeMenu && !isRecording && !hideModeMenuAfterStopRef.current && (
+              {/* Mode selection dropdown - shown only from microphone button hover. */}
+              {showModeMenu && !isRecording && (
                 <div
                   ref={modeMenuRef}
                   className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 py-2 px-1 bg-popover border border-border rounded-lg shadow-lg min-w-[120px] z-50"

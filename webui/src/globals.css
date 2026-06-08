@@ -193,6 +193,42 @@
     }
   }
 
+  @keyframes stream-recording-stop-breathe {
+    0%,
+    100% {
+      color: hsl(var(--foreground) / 0.48);
+      filter: drop-shadow(0 0 0 hsl(var(--foreground) / 0));
+    }
+    50% {
+      color: hsl(var(--foreground) / 0.96);
+      filter: drop-shadow(0 0 7px hsl(var(--foreground) / 0.24));
+    }
+  }
+  .stream-recording-stop-breathe {
+    animation: stream-recording-stop-breathe 1.65s ease-in-out infinite;
+  }
+  .dark .stream-recording-stop-breathe {
+    animation-name: stream-recording-stop-breathe-dark;
+  }
+  @keyframes stream-recording-stop-breathe-dark {
+    0%,
+    100% {
+      color: hsl(var(--foreground) / 0.42);
+      filter: drop-shadow(0 0 0 hsl(var(--foreground) / 0));
+    }
+    50% {
+      color: hsl(var(--foreground) / 0.98);
+      filter: drop-shadow(0 0 8px hsl(var(--foreground) / 0.34));
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .stream-recording-stop-breathe {
+      animation: none;
+      color: hsl(var(--foreground) / 0.86);
+      filter: none;
+    }
+  }
+
   @keyframes composer-status-strip-enter {
     0% {
       max-height: 0;
