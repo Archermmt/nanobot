@@ -114,33 +114,20 @@ interface ThreadComposerProps {
   /** API token for authentication */
   token?: string;
   /** Transcribe audio from base64 data URL via WebSocket.
-   * Supports both normal mode (data_url) and stream mode (is_stream + Opus chunks).
+   * Supports both normal mode (data URL) and stream mode (codec chunks).
    */
   onTranscribe?: (
     dataUrl: string,
     name?: string,
-    isStream?: boolean,
-    format?: string
+    streamFormat?: string,
   ) => Promise<string>;
-  /** Send a raw WebSocket message for streaming audio transcription.
-   * Used by AudioClipRecorder to send Opus-encoded chunks in real-time.
-   */
-  onSendStreamAudio?: (message: {
-    type: string;
-    chat_id: string;
-    data: string;
-    request_id: string;
-    is_stream: boolean;
-    format: string;
-  }) => void;
-  /** Subscribe to events on a specific chat.
-   * Returns an unsubscribe function.
-   */
-  onChat?: (chatId: string, handler: (event: any) => void) => () => void;
-  /** Subscribe to events across ALL chats.
-   * Returns an unsubscribe function.
-   */
-  onGlobalEvent?: (eventName: string, handler: (event: any) => void) => () => void;
+  /** Send a stream-mode codec chunk under an existing ``request_id``. */
+  onSendStreamChunk?: (base64Data: string, requestId: string, format: string) => void;
+  /** Await the next ``transcribe_result`` for ``requestId``.
+   * Returns the promise plus a cancel handle. */
+  onAwaitTranscription?: (
+    requestId: string,
+  ) => { promise: Promise<string>; cancel: () => void };
 }
 
 const COMMAND_ICONS: Record<string, LucideIcon> = {
@@ -685,9 +672,8 @@ export function ThreadComposer({
   pendingQueueKey = null,
   token,
   onTranscribe,
-  onSendStreamAudio,
-  onChat,
-  onGlobalEvent,
+  onSendStreamChunk,
+  onAwaitTranscription,
 }: ThreadComposerProps) {
   const { t } = useTranslation();
   const [value, setValue] = useState("");
@@ -714,7 +700,13 @@ export function ThreadComposer({
 
   const streamRequestIdRef = useRef<string | null>(null);
   const streamUnsubscribeRef = useRef<(() => void) | null>(null);
-  const shouldKeepRecordingRef = useRef(false); // Track if recording should continue after transcription
+  /** True while waiting for agent_loop to return its final ``turn_end`` after a
+   * stream-mode utterance was auto-submitted. Gates the chunk forwarder so we
+   * don't keep starting new turns during the same agent response. */
+  const isListeningRef = useRef(false);
+  /** Resolves the loop's pause when ``isStreaming`` transitions true → false. */
+  const streamResumeResolverRef = useRef<(() => void) | null>(null);
+  const isStreamingRef = useRef(isStreaming);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1235,6 +1227,22 @@ export function ThreadComposer({
     sendNextQueuedPrompt();
   }, [sendNextQueuedPrompt, isStreaming, queuedPrompts.length]);
 
+  // Stream-mode listening gate: pause sending audio chunks once the agent_loop
+  // is processing a submitted utterance, then release on ``turn_end`` (which is
+  // when ``isStreaming`` flips back to false in useNanobotStream).
+  useEffect(() => {
+    const wasStreaming = isStreamingRef.current;
+    isStreamingRef.current = isStreaming;
+    if (wasStreaming && !isStreaming) {
+      isListeningRef.current = false;
+      if (streamResumeResolverRef.current) {
+        const resolve = streamResumeResolverRef.current;
+        streamResumeResolverRef.current = null;
+        resolve();
+      }
+    }
+  }, [isStreaming]);
+
   const handleStop = useCallback(() => {
     if (queuedPrompts.length > 0) {
       skipNextQueuedFlushRef.current = true;
@@ -1329,43 +1337,26 @@ export function ThreadComposer({
     [remove],
   );
 
-  const startRecording = useCallback(async (mode?: "normal" | "stream") => {
+  const startRecording = useCallback(async (mode: "normal" | "stream") => {
     try {
-      // Use provided mode or fall back to state
-      const actualMode = mode ?? recordingMode;
       // If in stream mode, use AudioClipRecorder
-      if (actualMode === "stream" && onSendStreamAudio) {
+      if (mode === "stream" && onSendStreamChunk && onAwaitTranscription) {
         const { getAudioClipRecorder } = await import("@/audio/audioClipRecorder");
         const clipRecorder = getAudioClipRecorder();
-        
-        // Get chatId from pendingQueueKey or use a default
-        const chatId = pendingQueueKey || "__transcription__";
+
         const requestId = `transcribe-stream-${Date.now()}-${Math.random().toString(36).slice(2)}`;
         streamRequestIdRef.current = requestId;
-        
-        // Create a simple WebSocket-like sender for the recorder
-        const fakeWebSocket = {
-          readyState: WebSocket.OPEN,
-          send: (data: string) => {
-            try {
-              const message = JSON.parse(data);
-              if (message.type === "transcribe_audio" && message.is_stream) {
-                // Remove chat_id before sending
-                delete message.chat_id;
-                onSendStreamAudio(message);
-              }
-            } catch (error) {
-              console.error(`Failed to parse and send stream audio:`, error);
-            }
-          }
-        };
-        
-        clipRecorder.setWebSocket(fakeWebSocket as any, chatId, requestId);
-        
+
+        clipRecorder.setChunkHandler((base64Data: string) => {
+          if (isListeningRef.current) return;
+          const rid = streamRequestIdRef.current;
+          if (rid) onSendStreamChunk(base64Data, rid, "opus");
+        });
+
         clipRecorder.onRecordingStart = (duration: number) => {
           setRecordingDuration(Math.floor(duration));
         };
-        
+
         clipRecorder.onVisualizerUpdate = (dataArray: Uint8Array) => {
           const normalizedLevels = [];
           for (let i = 0; i < 40; i++) {
@@ -1374,59 +1365,45 @@ export function ThreadComposer({
           }
           setAudioLevels(normalizedLevels);
         };
-        
-        clipRecorder.onRecordingStop = () => {
-          // Only set isRecording to false if we shouldn't keep recording
-          if (!shouldKeepRecordingRef.current) {
-            setIsRecording(false);
-            if (recordingTimerRef.current) {
-              clearInterval(recordingTimerRef.current);
-              recordingTimerRef.current = null;
-            }
-          }
-          // Reset the flag
-          shouldKeepRecordingRef.current = false;
-        };
-        
-        const started = await clipRecorder.start(chatId, requestId);
+
+        const started = await clipRecorder.start();
         if (started) {
           setIsRecording(true);
           setRecordingDuration(0);
           setAudioLevels(new Array(40).fill(0));
-          
-          // Function to set up transcription result listener
-          const setupTranscriptionListener = (currentRequestId: string) => {
-            const unsubscribe = onGlobalEvent?.("transcribe_result", (event: any) => {
-              if (event.request_id === currentRequestId) {
-                // Unsubscribe after receiving result
-                unsubscribe?.();
-                streamUnsubscribeRef.current = null;
-                
-                // If transcription is not empty, submit it
-                const text = event.text || "";
-                if (text.trim()) {
-                  // Set flag to keep recording after onSend
-                  shouldKeepRecordingRef.current = true;
-                  // Auto-submit the transcribed text
-                  onSend(text);
-                }
-                
-                // In stream mode, always continue recording with a new request_id
-                // regardless of whether the transcription was empty or not
-                const newRequestId = `transcribe-stream-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-                streamRequestIdRef.current = newRequestId;
-                clipRecorder.requestId = newRequestId;
-                
-                // Set up listener for next transcription
-                setupTranscriptionListener(newRequestId);
+
+          // Loop transcribe_result Promises with a new request_id per utterance.
+          const loop = async (rid: string) => {
+            const handle = onAwaitTranscription(rid);
+            streamUnsubscribeRef.current = handle.cancel;
+            try {
+              const text = await handle.promise;
+              streamUnsubscribeRef.current = null;
+              if (streamRequestIdRef.current === null) return;
+              const trimmed = text.trim();
+              if (trimmed) {
+                // Submit and pause: don't forward chunks until the agent's
+                // turn_end arrives, so a single utterance never spawns more
+                // than one agent turn.
+                isListeningRef.current = true;
+                onSend(trimmed);
+                if (!clipRecorder.isRecording) return;
+                await new Promise<void>((resolve) => {
+                  streamResumeResolverRef.current = resolve;
+                });
+                if (!clipRecorder.isRecording) return;
+                if (streamRequestIdRef.current === null) return;
+                isListeningRef.current = false;
               }
-            });
-            streamUnsubscribeRef.current = unsubscribe || null;
+              const nextRid = `transcribe-stream-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+              streamRequestIdRef.current = nextRid;
+              loop(nextRid);
+            } catch (err) {
+              streamUnsubscribeRef.current = null;
+            }
           };
-          
-          // Set up initial listener
-          setupTranscriptionListener(requestId);
-          
+          loop(requestId);
+
           // Start timer
           const startTime = Date.now();
           recordingTimerRef.current = setInterval(() => {
@@ -1506,7 +1483,7 @@ export function ThreadComposer({
       console.error("Failed to start recording:", error);
       setInlineError(t("thread.composer.recording.error"));
     }
-  }, [t, recordingMode, onSendStreamAudio, pendingQueueKey]);
+  }, [t, onSendStreamChunk, onAwaitTranscription, onSend]);
 
   const stopRecording = useCallback(async () => {
     // If in stream mode, stop AudioClipRecorder
@@ -1523,14 +1500,18 @@ export function ThreadComposer({
         streamUnsubscribeRef.current = null;
       }
       streamRequestIdRef.current = null;
-      shouldKeepRecordingRef.current = false; // Reset flag on manual stop
-      
+      isListeningRef.current = false;
+      if (streamResumeResolverRef.current) {
+        const resolve = streamResumeResolverRef.current;
+        streamResumeResolverRef.current = null;
+        resolve();
+      }
+
       if (recordingTimerRef.current) {
         clearInterval(recordingTimerRef.current);
         recordingTimerRef.current = null;
       }
       setIsRecording(false);
-      setRecordingMode("normal"); // Reset to normal mode after manual stop
       return;
     }
     
@@ -1984,7 +1965,7 @@ export function ThreadComposer({
                 {isRecording ? (
                   <div className="flex items-center justify-center">
                     {recordingMode === "stream" ? (
-                      /* Stream mode stop button - musical rest symbol */
+                      /* Stream mode stop button - quarter rest (𝄽) */
                       <svg
                         width="16"
                         height="16"
@@ -1992,7 +1973,7 @@ export function ThreadComposer({
                         fill="currentColor"
                         className="transition-transform"
                       >
-                        <path d="M12 2C10.9 2 10 2.9 10 4v8c0 .55-.45 1-1 1s-1-.45-1-1V8c0-2.21-1.79-4-4-4S0 5.79 0 8v6c0 3.31 2.69 6 6 6s6-2.69 6-6V8c0-.55.45-1 1-1s1 .45 1 1v4c0 2.21 1.79 4 4 4s4-1.79 4-4V4c0-1.1-.9-2-2-2z" />
+                        <path d="M10.6 3c-.3 0-.6.3-.6.6 0 1.5 1.8 2.6 1.8 4.4 0 .7-.3 1.2-.8 1.7l-2.6 2.6c-.7.7-1 1.6-1 2.5 0 1.2.7 2.2 1.7 2.7-.5.5-.8 1.2-.8 1.9 0 .2.2.4.4.4.1 0 .2 0 .3-.1.5-.7 1.3-1.1 2.2-1.1.8 0 1.6.4 2 1 .1.1.2.1.3.1.2 0 .4-.2.4-.4 0-1.2-.9-2.2-2.1-2.6l2.5-2.5c.7-.7 1.1-1.5 1.1-2.4 0-1.6-1.3-2.7-1.3-4.3 0-1.2 1.4-2.1 1.4-3.4 0-.3-.3-.6-.6-.6-.1 0-.2 0-.3.1-.4.5-1.1.9-1.9.9s-1.5-.4-1.9-.9c-.1-.1-.2-.1-.3-.1z" />
                       </svg>
                     ) : (
                       /* Normal mode stop button - square */

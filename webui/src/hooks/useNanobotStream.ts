@@ -428,29 +428,21 @@ export function useNanobotStream(
   stop: () => void;
   setMessages: React.Dispatch<React.SetStateAction<UIMessage[]>>;
   /** Transcribe audio from base64 data URL via WebSocket.
-   * @param dataUrl - Base64 encoded audio data (for stream mode) or data URL (for normal mode)
+   * @param dataUrl - Audio payload (data URL for normal mode; base64 codec chunk for stream mode)
    * @param name - Audio file name (only used in normal mode)
-   * @param isStream - Whether this is streaming mode (Opus chunks) or normal mode (complete audio)
-   * @param format - Audio format, defaults to 'opus' for stream mode
+   * @param streamFormat - Codec name (e.g. "opus") for stream mode. Omit for normal one-shot mode.
    */
   transcribeAudio: (
     dataUrl: string,
     name?: string,
-    isStream?: boolean,
-    format?: string
+    streamFormat?: string,
   ) => Promise<string>;
-  /** Send a raw outbound message via WebSocket.
-   * Used for custom message types not covered by other methods.
-   */
-  sendRawMessage: (message: Record<string, any>) => void;
-  /** Subscribe to events on a specific chat.
-   * Returns an unsubscribe function.
-   */
-  onChat: (chatId: string, handler: (event: any) => void) => () => void;
-  /** Subscribe to events across ALL chats.
-   * Returns an unsubscribe function.
-   */
-  onGlobalEvent: (eventName: string, handler: (event: any) => void) => () => void;
+  /** Fire-and-forget: send a stream-mode codec chunk under an existing
+   * ``request_id``. Pair with {@link awaitTranscription} on the same id. */
+  sendTranscribeChunk: (base64Data: string, requestId: string, format: string) => void;
+  /** Subscribe for a single ``transcribe_result`` matching ``requestId``.
+   * Returns the resolving promise plus a cancel function. */
+  awaitTranscription: (requestId: string) => { promise: Promise<string>; cancel: () => void };
   /** Toggle TTS on/off via WebSocket. */
   ttsToggle: (enable: boolean) => void;
   /** Latest transport-level fault raised since the last ``dismissStreamError``.
@@ -1066,27 +1058,17 @@ export function useNanobotStream(
     stop,
     setMessages,
     transcribeAudio: useCallback(
-      (dataUrl: string, name?: string, isStream?: boolean, format?: string) => 
-        client.transcribeAudio(dataUrl, name, isStream, format),
+      (dataUrl: string, name?: string, streamFormat?: string) =>
+        client.transcribeAudio(dataUrl, name, streamFormat),
       [client],
     ),
-    sendRawMessage: useCallback(
-      (message: Record<string, any>) => {
-        // Access the internal queueSend method via type assertion
-        (client as any).queueSend(message);
-      },
+    sendTranscribeChunk: useCallback(
+      (base64Data: string, requestId: string, format: string) =>
+        client.sendTranscribeChunk(base64Data, requestId, format),
       [client],
     ),
-    onChat: useCallback(
-      (chatId: string, handler: (event: any) => void) => {
-        return client.onChat(chatId, handler);
-      },
-      [client],
-    ),
-    onGlobalEvent: useCallback(
-      (eventName: string, handler: (event: any) => void) => {
-        return client.onGlobalEvent(eventName, handler);
-      },
+    awaitTranscription: useCallback(
+      (requestId: string) => client.awaitTranscription(requestId),
       [client],
     ),
     ttsToggle: useCallback(

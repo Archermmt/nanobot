@@ -766,11 +766,12 @@ export type Outbound =
     }
   | {
       type: "transcribe_audio";
-      audio_data: string;   // Audio data (data URL for normal mode, base64 Opus for stream mode)
+      audio_data: string;   // Audio data (data URL for normal mode, base64 chunk for stream mode)
       name?: string;        // Only used in normal mode
       request_id: string;
-      is_stream?: boolean;  // true for stream mode, false/undefined for normal mode
-      format?: string;      // Audio format, defaults to 'opus' for stream mode
+      /** Codec name for streaming chunks (e.g. "opus"). Presence implies stream mode;
+       * absence means normal one-shot mode (the data URL carries its own format). */
+      stream_format?: string;
     }
   | {
       type: "tts_toggle";

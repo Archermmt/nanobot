@@ -938,8 +938,8 @@ class WebSocketChannel(BaseChannel):
     async def _handle_transcribe_audio(self, connection: Any, envelope: dict[str, Any]) -> None:
         """Handle audio transcription request via WebSocket.
 
-        Supports both normal mode (data_url with complete audio) and stream mode
-        (is_stream=true with Opus-encoded chunks).
+        Supports both normal mode (data URL with complete audio) and stream mode
+        (``stream_format`` set, e.g. ``"opus"``, with codec-encoded chunks).
         """
         try:
             chat_id = self._conn_default.get(connection)
@@ -948,11 +948,11 @@ class WebSocketChannel(BaseChannel):
                 return
             audio_data = envelope.get("audio_data")
             request_id = envelope.get("request_id", "")
-            is_stream = envelope.get("is_stream", False)
+            stream_format = envelope.get("stream_format")
 
-            # Handle stream mode
-            if is_stream:
-                audio_data = await self.vad_check(audio_data, envelope.get("format", "opus"))
+            # Stream mode: codec name is carried in stream_format
+            if stream_format:
+                audio_data = await self.vad_check(audio_data, stream_format)
             if not audio_data:
                 return
 

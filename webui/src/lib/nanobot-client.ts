@@ -366,21 +366,19 @@ export class NanobotClient {
   }
 
   /** Request audio transcription via WebSocket. Returns a promise that resolves with the transcribed text.
-   * 
-   * @param dataUrl - Base64 encoded audio data (for stream mode) or data URL (for normal mode)
+   *
+   * @param dataUrl - Audio payload (data URL for normal mode; base64 codec chunk for stream mode)
    * @param name - Audio file name (only used in normal mode)
-   * @param isStream - Whether this is streaming mode (Opus chunks) or normal mode (complete audio)
-   * @param format - Audio format, defaults to 'opus' for stream mode
+   * @param streamFormat - Codec name (e.g. "opus") for stream mode. Omit for normal one-shot mode.
    */
   transcribeAudio(
-    dataUrl: string, 
+    dataUrl: string,
     name: string = "audio.webm",
-    isStream: boolean = false,
-    format: string = "opus"
+    streamFormat?: string,
   ): Promise<string> {
     return new Promise((resolve, reject) => {
       const requestId = `transcribe-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      
+
       // Set up one-time handler for the response
       const handler = (event: InboundEvent) => {
         if (event.event === "transcribe_result" && event.request_id === requestId) {
@@ -392,26 +390,25 @@ export class NanobotClient {
           }
         }
       };
-      
+
       // Listen on the current chat ID for transcription results
       const chatId = this.readyChatId || "__system__";
       const unsubscribe = this.onChat(chatId, handler);
-      
+
       // Send the transcription request
-      if (isStream) {
-        // Stream mode: send base64 encoded Opus data
+      if (streamFormat) {
+        // Stream mode: send base64 encoded codec chunk
         this.queueSend({
           type: "transcribe_audio",
-          audio_data: dataUrl,  // Base64 encoded Opus data
+          audio_data: dataUrl,
           request_id: requestId,
-          is_stream: true,
-          format,
+          stream_format: streamFormat,
         });
       } else {
         // Normal mode: send data URL
         this.queueSend({
           type: "transcribe_audio",
-          audio_data: dataUrl,  // Data URL for normal mode
+          audio_data: dataUrl,
           name,
           request_id: requestId,
         });
@@ -423,6 +420,61 @@ export class NanobotClient {
         reject(new Error("Transcription timeout"));
       }, 30000);
     });
+  }
+
+  /** Fire-and-forget: send a stream-mode codec chunk under an existing request_id.
+   * Use {@link awaitTranscription} once per request_id to receive the eventual result.
+   */
+  sendTranscribeChunk(base64Data: string, requestId: string, format: string): void {
+    this.queueSend({
+      type: "transcribe_audio",
+      audio_data: base64Data,
+      request_id: requestId,
+      stream_format: format,
+    });
+  }
+
+  /** Subscribe for a single ``transcribe_result`` matching ``requestId``.
+   * Returns the resolving promise plus a cancel function so callers can drop
+   * the listener if recording stops before the backend emits a result.
+   * Cancelling rejects the promise with ``Error("cancelled")``.
+   */
+  awaitTranscription(requestId: string): { promise: Promise<string>; cancel: () => void } {
+    let unsubscribe: Unsubscribe = () => {};
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let settled = false;
+    let rejectFn: (reason: Error) => void = () => {};
+    const promise = new Promise<string>((resolve, reject) => {
+      rejectFn = reject;
+      const handler = (event: InboundEvent) => {
+        if (event.event === "transcribe_result" && event.request_id === requestId) {
+          if (settled) return;
+          settled = true;
+          unsubscribe();
+          if (timer) clearTimeout(timer);
+          if (event.error) reject(new Error(event.error));
+          else resolve(event.text || "");
+        }
+      };
+      const chatId = this.readyChatId || "__system__";
+      unsubscribe = this.onChat(chatId, handler);
+      timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        unsubscribe();
+        reject(new Error("Transcription timeout"));
+      }, 30000);
+    });
+    return {
+      promise,
+      cancel: () => {
+        if (settled) return;
+        settled = true;
+        unsubscribe();
+        if (timer) clearTimeout(timer);
+        rejectFn(new Error("cancelled"));
+      },
+    };
   }
 
   /** Toggle TTS on/off. */

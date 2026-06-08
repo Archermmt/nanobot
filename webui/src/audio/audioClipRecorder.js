@@ -12,20 +12,16 @@ export class AudioClipRecorder {
         this.audioSource = null;
         this.opusEncoder = null;
         this.pcmDataBuffer = new Int16Array();
-        this.websocket = null;
-        this.chatId = null;
-        this.requestId = null;
+        this.onChunk = null;
         // Callback functions
         this.onRecordingStart = null;
         this.onRecordingStop = null;
         this.onVisualizerUpdate = null;
     }
 
-    // Set WebSocket instance and chat context
-    setWebSocket(ws, chatId, requestId) {
-        this.websocket = ws;
-        this.chatId = chatId;
-        this.requestId = requestId;
+    // Set the per-chunk sender. Receives base64-encoded Opus payload.
+    setChunkHandler(onChunk) {
+        this.onChunk = onChunk;
     }
 
     // Get AudioContext instance
@@ -167,7 +163,7 @@ export class AudioClipRecorder {
         }
     }
 
-    // Encode and send Opus data via WebSocket
+    // Encode and emit Opus chunk via the onChunk callback
     encodeAndSendOpus(pcmData = null) {
         if (!this.opusEncoder) {
             return;
@@ -176,23 +172,12 @@ export class AudioClipRecorder {
             if (pcmData) {
                 const opusData = this.opusEncoder.encode(pcmData);
                 if (opusData && opusData.length > 0) {
-                    // Send Opus encoded data via WebSocket with metadata
-                    if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
+                    if (typeof this.onChunk === 'function') {
                         try {
-                            // Convert Uint8Array to base64 for JSON transmission
                             const base64Data = btoa(String.fromCharCode(...opusData));
-                            
-                            const message = JSON.stringify({
-                                type: 'transcribe_audio',
-                                audio_data: base64Data,
-                                request_id: this.requestId,
-                                is_stream: true,
-                                format: 'opus'
-                            });
-                            
-                            this.websocket.send(message);
+                            this.onChunk(base64Data);
                         } catch (error) {
-                            console.error(`WebSocket send error: ${error.message}`);
+                            console.error(`Chunk dispatch error: ${error.message}`);
                         }
                     }
                 }
@@ -203,7 +188,7 @@ export class AudioClipRecorder {
     }
 
     // Start recording
-    async start(chatId, requestId) {
+    async start() {
         if (this.isRecording) return false;
         try {
             const encoder = await this.initEncoder();
@@ -211,11 +196,8 @@ export class AudioClipRecorder {
                 console.error('Cannot start recording: Opus encoder initialization failed');
                 return false;
             }
-            
-            this.chatId = chatId;
-            this.requestId = requestId;
-            
-            const stream = await navigator.mediaDevices.getUserMedia({ 
+
+            const stream = await navigator.mediaDevices.getUserMedia({
                 audio: { 
                     echoCancellation: true, 
                     noiseSuppression: true, 
@@ -302,27 +284,14 @@ export class AudioClipRecorder {
                 cancelAnimationFrame(this.visualizationRequest);
                 this.visualizationRequest = null;
             }
-            
+
             // Encode and send remaining data
             this.encodeAndSendOpus();
-            
-            // Send end signal
-            if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
-                this.websocket.send(JSON.stringify({
-                    type: 'transcribe_audio_stream',
-                    chat_id: this.chatId || '__transcription__',
-                    data: null,
-                    request_id: this.requestId,
-                    is_stream: false,
-                    format: 'opus'
-                }));
-                console.log('Sent streaming recording stop signal');
-            }
-            
+
             if (this.onRecordingStop) {
                 this.onRecordingStop();
             }
-            
+
             console.log('Stopped PCM streaming recording');
             return true;
         } catch (error) {

@@ -4,18 +4,17 @@ export interface AudioClipRecorder {
     isRecording: boolean;
     audioContext: AudioContext | null;
     analyser: AnalyserNode | null;
-    requestId: string | null;
     onRecordingStart: ((duration: number) => void) | null;
     onRecordingStop: (() => void) | null;
     onVisualizerUpdate: ((dataArray: Uint8Array) => void) | null;
-    
-    setWebSocket(ws: WebSocket, chatId: string, requestId: string): void;
+
+    setChunkHandler(onChunk: (base64Data: string) => void): void;
     getAudioContext(): AudioContext;
-    initEncoder(): any;
+    initEncoder(): Promise<any>;
     createAudioProcessor(): Promise<{ node: AudioWorkletNode | ScriptProcessorNode; type: string } | null>;
     processPCMBuffer(buffer: Int16Array): void;
     encodeAndSendOpus(pcmData?: Int16Array): void;
-    start(chatId: string, requestId: string): Promise<boolean>;
+    start(): Promise<boolean>;
     stop(): boolean;
     getAnalyser(): AnalyserNode | null;
 }

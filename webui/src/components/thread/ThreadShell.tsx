@@ -390,9 +390,8 @@ export function ThreadShell({
     stop,
     setMessages,
     transcribeAudio,
-    sendRawMessage,
-    onChat,
-    onGlobalEvent,
+    sendTranscribeChunk,
+    awaitTranscription,
     ttsToggle,
     streamError,
     dismissStreamError,
@@ -743,9 +742,8 @@ export function ThreadShell({
           pendingQueueKey={chatId}
           token={token}
           onTranscribe={transcribeAudio}
-          onSendStreamAudio={sendRawMessage}
-          onChat={onChat}
-          onGlobalEvent={onGlobalEvent}
+          onSendStreamChunk={sendTranscribeChunk}
+          onAwaitTranscription={awaitTranscription}
         />
       ) : (
         <ThreadComposer
@@ -773,9 +771,8 @@ export function ThreadShell({
           workspaceError={workspaceError}
           onWorkspaceScopeChange={onWorkspaceScopeChange}
           onTranscribe={transcribeAudio}
-          onSendStreamAudio={sendRawMessage}
-          onChat={onChat}
-          onGlobalEvent={onGlobalEvent}
+          onSendStreamChunk={sendTranscribeChunk}
+          onAwaitTranscription={awaitTranscription}
         />
       )}
     </>
