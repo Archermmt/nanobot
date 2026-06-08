@@ -721,6 +721,12 @@ export function ThreadComposer({
   const isHero = variant === "hero";
   const modeButtonRef = useRef<HTMLButtonElement>(null);
   const modeMenuRef = useRef<HTMLDivElement>(null);
+  const suppressModeMenuUntilPointerLeaveRef = useRef(false);
+
+  const closeModeMenu = useCallback(() => {
+    setShowModeMenu(false);
+    setHoveredMode(null);
+  }, []);
 
   // Once open, the mode menu survives inside its own bounds plus a small
   // downward extension toward the microphone button.
@@ -743,8 +749,7 @@ export function ThreadComposer({
         && event.clientY <= survivalBottom;
 
       if (!insideSurvivalBounds) {
-        setShowModeMenu(false);
-        setHoveredMode(null);
+        closeModeMenu();
       }
     };
 
@@ -752,7 +757,7 @@ export function ThreadComposer({
     return () => {
       document.removeEventListener("mousemove", handlePointerMove);
     };
-  }, [showModeMenu]);
+  }, [closeModeMenu, showModeMenu]);
   const queuedPromptStorageKey = useMemo(
     () => queuedPromptsStorageKey(pendingQueueKey),
     [pendingQueueKey],
@@ -1355,6 +1360,7 @@ export function ThreadComposer({
   );
 
   const startRecording = useCallback(async (mode: "normal" | "stream") => {
+    closeModeMenu();
     try {
       // If in stream mode, use AudioClipRecorder
       if (mode === "stream" && onSendStreamChunk && onAwaitTranscription) {
@@ -1500,9 +1506,12 @@ export function ThreadComposer({
       console.error("Failed to start recording:", error);
       setInlineError(t("thread.composer.recording.error"));
     }
-  }, [t, onSendStreamChunk, onAwaitTranscription, onSend]);
+  }, [closeModeMenu, t, onSendStreamChunk, onAwaitTranscription, onSend]);
 
   const stopRecording = useCallback(async () => {
+    suppressModeMenuUntilPointerLeaveRef.current = true;
+    closeModeMenu();
+
     // If in stream mode, stop AudioClipRecorder
     if (recordingMode === "stream") {
       const { getAudioClipRecorder } = await import("@/audio/audioClipRecorder");
@@ -1577,7 +1586,7 @@ export function ThreadComposer({
       audioBlobRef.current = null;
       audioNameRef.current = "";
     }
-  }, [isRecording, onTranscribe, resizeTextarea, t, recordingMode]);
+  }, [closeModeMenu, isRecording, onTranscribe, resizeTextarea, t, recordingMode]);
 
 
 
@@ -1587,6 +1596,9 @@ export function ThreadComposer({
     // If recording, stop and transcribe first
     if (isRecording && onTranscribe) {
       try {
+        suppressModeMenuUntilPointerLeaveRef.current = true;
+        closeModeMenu();
+
         // Stop recording
         mediaRecorderRef.current?.stop();
         setIsRecording(false);
@@ -1679,6 +1691,7 @@ export function ThreadComposer({
     canSend,
     clear,
     clearComposerText,
+    closeModeMenu,
     isRecording,
     onSend,
     onTranscribe,
@@ -1951,12 +1964,15 @@ export function ThreadComposer({
                 aria-label={isRecording ? t("thread.composer.stopRecording") : t("thread.composer.startRecording")}
                 onMouseEnter={() => {
                   if (isRecording || disabled || isStreaming) return;
+                  if (suppressModeMenuUntilPointerLeaveRef.current) return;
                   setShowModeMenu(true);
+                }}
+                onMouseLeave={() => {
+                  suppressModeMenuUntilPointerLeaveRef.current = false;
                 }}
                 onClick={() => {
                   if (isRecording) {
                     stopRecording();
-                    setShowModeMenu(false);
                   } else {
                     // Start recording with current mode
                     startRecording(recordingMode);
