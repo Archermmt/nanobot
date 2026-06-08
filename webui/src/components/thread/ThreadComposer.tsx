@@ -75,6 +75,7 @@ import {
   logoFallbackUrls,
   providerBrand,
 } from "@/lib/provider-brand";
+import { useMediaQueue } from "@/providers/MediaQueueProvider";
 import { cn } from "@/lib/utils";
 
 /** ``<input accept>``: aligned with the server's MIME whitelist. SVG is
@@ -788,6 +789,7 @@ export function ThreadComposer({
 
   const { images, enqueue, remove, clear, restoreReadyImages, encoding, full } =
     useAttachedImages();
+  const { clear: clearMediaQueue } = useMediaQueue();
 
   const formatRejection = useCallback(
     (reason: AttachmentError): string => {
@@ -1154,6 +1156,26 @@ export function ThreadComposer({
     resizeTextarea();
   }, [resizeTextarea]);
 
+  const stopCurrentMediaPlayback = useCallback(() => {
+    clearMediaQueue();
+    document.querySelectorAll<HTMLMediaElement>("[data-nanobot-media-player]").forEach((media) => {
+      media.pause();
+      try {
+        media.currentTime = 0;
+      } catch {
+        // Some media sources cannot be seeked; pausing still stops playback.
+      }
+    });
+  }, [clearMediaQueue]);
+
+  const sendMessage = useCallback(
+    (...args: Parameters<typeof onSend>) => {
+      stopCurrentMediaPlayback();
+      onSend(...args);
+    },
+    [onSend, stopCurrentMediaPlayback],
+  );
+
   const queueGuidancePrompt = useCallback(() => {
     const text = value.trim();
     if (!canQueueGuidance || (!text && readyImages.length === 0)) return;
@@ -1216,12 +1238,12 @@ export function ThreadComposer({
       const queuedImages = queuedImagesToSendImages(prompt.images);
       setQueuedPrompts((items) => items.filter((item) => item.id !== prompt.id));
       if (text || queuedImages?.length) {
-        if (queuedImages?.length) onSend(text, queuedImages);
-        else onSend(text);
+        if (queuedImages?.length) sendMessage(text, queuedImages);
+        else sendMessage(text);
       }
       requestAnimationFrame(() => textareaRef.current?.focus());
     },
-    [onSend],
+    [sendMessage],
   );
 
   const sendNextQueuedPrompt = useCallback(() => {
@@ -1233,10 +1255,10 @@ export function ThreadComposer({
     }
     setQueuedPrompts((items) => items.filter((item) => item.id !== nextPrompt.id));
     const queuedImages = queuedImagesToSendImages(nextPrompt.images);
-    if (queuedImages?.length) onSend(nextPrompt.text.trim(), queuedImages);
-    else onSend(nextPrompt.text.trim());
+    if (queuedImages?.length) sendMessage(nextPrompt.text.trim(), queuedImages);
+    else sendMessage(nextPrompt.text.trim());
     requestAnimationFrame(() => textareaRef.current?.focus());
-  }, [onSend, queuedPrompts]);
+  }, [queuedPrompts, sendMessage]);
 
   useEffect(() => {
     const wasStreaming = wasStreamingRef.current;
@@ -1409,7 +1431,7 @@ export function ThreadComposer({
                 // turn_end arrives, so a single utterance never spawns more
                 // than one agent turn.
                 isListeningRef.current = true;
-                onSend(trimmed);
+                sendMessage(trimmed);
                 if (!clipRecorder.isRecording) return;
                 await new Promise<void>((resolve) => {
                   streamResumeResolverRef.current = resolve;
@@ -1506,7 +1528,7 @@ export function ThreadComposer({
       console.error("Failed to start recording:", error);
       setInlineError(t("thread.composer.recording.error"));
     }
-  }, [closeModeMenu, t, onSendStreamChunk, onAwaitTranscription, onSend]);
+  }, [closeModeMenu, t, onSendStreamChunk, onAwaitTranscription, sendMessage]);
 
   const stopRecording = useCallback(async () => {
     suppressModeMenuUntilPointerLeaveRef.current = true;
@@ -1679,7 +1701,7 @@ export function ThreadComposer({
             ...(attachedMcpPresets.length > 0 ? { mcpPresets: attachedMcpPresets } : {}),
           }
         : undefined;
-    onSend(content, payload, options);
+    sendMessage(content, payload, options);
     setQueuedPrompts([]);
     // Bubble owns the data URL copy; safe to revoke every staged blob
     // preview here without affecting the rendered message.
@@ -1693,10 +1715,9 @@ export function ThreadComposer({
     clearComposerText,
     closeModeMenu,
     isRecording,
-    onSend,
     onTranscribe,
     readyImages,
-    resizeTextarea,
+    sendMessage,
     t,
     value,
   ]);

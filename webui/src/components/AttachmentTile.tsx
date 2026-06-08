@@ -64,6 +64,7 @@ export function AttachmentTile({ attachment, className, inline = false, variant 
           controls
           autoPlay
           preload="auto"
+          data-nanobot-media-player="true"
           className={cn(
             "block w-full bg-black",
             variant === "compact" ? "max-h-40" : "max-h-[26rem]",
@@ -184,6 +185,7 @@ function AudioQueueTile({
       src={url}
       controls
       preload="auto"
+      data-nanobot-media-player="true"
       onEnded={() => onEnded(url)}
       onPause={() => {
         // User-initiated pause (grantedPlay still true) → skip this item

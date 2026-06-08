@@ -8,11 +8,18 @@ interface MediaQueueItem {
 interface MediaQueueContextValue {
   enqueue: (id: string, url: string) => void;
   remove: (id: string) => void;
+  clear: () => void;
   currentId: string | null;
   onEnded: (id: string) => void;
 }
 
-const MediaQueueContext = createContext<MediaQueueContextValue | null>(null);
+const MediaQueueContext = createContext<MediaQueueContextValue>({
+  enqueue: () => undefined,
+  remove: () => undefined,
+  clear: () => undefined,
+  currentId: null,
+  onEnded: () => undefined,
+});
 
 export function MediaQueueProvider({
   children,
@@ -55,15 +62,18 @@ export function MediaQueueProvider({
     setCurrentId((prev) => (prev === id ? null : prev));
   }, []);
 
+  const clear = useCallback(() => {
+    setQueue([]);
+    setCurrentId(null);
+  }, []);
+
   return (
-    <MediaQueueContext.Provider value={{ enqueue, remove, currentId, onEnded }}>
+    <MediaQueueContext.Provider value={{ enqueue, remove, clear, currentId, onEnded }}>
       {children}
     </MediaQueueContext.Provider>
   );
 }
 
 export function useMediaQueue(): MediaQueueContextValue {
-  const ctx = useContext(MediaQueueContext);
-  if (!ctx) throw new Error("useMediaQueue must be used within MediaQueueProvider");
-  return ctx;
+  return useContext(MediaQueueContext);
 }

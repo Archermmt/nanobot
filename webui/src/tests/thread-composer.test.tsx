@@ -846,6 +846,37 @@ describe("ThreadComposer", () => {
     expect(onSend).toHaveBeenCalledWith("Draw a friendly robot", undefined, undefined);
   });
 
+  it("stops existing message media playback before sending a new message", () => {
+    const pause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+    const audio = document.createElement("audio");
+    const video = document.createElement("video");
+    audio.dataset.nanobotMediaPlayer = "true";
+    video.dataset.nanobotMediaPlayer = "true";
+    audio.currentTime = 12;
+    video.currentTime = 9;
+    document.body.append(audio, video);
+
+    const onSend = vi.fn();
+    render(
+      <ThreadComposer
+        onSend={onSend}
+        placeholder="Type your message..."
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Message input"), {
+      target: { value: "start fresh" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+
+    expect(onSend).toHaveBeenCalledWith("start fresh", undefined, undefined);
+    expect(pause).toHaveBeenCalledTimes(2);
+    expect(audio.currentTime).toBe(0);
+    expect(video.currentTime).toBe(0);
+    audio.remove();
+    video.remove();
+  });
+
   it("shows a stop button while streaming", () => {
     const onStop = vi.fn();
     render(
