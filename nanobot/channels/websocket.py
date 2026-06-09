@@ -1236,7 +1236,8 @@ class WebSocketChannel(BaseChannel):
         is_dm: bool = False,
     ) -> None:
         meta = metadata or {}
-        if meta.get("webui"):
+        _is_silent_cmd = content.strip().lower() in {"/state_change"}
+        if meta.get("webui") and not _is_silent_cmd:
             user_obj: dict[str, Any] = {
                 "event": "user",
                 "chat_id": chat_id,

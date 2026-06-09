@@ -688,6 +688,11 @@ export function ThreadComposer({
   const [recentSlashCommands, setRecentSlashCommands] = useState<string[]>(() => readSlashRecents());
   const [queuedPrompts, setQueuedPrompts] = useState<QueuedPrompt[]>([]);
   const [isRecording, setIsRecording] = useState(false);
+  const [streamAutoStart, setStreamAutoStart] = useState(() => {
+    if (sessionStorage.getItem("nanobot.streamRecordPending") !== "1") return false;
+    sessionStorage.removeItem("nanobot.streamRecordPending");
+    return true;
+  });
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [audioLevels, setAudioLevels] = useState<number[]>([]);
   const [recordingMode, setRecordingMode] = useState<"normal" | "stream">("normal");
@@ -707,7 +712,6 @@ export function ThreadComposer({
   const isListeningRef = useRef(false);
   /** Resolves the loop's pause when ``isStreaming`` transitions true → false. */
   const streamResumeResolverRef = useRef<(() => void) | null>(null);
-  const isStreamingRef = useRef(isStreaming);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1275,9 +1279,7 @@ export function ThreadComposer({
   // is processing a submitted utterance, then release on ``turn_end`` (which is
   // when ``isStreaming`` flips back to false in useNanobotStream).
   useEffect(() => {
-    const wasStreaming = isStreamingRef.current;
-    isStreamingRef.current = isStreaming;
-    if (wasStreaming && !isStreaming) {
+    if (!isStreaming) {
       isListeningRef.current = false;
       if (streamResumeResolverRef.current) {
         const resolve = streamResumeResolverRef.current;
@@ -1381,11 +1383,21 @@ export function ThreadComposer({
     [remove],
   );
 
-  const startRecording = useCallback(async (mode: "normal" | "stream") => {
+  const startRecording = useCallback(async (mode: "normal" | "stream", fromAutoStart = false) => {
     closeModeMenu();
     try {
       // If in stream mode, use AudioClipRecorder
       if (mode === "stream" && onSendStreamChunk && onAwaitTranscription) {
+        if (!fromAutoStart) {
+          // Notify backend — creates the session in welcome mode and gives UX feedback in thread mode.
+          sendMessage("/state_change");
+          if (!onStop) {
+            // Welcome mode: session is being created; defer recording to thread composer after remount.
+            sessionStorage.setItem("nanobot.streamRecordPending", "1");
+            return;
+          }
+        }
+        setRecordingMode("stream");
         const { getAudioClipRecorder } = await import("@/audio/audioClipRecorder");
         const clipRecorder = getAudioClipRecorder();
 
@@ -1528,7 +1540,15 @@ export function ThreadComposer({
       console.error("Failed to start recording:", error);
       setInlineError(t("thread.composer.recording.error"));
     }
-  }, [closeModeMenu, t, onSendStreamChunk, onAwaitTranscription, sendMessage]);
+  }, [closeModeMenu, t, onSendStreamChunk, onAwaitTranscription, sendMessage, onStop]);
+
+  // When the thread composer mounts after a welcome→thread transition, the welcome composer
+  // set this sessionStorage flag before the session was created. Auto-start stream recording.
+  useEffect(() => {
+    if (!streamAutoStart || disabled || !onSendStreamChunk || !onAwaitTranscription) return;
+    setStreamAutoStart(false);
+    startRecording("stream", true);
+  }, [streamAutoStart, disabled, onSendStreamChunk, onAwaitTranscription, startRecording]);
 
   const stopRecording = useCallback(async () => {
     suppressModeMenuUntilPointerLeaveRef.current = true;

@@ -705,6 +705,29 @@ def build_help_text() -> str:
     return "\n".join(lines)
 
 
+async def cmd_state_change(ctx: CommandContext) -> OutboundMessage:
+    """Handle frontend state change notifications without invoking the LLM.
+
+    Returns a lightweight acknowledgement based on the state type carried in
+    ``ctx.msg.metadata["state"]``.  When the caller omits ``state`` (current
+    stream-audio-start case, which is the only caller), we fall back to a
+    "ready to listen" prompt.  An empty ``content`` is returned for unrecognised
+    state values so the response is invisible to the user.
+    """
+    meta = ctx.msg.metadata or {}
+    state = meta.get("state", "stream_audio_start")
+    if state == "stream_audio_start":
+        content = "ready to listen"
+    else:
+        content = ""
+    return OutboundMessage(
+        channel=ctx.msg.channel,
+        chat_id=ctx.msg.chat_id,
+        content=content,
+        metadata=dict(meta),
+    )
+
+
 def register_builtin_commands(router: CommandRouter) -> None:
     """Register the default set of slash commands."""
     router.priority("/stop", cmd_stop)
@@ -727,3 +750,4 @@ def register_builtin_commands(router: CommandRouter) -> None:
     router.exact("/pairing", cmd_pairing)
     router.prefix("/pairing ", cmd_pairing)
     router.priority("/register_extern_tools", cmd_register_extern_tools)
+    router.priority("/state_change", cmd_state_change)

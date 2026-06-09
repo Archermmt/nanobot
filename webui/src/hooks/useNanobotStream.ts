@@ -1001,6 +1001,15 @@ export function useNanobotStream(
       // the image blocks via ``media`` paths.
       if (!hasImages && !content.trim()) return;
 
+      // /state_change is a silent internal command: send to backend for session
+      // creation / UX acknowledgement but don't add a user bubble or set
+      // isStreaming (priority handlers don't emit turn_end, which would stall the
+      // stream recording loop if isStreaming were set here).
+      if (content.trim() === "/state_change") {
+        client.sendMessage(chatId, content);
+        return;
+      }
+
       flushPendingStreamEvents();
       const previews = hasImages ? images!.map((i) => i.preview) : undefined;
       setMessages((prev) => {
