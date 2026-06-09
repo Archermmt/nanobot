@@ -43,6 +43,7 @@ class MediaToolConfig(Base):
     media_provider: str = "dashscope"
     image_model: str | None = None
     video_model: str | None = None
+    vis_analyze: bool = True
 
 
 @tool_parameters(
@@ -318,7 +319,11 @@ class MediaTool(Tool):
         if mode == "list":
             return await self._execute_list(media_type=media_type)
         if mode == "display":
-            return await self._execute_display(media_path=media_path, media_type=media_type)
+            return await self._execute_display(
+                media_path=media_path,
+                media_type=media_type,
+                content=prompt,
+            )
         if mode == "analyze":
             return await self._execute_analyze(
                 media_type=media_type, media_path=media_path, prompt=prompt
@@ -413,7 +418,7 @@ class MediaTool(Tool):
 
         return str(path)
 
-    async def _execute_display(self, media_path: str, media_type: str) -> str:
+    async def _execute_display(self, media_path: str, media_type: str, content: str = "") -> str:
         """Execute media display."""
         try:
             media_path = self._get_media_path(media_path, media_type, check_exist=True)
@@ -428,27 +433,31 @@ class MediaTool(Tool):
             }
         ]
 
-        return json.dumps(
-            {
-                "artifacts": artifacts,
-                "next_step": (
-                    f"You MUST immediately call the message tool now. "
-                    f"Pass the artifact path in the media parameter to deliver the {media_type} to the user. "
-                    "Do not reply with text alone — the user expects the actual media to be displayed."
-                ),
-            },
-            ensure_ascii=False,
-        )
+        return self._generate_result(media_type, artifacts, content=content)
 
-    def _generate_result(self, media_type: str, artifacts: list[dict[str, Any]]) -> str:
+    def _generate_result(
+        self,
+        media_type: str,
+        artifacts: list[dict[str, Any]],
+        content: str = "",
+    ) -> str:
         """Generate structured result for media artifacts."""
+        content = content.strip()
+        message_instruction = (
+            "Call the message tool with the artifact paths in the media parameter "
+            f"to deliver the {media_type}s to the user."
+        )
+        if content:
+            message_instruction = (
+                "Call the message tool with this exact content in the content parameter "
+                f"and the artifact paths in the media parameter: {content!r}."
+            )
         return json.dumps(
             {
                 "artifacts": artifacts,
                 "next_step": (
                     f"Use these artifact paths as reference_{media_type}s for follow-up edits. "
-                    "Call the message tool with the artifact paths in the media parameter "
-                    f"to deliver the {media_type}s to the user. Keep raw paths internal unless the "
+                    f"{message_instruction} Keep raw paths internal unless the "
                     "user asks for debug details."
                 ),
             },
@@ -685,6 +694,15 @@ class MediaTool(Tool):
         # Call provider's chat method with multimodal mode
         response = await self.provider.chat(messages=messages)
         if response and response.content:
+            if self.config.vis_analyze and media_type in {"image", "video"}:
+                artifacts = [
+                    {
+                        "type": media_type,
+                        "path": media_path,
+                        "mime": mimetypes.guess_type(media_path)[0] or "application/octet-stream",
+                    }
+                ]
+                return self._generate_result(media_type, artifacts, content=response.content)
             return response.content
         return f"Error: No analysis result for {media_path}."
 
