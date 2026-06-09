@@ -5,19 +5,22 @@ from __future__ import annotations
 import json
 import mimetypes
 import os
+from contextvars import ContextVar
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
 from pydantic import Field
 
 from nanobot.agent.tools.base import Tool, tool_parameters
+from nanobot.agent.tools.context import ContextAware, RequestContext
 from nanobot.agent.tools.schema import (
     BooleanSchema,
     IntegerSchema,
     StringSchema,
     tool_parameters_schema,
 )
+from nanobot.bus.events import OutboundMessage
 from nanobot.config.paths import get_media_dir
 from nanobot.config.schema import Base
 from nanobot.providers.image_generation import ImageGenerationError, get_image_gen_provider
@@ -99,7 +102,7 @@ class MediaToolConfig(Base):
         required=["media_type", "mode"],
     )
 )
-class MediaTool(Tool):
+class MediaTool(Tool, ContextAware):
     """Unified tool for handling different types of media (images, videos, audio, html, mesh)."""
 
     config_key = "media"
@@ -119,6 +122,7 @@ class MediaTool(Tool):
             config=ctx.config.media,
             image_provider_configs=ctx.image_generation_provider_configs,
             provider=ctx.provider,
+            send_callback=ctx.bus.publish_outbound if ctx.bus else None,
         )
 
     def __init__(
@@ -128,11 +132,30 @@ class MediaTool(Tool):
         config: MediaToolConfig,
         image_provider_configs: dict[str, ProviderConfig] | None = None,
         provider: Any | None = None,
+        send_callback: Callable[[OutboundMessage], Awaitable[None]] | None = None,
     ) -> None:
         self.workspace = Path(workspace).expanduser()
         self.config = config
         self.image_provider_configs = image_provider_configs or {}
         self.provider = provider
+        self._send_callback = send_callback
+        self._default_channel: ContextVar[str] = ContextVar("media_default_channel", default="")
+        self._default_chat_id: ContextVar[str] = ContextVar("media_default_chat_id", default="")
+        self._default_message_id: ContextVar[str | None] = ContextVar(
+            "media_default_message_id",
+            default=None,
+        )
+        self._default_metadata: ContextVar[dict[str, Any]] = ContextVar(
+            "media_default_metadata",
+            default={},
+        )
+
+    def set_context(self, ctx: RequestContext) -> None:
+        """Set the current message context."""
+        self._default_channel.set(ctx.channel)
+        self._default_chat_id.set(ctx.chat_id)
+        self._default_message_id.set(ctx.message_id)
+        self._default_metadata.set(dict(ctx.metadata or {}))
 
     @property
     def name(self) -> str:
@@ -322,7 +345,6 @@ class MediaTool(Tool):
             return await self._execute_display(
                 media_path=media_path,
                 media_type=media_type,
-                content=prompt,
             )
         if mode == "analyze":
             return await self._execute_analyze(
@@ -398,71 +420,22 @@ class MediaTool(Tool):
 
         return result.strip()
 
-    def _get_media_path(self, media_path: str, media_type: str, check_exist: bool = False) -> str:
-        """Get the absolute path for a media file.
-
-        Args:
-            media_path: Media file path (relative or absolute)
-            media_type: Media type (image/video/audio)
-            check_exist: If True, check if file exists and raise error if not
-
-        Returns:
-            Absolute path as string
-        """
-        path = Path(media_path)
-        if not path.is_absolute():
-            path = get_media_dir(media_type) / path
-
-        if check_exist and not path.exists():
-            raise FileNotFoundError(f"Media file not found: {path}")
-
-        return str(path)
-
-    async def _execute_display(self, media_path: str, media_type: str, content: str = "") -> str:
+    async def _execute_display(self, media_path: str, media_type: str) -> str:
         """Execute media display."""
         try:
             media_path = self._get_media_path(media_path, media_type, check_exist=True)
         except FileNotFoundError as e:
             return f"Error: {e}"
 
-        artifacts = [
-            {
-                "type": media_type,
-                "path": media_path,
-                "mime": mimetypes.guess_type(media_path)[0] or "application/octet-stream",
-            }
-        ]
+        if media_type in {"image", "video", "audio"}:
+            if await self._send_media(media_path):
+                return f"Displayed {media_type}: {media_path}."
+            return f"Error displaying media {media_type}: {media_path}"
 
-        return self._generate_result(media_type, artifacts, content=content)
-
-    def _generate_result(
-        self,
-        media_type: str,
-        artifacts: list[dict[str, Any]],
-        content: str = "",
-    ) -> str:
-        """Generate structured result for media artifacts."""
-        content = content.strip()
-        message_instruction = (
-            "Call the message tool with the artifact paths in the media parameter "
-            f"to deliver the {media_type}s to the user."
-        )
-        if content:
-            message_instruction = (
-                "Call the message tool with this exact content in the content parameter "
-                f"and the artifact paths in the media parameter: {content!r}."
-            )
-        return json.dumps(
-            {
-                "artifacts": artifacts,
-                "next_step": (
-                    f"Use these artifact paths as reference_{media_type}s for follow-up edits. "
-                    f"{message_instruction} Keep raw paths internal unless the "
-                    "user asks for debug details."
-                ),
-            },
-            ensure_ascii=False,
-        )
+        try:
+            return Path(media_path).read_text(encoding="utf-8", errors="ignore")
+        except Exception as e:
+            return f"Error reading file content: {str(e)}"
 
     async def _execute_image(
         self,
@@ -527,7 +500,9 @@ class MediaTool(Tool):
                 provider=self.config.media_provider,
                 media_path=media_path,
             )
-            return self._generate_result("image", [artifact])
+            if await self._send_media(str(artifact["path"])):
+                return f"Generated image: {artifact['path']}"
+            return f"Error sending media image: {artifact['path']}"
         except (ArtifactError, ImageGenerationError, OSError) as exc:
             return f"Error: {exc}"
 
@@ -605,7 +580,9 @@ class MediaTool(Tool):
                 provider=self.config.media_provider,
                 media_path=media_path,
             )
-            return self._generate_result("video", [artifact])
+            if await self._send_media(str(artifact["path"])):
+                return f"Generated video: {artifact['path']}"
+            return f"Error sending media video: {artifact['path']}"
         except (ArtifactError, ValueError, TimeoutError, OSError) as exc:
             return f"Error: {exc}"
         except Exception as e:
@@ -695,14 +672,7 @@ class MediaTool(Tool):
         response = await self.provider.chat(messages=messages)
         if response and response.content:
             if self.config.vis_analyze and media_type in {"image", "video"}:
-                artifacts = [
-                    {
-                        "type": media_type,
-                        "path": media_path,
-                        "mime": mimetypes.guess_type(media_path)[0] or "application/octet-stream",
-                    }
-                ]
-                return self._generate_result(media_type, artifacts, content=response.content)
+                await self._send_media(media_path)
             return response.content
         return f"Error: No analysis result for {media_path}."
 
@@ -738,3 +708,50 @@ class MediaTool(Tool):
             encoded = base64.b64encode(f.read()).decode("utf-8")
 
         return f"data:{mime_type};base64,{encoded}"
+
+    def _get_media_path(self, media_path: str, media_type: str, check_exist: bool = False) -> str:
+        """Get the absolute path for a media file.
+
+        Args:
+            media_path: Media file path (relative or absolute)
+            media_type: Media type (image/video/audio)
+            check_exist: If True, check if file exists and raise error if not
+
+        Returns:
+            Absolute path as string
+        """
+        path = Path(media_path)
+        if not path.is_absolute():
+            path = get_media_dir(media_type) / path
+
+        if check_exist and not path.exists():
+            raise FileNotFoundError(f"Media file not found: {path}")
+
+        return str(path)
+
+    async def _send_media(self, media_path: str) -> bool:
+        """Send a media attachment to the current output channel."""
+        if not self._send_callback:
+            return False
+        channel = self._default_channel.get()
+        chat_id = self._default_chat_id.get()
+        if not channel or not chat_id:
+            return False
+
+        metadata = dict(self._default_metadata.get())
+        if message_id := self._default_message_id.get():
+            metadata["message_id"] = message_id
+        metadata["_record_channel_delivery"] = True
+        try:
+            await self._send_callback(
+                OutboundMessage(
+                    channel=channel,
+                    chat_id=chat_id,
+                    content="",
+                    media=[media_path],
+                    metadata=metadata,
+                )
+            )
+        except Exception:
+            return False
+        return True

@@ -34,9 +34,9 @@ When you need to work with media, follow this decision tree:
 #### For Images (`media_type="image"`):
 - **List available images**: `mode="list"`
 - **Show image to user**: `mode="display"`
-- **Create image from text**: `mode="generate"`
+- **Create image from text**: `mode="generate"` (automatically displays the generated image)
 - **Modify existing image**: `mode="edit"`
-- **Analyze image content**: `mode="analyze"` (OCR, description, visual QA)
+- **Analyze image content**: `mode="analyze"` (OCR, description, visual QA; automatically displays image + analysis when visual analysis is enabled)
 
 #### For Audio (`media_type="audio"`):
 - **List available audio files**: `mode="list"`
@@ -46,8 +46,8 @@ When you need to work with media, follow this decision tree:
 #### For Videos (`media_type="video"`):
 - **List available videos**: `mode="list"`
 - **Show video to user**: `mode="display"`
-- **Create video from text**: `mode="generate"`
-- **Analyze video content**: `mode="analyze"` (description, action recognition)
+- **Create video from text**: `mode="generate"` (automatically displays the generated video)
+- **Analyze video content**: `mode="analyze"` (description, action recognition; automatically displays video + analysis when visual analysis is enabled)
 
 ## Important Rules
 
@@ -67,6 +67,8 @@ When you need to work with media, follow this decision tree:
 // Step 3: ONLY if no matching file exists, then generate
 {"name": "media", "arguments": {"media_type": "image", "mode": "generate", "prompt": "sunset", "media_path": "sunset_generated.png"}}
 ```
+
+Do **not** call `display` after `generate`; generated images and videos are delivered automatically.
 
 This prevents unnecessary generation when suitable media already exists.
 
@@ -93,6 +95,7 @@ This prevents unnecessary generation when suitable media already exists.
    - Supports custom prompts/questions for targeted analysis
    - Works with all media types (images, audio, videos)
    - Examples: "What objects are in this image?", "Transcribe this audio", "Describe the actions in this video"
+   - Do **not** call `display` after `analyze`; image/video analysis automatically delivers the media with the analysis when visual analysis is enabled
 
 ## When to Read Detailed Documentation
 
