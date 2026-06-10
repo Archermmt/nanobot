@@ -342,10 +342,7 @@ class MediaTool(Tool, ContextAware):
         if mode == "list":
             return await self._execute_list(media_type=media_type)
         if mode == "display":
-            return await self._execute_display(
-                media_path=media_path,
-                media_type=media_type,
-            )
+            return await self._execute_display(media_path=media_path, media_type=media_type)
         if mode == "analyze":
             return await self._execute_analyze(
                 media_type=media_type, media_path=media_path, prompt=prompt
@@ -428,8 +425,9 @@ class MediaTool(Tool, ContextAware):
             return f"Error: {e}"
 
         if media_type in {"image", "video", "audio"}:
-            if await self._send_media(media_path):
-                return f"Displayed {media_type}: {media_path}."
+            content = f"Displayed {media_type}: {media_path}"
+            if await self._send_media(media_path, content=content):
+                return
             return f"Error displaying media {media_type}: {media_path}"
 
         try:
@@ -500,8 +498,9 @@ class MediaTool(Tool, ContextAware):
                 provider=self.config.media_provider,
                 media_path=media_path,
             )
-            if await self._send_media(str(artifact["path"])):
-                return f"Generated image: {artifact['path']}"
+            content = f"Generated image: {artifact['path']}"
+            if await self._send_media(str(artifact["path"]), content=content):
+                return
             return f"Error sending media image: {artifact['path']}"
         except (ArtifactError, ImageGenerationError, OSError) as exc:
             return f"Error: {exc}"
@@ -580,8 +579,9 @@ class MediaTool(Tool, ContextAware):
                 provider=self.config.media_provider,
                 media_path=media_path,
             )
-            if await self._send_media(str(artifact["path"])):
-                return f"Generated video: {artifact['path']}"
+            content = f"Generated video: {artifact['path']}"
+            if await self._send_media(str(artifact["path"]), content=content):
+                return
             return f"Error sending media video: {artifact['path']}"
         except (ArtifactError, ValueError, TimeoutError, OSError) as exc:
             return f"Error: {exc}"
@@ -672,7 +672,8 @@ class MediaTool(Tool, ContextAware):
         response = await self.provider.chat(messages=messages)
         if response and response.content:
             if self.config.vis_analyze and media_type in {"image", "video"}:
-                await self._send_media(media_path)
+                if await self._send_media(media_path, content=response.content):
+                    return
             return response.content
         return f"Error: No analysis result for {media_path}."
 
@@ -729,7 +730,7 @@ class MediaTool(Tool, ContextAware):
 
         return str(path)
 
-    async def _send_media(self, media_path: str) -> bool:
+    async def _send_media(self, media_path: str, content: str = "") -> bool:
         """Send a media attachment to the current output channel."""
         if not self._send_callback:
             return False
@@ -747,7 +748,7 @@ class MediaTool(Tool, ContextAware):
                 OutboundMessage(
                     channel=channel,
                     chat_id=chat_id,
-                    content="",
+                    content=content,
                     media=[media_path],
                     metadata=metadata,
                 )
