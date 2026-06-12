@@ -1457,6 +1457,14 @@ export function ThreadComposer({
               loop(nextRid);
             } catch (err) {
               streamUnsubscribeRef.current = null;
+              // Restart the loop if recording is still active and the error
+              // was not a deliberate cancellation (stopRecording sets
+              // streamRequestIdRef to null before calling cancel()).
+              if (clipRecorder.isRecording && streamRequestIdRef.current !== null) {
+                const nextRid = `transcribe-stream-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+                streamRequestIdRef.current = nextRid;
+                loop(nextRid);
+              }
             }
           };
           loop(requestId);

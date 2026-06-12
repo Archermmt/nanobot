@@ -136,6 +136,9 @@ export class NanobotClient {
   private currentUrl: string;
   private status_: ConnectionStatus = "idle";
   private readyChatId: string | null = null;
+  /** Buffer for transcribe_result events that arrived before awaitTranscription was called.
+   * Keyed by request_id; stores the first result per ID. Consumed on read. */
+  private transcribeResultBuffer = new Map<string, InboundEvent>();
   // Track whether tools have been registered for this connection
   private toolsRegistered = false;
   // Set by ``close()`` so the onclose handler knows the drop was intentional
@@ -440,6 +443,20 @@ export class NanobotClient {
    * Cancelling rejects the promise with ``Error("cancelled")``.
    */
   awaitTranscription(requestId: string): { promise: Promise<string>; cancel: () => void } {
+    // Check if the result already arrived before the subscription was set up.
+    // This closes the race condition where turn_end triggers a React useEffect
+    // asynchronously while transcribe_result events arrive synchronously from
+    // the WebSocket in the same time window.
+    const buffered = this.transcribeResultBuffer.get(requestId);
+    if (buffered) {
+      this.transcribeResultBuffer.delete(requestId);
+      const error = (buffered as { error?: string }).error;
+      if (error) {
+        return { promise: Promise.reject(new Error(error)), cancel: () => {} };
+      }
+      return { promise: Promise.resolve((buffered as { text?: string }).text || ""), cancel: () => {} };
+    }
+
     let unsubscribe: Unsubscribe = () => {};
     let timer: ReturnType<typeof setTimeout> | null = null;
     let settled = false;
@@ -609,6 +626,18 @@ export class NanobotClient {
     if (chatId) {
       this.recordGoalStatusForRunStrip(chatId, parsed);
       this.recordGoalStateSnapshot(chatId, parsed);
+      // Buffer transcribe_result so awaitTranscription() can catch events that
+      // arrive before the subscription is set up (race with React useEffect).
+      if (parsed.event === "transcribe_result") {
+        const rid = (parsed as { request_id?: string }).request_id;
+        if (rid && !this.transcribeResultBuffer.has(rid)) {
+          this.transcribeResultBuffer.set(rid, parsed);
+          if (this.transcribeResultBuffer.size > 100) {
+            const oldest = this.transcribeResultBuffer.keys().next().value;
+            if (oldest) this.transcribeResultBuffer.delete(oldest);
+          }
+        }
+      }
       this.dispatch(chatId, parsed);
     }
   }

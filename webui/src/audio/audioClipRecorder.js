@@ -6,6 +6,7 @@ export class AudioClipRecorder {
     constructor() {
         this.isRecording = false;
         this.audioContext = null;
+        this.workletModuleAdded = false;
         this.analyser = null;
         this.audioProcessor = null;
         this.audioProcessorType = null;
@@ -91,10 +92,13 @@ export class AudioClipRecorder {
         this.audioContext = this.getAudioContext();
         try {
             if (this.audioContext.audioWorklet) {
-                const blob = new Blob([this.getAudioProcessorCode()], { type: 'application/javascript' });
-                const url = URL.createObjectURL(blob);
-                await this.audioContext.audioWorklet.addModule(url);
-                URL.revokeObjectURL(url);
+                if (!this.workletModuleAdded) {
+                    const blob = new Blob([this.getAudioProcessorCode()], { type: 'application/javascript' });
+                    const url = URL.createObjectURL(blob);
+                    await this.audioContext.audioWorklet.addModule(url);
+                    URL.revokeObjectURL(url);
+                    this.workletModuleAdded = true;
+                }
                 const audioProcessor = new AudioWorkletNode(this.audioContext, 'audio-clip-processor');
                 audioProcessor.port.onmessage = (event) => {
                     if (event.data.type === 'buffer') {
