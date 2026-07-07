@@ -118,7 +118,7 @@ export function CodeBlock({
           <span>{copied ? t("code.copied") : t("code.copy")}</span>
         </button>
       </div>
-      {highlight ? (
+      {highlight && language ? (
         <Suspense fallback={<PlainCodeFallback code={code} />}>
           <LazyHighlightedCode language={language} code={code} isDark={isDark} />
         </Suspense>

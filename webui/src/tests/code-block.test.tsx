@@ -35,6 +35,19 @@ vi.mock("react-syntax-highlighter/dist/esm/styles/prism/one-light", () => ({
 }));
 
 describe("CodeBlock", () => {
+  it("renders language-less code as plain text without mounting the highlighter", () => {
+    render(
+      <ThemeProvider theme="dark">
+        <CodeBlock code="plain fenced code" />
+      </ThemeProvider>,
+    );
+
+    expect(screen.queryByTestId("highlighted-code")).not.toBeInTheDocument();
+    expect(screen.getByTestId("plain-code-fallback")).toHaveTextContent(
+      "plain fenced code",
+    );
+  });
+
   it("renders plain code without mounting the highlighter when highlighting is disabled", () => {
     render(
       <ThemeProvider theme="dark">
